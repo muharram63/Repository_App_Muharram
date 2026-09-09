@@ -1,0 +1,221 @@
+{{--vacancies.create--}}
+<style>
+    :root{
+        --blue: #4F5BFF;
+        --blue-dark: #3B46E0;
+        --blue-light: #EEF0FF;
+        --green: #22C55E;
+        --green-bg: #ECFDF3;
+        --ink: #10131A;
+        --gray-700: #4B5163;
+        --gray-500: #8A90A3;
+        --gray-300: #E3E5EE;
+        --gray-100: #F6F7FB;
+        --white: #FFFFFF;
+        --radius: 14px;
+    }
+
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;}
+    body{
+        font-family:'Inter', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+        background: var(--gray-100);
+        color: var(--ink);
+        min-height:100vh;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding: 40px 20px;
+    }
+
+    .page{
+        width:100%;
+        max-width: 1040px;
+    }
+
+    .brand{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        margin-bottom: 28px;
+    }
+    .brand-mark{
+        width:38px;height:38px;border-radius:10px;
+        background: var(--blue);
+        color:#fff;
+        display:flex;align-items:center;justify-content:center;
+        font-weight:800; font-size:16px;
+        box-shadow: 0 6px 16px rgba(79,91,255,.28);
+    }
+    .brand-name{font-weight:800; font-size:20px; letter-spacing:-.01em;}
+    .brand-name span{color:var(--blue);}
+
+    .card{
+        background: var(--white);
+        border-radius: 20px;
+        box-shadow: 0 1px 2px rgba(16,19,26,.04), 0 20px 50px -20px rgba(16,19,26,.15);
+        overflow:hidden;
+        border: 1px solid var(--gray-300);
+    }
+
+    .card-top{
+        padding: 32px 40px 0 40px;
+    }
+
+    h1{
+        font-size: 28px;
+        line-height:1.15;
+        margin:0 0 6px 0;
+        letter-spacing:-0.02em;
+    }
+    .sub{
+        color: var(--gray-500);
+        font-size:15px;
+        margin:0 0 24px 0;
+    }
+
+    .role-pill{
+        display:flex; align-items:center; gap:8px;
+        background: var(--blue-light);
+        border-radius: 12px;
+        padding: 12px 16px;
+        width:fit-content;
+        font-weight:600;
+        font-size:14.5px;
+        color: var(--blue-dark);
+        margin-bottom: 4px;
+    }
+    .role-pill svg{width:16px;height:16px; flex:none;}
+
+    form{
+        padding: 28px 40px 40px 40px;
+    }
+
+    .grid{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px 16px;
+    }
+    .full{grid-column: 1 / -1;}
+
+    .field{display:flex; flex-direction:column; gap:7px;}
+    .field label{
+        font-size:13.5px;
+        font-weight:600;
+        color: var(--gray-700);
+    }
+    .field label .opt{
+        font-weight:400;
+        color: var(--gray-500);
+        margin-left:4px;
+    }
+    input, select, textarea{
+        font-family: inherit;
+        font-size: 14.5px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1.5px solid var(--gray-300);
+        background: var(--white);
+        color: var(--ink);
+        outline:none;
+        transition: border-color .15s ease, box-shadow .15s ease;
+        width:100%;
+    }
+    textarea{resize:vertical; min-height:88px; font-family:inherit;}
+    input::placeholder, textarea::placeholder{color:#AEB2C2;}
+    input:focus, select:focus, textarea:focus{
+        border-color: var(--blue);
+        box-shadow: 0 0 0 4px var(--blue-light);
+    }
+
+    .upload{
+        border: 1.5px dashed var(--gray-300);
+        border-radius: 12px;
+        padding: 18px;
+        display:flex;
+        align-items:center;
+        gap:12px;
+        background: var(--gray-100);
+        cursor:pointer;
+        transition: border-color .15s ease, background .15s ease;
+    }
+    .upload:hover{ border-color: var(--blue); background: var(--blue-light); }
+    .upload-icon{
+        width:36px;height:36px;border-radius:9px;
+        background: var(--white);
+        border:1px solid var(--gray-300);
+        display:flex;align-items:center;justify-content:center;
+        flex:none;
+    }
+    .upload-text b{display:block; font-size:14px; color:var(--ink);}
+    .upload-text span{font-size:12.5px; color:var(--gray-500);}
+
+    .badge-row{
+        display:flex; align-items:center; gap:8px;
+        background: var(--green-bg);
+        border-radius: 999px;
+        padding: 8px 14px;
+        width:fit-content;
+        font-size: 12.5px;
+        font-weight:600;
+        color:#15803D;
+        margin-bottom:18px;
+    }
+    .dot{width:7px;height:7px;border-radius:50%; background:var(--green);}
+
+    .checkbox-row{
+        display:flex; align-items:flex-start; gap:10px;
+        font-size:13px; color: var(--gray-500);
+        margin-top: 4px;
+    }
+    .checkbox-row input{width:16px; height:16px; margin-top:2px; flex:none; accent-color: var(--blue);}
+    .checkbox-row a{color:var(--blue-dark); text-decoration:none; font-weight:600;}
+
+    .actions{
+        display:flex;
+        align-items:center;
+        gap:14px;
+        margin-top:26px;
+        flex-wrap:wrap;
+    }
+    .btn-primary{
+        background: var(--blue);
+        color:#fff;
+        border:none;
+        padding: 13px 26px;
+        border-radius: 10px;
+        font-weight:700;
+        font-size:14.5px;
+        cursor:pointer;
+        transition: background .15s ease, transform .1s ease;
+        box-shadow: 0 8px 18px -6px rgba(79,91,255,.5);
+    }
+    .btn-primary:hover{ background: var(--blue-dark); }
+    .btn-primary:active{ transform: translateY(1px); }
+
+    .link-muted{
+        font-size:13.5px;
+        color: var(--gray-500);
+    }
+    .link-muted a{color:var(--blue-dark); font-weight:600; text-decoration:none;}
+
+    .switch-role{
+        font-size:13.5px;
+        color: var(--gray-500);
+        margin-top:20px;
+        text-align:center;
+    }
+    .switch-role a{color:var(--blue-dark); font-weight:600; text-decoration:none;}
+
+    @media (max-width: 700px){
+        .grid{grid-template-columns: 1fr;}
+        .card-top, form{padding-left:22px; padding-right:22px;}
+    }
+</style>
+
+
+
+
+
+
+
