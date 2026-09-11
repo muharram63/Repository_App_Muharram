@@ -345,21 +345,29 @@
     </script>
 
     @if($roomOpen)
-        <script src="https://meet.jit.si/external_api.js"></script>
+        @php($jitsiDomain = config('services.jitsi.domain'))
+        <script src="https://{{ $jitsiDomain }}/external_api.js"></script>
         <script>
             document.addEventListener('DOMContentLoaded', function () {
                 const container = document.getElementById('jitsi');
+                const roomUrl = @json('https://'.$jitsiDomain.'/'.$interview->room);
+
                 if (!container || typeof JitsiMeetExternalAPI === 'undefined') {
                     if (container) {
+                        // запасной путь: прямая ссылка работает и тогда, когда
+                        // встроенный модуль не загрузился или его заблокировали
                         container.innerHTML =
                             '<div style="padding:56px 24px; text-align:center; color:#fff;">' +
-                            'Не удалось загрузить видеомодуль. Проверьте интернет-соединение и обновите страницу.' +
+                            'Не удалось загрузить видеомодуль. ' +
+                            '<a href="' + roomUrl + '" target="_blank" rel="noopener" ' +
+                            'style="color:#8FB6FF; text-decoration:underline;">' +
+                            'Откройте комнату в новой вкладке</a>.' +
                             '</div>';
                     }
                     return;
                 }
 
-                new JitsiMeetExternalAPI('meet.jit.si', {
+                new JitsiMeetExternalAPI(@json($jitsiDomain), {
                     roomName: @json($interview->room),
                     parentNode: container,
                     width: '100%',

@@ -116,6 +116,66 @@
             margin-bottom: 22px;
         }
 
+        /* ---------- выбор оформления резюме ---------- */
+        .skin-pick {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 9px;
+        }
+
+        .skin-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 9px 15px 9px 11px;
+            border: 1px solid rgba(44, 95, 224, .25);
+            border-radius: 999px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--slate);
+            background: #fff;
+            transition: border-color .18s ease, box-shadow .18s ease, color .18s ease;
+        }
+
+        .skin-option:hover {
+            border-color: var(--blue-primary);
+        }
+
+        /* сама радиокнопка не нужна: роль индикатора играет рамка */
+        .skin-option input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .skin-option:has(input:checked) {
+            border-color: var(--blue-primary);
+            color: var(--navy-deep);
+            box-shadow: 0 0 0 3px rgba(44, 95, 224, .12);
+        }
+
+        /* видно, чем отличаются оформления, ещё до выбора */
+        .skin-mark {
+            width: 16px;
+            height: 16px;
+            border-radius: 5px;
+            flex: 0 0 16px;
+        }
+
+        .skin-classic { background: linear-gradient(135deg, #2C5FE0, #5B8DEF); }
+        .skin-modern { background: linear-gradient(135deg, #0E2456 55%, #5B8DEF 55%); }
+        .skin-compact { background: repeating-linear-gradient(180deg, #2C5FE0 0 3px, #EAF1FC 3px 6px); }
+        .skin-strict { background: linear-gradient(135deg, #1F2937, #6B7280); }
+        .skin-elegant { background: linear-gradient(135deg, #8A6D3B, #D9C7A3); }
+        .skin-bold { background: linear-gradient(180deg, #0E2456 50%, #fff 50%); }
+        .skin-soft { background: linear-gradient(135deg, #EAF6F2, #9DD5C4); }
+        .skin-editorial { background: linear-gradient(135deg, #FFFFFF 50%, #111827 50%); }
+        .skin-tech { background: repeating-linear-gradient(90deg, #0F766E 0 4px, #CCFBF1 4px 8px); }
+        .skin-warm { background: linear-gradient(135deg, #C2410C, #FED7AA); }
+        .skin-night { background: linear-gradient(135deg, #111827, #7C9CFF); }
+
         .field-group.split {
             display: grid;
             grid-template-columns:1fr 1fr;
@@ -425,6 +485,21 @@
                                 <div class="field-group">
                                     <label>{{ __('Документы') }} <span class="opt">{{ __('(PDF, DOC, DOCX до 5 МБ / необязательно)') }}</span></label>
                                     <input type="file" name="documents" accept=".pdf,.doc,.docx">
+                                </div>
+                                <div class="field-group">
+                                    <label>{{ __('Оформление') }} <span class="opt">{{ __('(как резюме увидят работодатели)') }}</span></label>
+                                    {{-- радиокнопки, а не переключатель на скриптах:
+                                         выбор должен работать и при отключённом JS --}}
+                                    <div class="skin-pick">
+                                        @foreach(\App\Models\Resume::STYLES as $key => $title)
+                                            <label class="skin-option">
+                                                <input type="radio" name="style" value="{{ $key }}"
+                                                       @checked(old('style', 'classic') === $key)>
+                                                <span class="skin-mark skin-{{ $key }}"></span>
+                                                {{ __($title) }}
+                                            </label>
+                                        @endforeach
+                                    </div>
                                 </div>
                                 <div class="divider-line"></div>
 

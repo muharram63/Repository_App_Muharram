@@ -5,6 +5,7 @@ namespace App\Services\Ai;
 use App\Models\Resume;
 use App\Models\SkillAttempt;
 use App\Models\Vacancy;
+use App\Support\MatchCriteria;
 use Illuminate\Support\Str;
 
 /**
@@ -41,19 +42,57 @@ class GeminiMatchAnalyst implements MatchAnalyst
 
         $enough = (bool) ($answer['enough_data'] ?? true);
         $matched = $this->items($answer['matched_skills'] ?? [], 12);
+        $missing = $this->items($answer['missing_skills'] ?? [], 12);
+        $partial = $this->partials($answer['partial_matches'] ?? []);
+
+        // Разбор по критериям: направление и навыки судит модель, опыт,
+        // зарплату и город сервер считает точно. Общий процент складывается
+        // из всех, а не только из навыков.
+        $criteria = array_merge(
+            [
+                MatchCriteria::fromModel('role', 'Профессия', $answer['role_match'] ?? null),
+                $this->skillsCriterion($matched, $missing, $partial),
+            ],
+            MatchCriteria::for($vacancy, $resume),
+        );
 
         return [
             'matched_skills' => $matched,
-            'missing_skills' => $this->items($answer['missing_skills'] ?? [], 12),
-            'partial_matches' => $this->partials($answer['partial_matches'] ?? []),
+            'missing_skills' => $missing,
+            'partial_matches' => $partial,
+            'criteria' => $criteria,
             // какие из совпадений подтверждены заданием — сверяем сами, а не
             // спрашиваем модель: это факт из базы, гадать тут не о чем
             'proven_skills' => $this->proven($matched, $badges),
             'verdict' => Str::limit(trim((string) ($answer['verdict'] ?? '')), 400, ''),
-            // при нехватке данных число вводило бы в заблуждение сильнее, чем его отсутствие
-            'score' => $enough ? min(100, max(0, (int) ($answer['score'] ?? 0))) : null,
+            // Процент считаем сами по критериям, а не берём у модели: так он
+            // объясним — видно, из чего сложился. При нехватке данных числа нет
+            // вовсе: оно вводило бы в заблуждение сильнее, чем его отсутствие.
+            'score' => $enough ? MatchCriteria::score($criteria) : null,
             'enough_data' => $enough,
         ];
+    }
+
+    /**
+     * Навыки как критерий: доля закрытых требований, частичные — половиной.
+     */
+    private function skillsCriterion(array $matched, array $missing, array $partial): array
+    {
+        $total = count($matched) + count($missing) + count($partial);
+
+        if ($total === 0) {
+            return MatchCriteria::row('skills', 'Навыки', 'unknown', 'Требования не разобраны');
+        }
+
+        $share = (count($matched) + count($partial) / 2) / $total;
+        $note = count($matched).' из '.$total.' требований'
+            .(count($partial) ? ', '.count($partial).' частично' : '');
+
+        return MatchCriteria::row('skills', 'Навыки', match (true) {
+            $share >= 0.8 => 'ok',
+            $share >= 0.4 => 'partial',
+            default => 'no',
+        }, $note);
     }
 
     /**
@@ -91,6 +130,8 @@ class GeminiMatchAnalyst implements MatchAnalyst
             'Требуемый опыт' => $vacancy->experience_required,
             'Занятость' => $vacancy->employment_type,
             'График' => $vacancy->work_schedule,
+            'Город' => $vacancy->city?->region,
+            'Вилка' => $vacancy->salary_to ? 'до '.$vacancy->salary_to : null,
             'Описание' => Str::limit((string) $vacancy->description, self::LIMIT, ''),
         ]);
 
@@ -100,6 +141,8 @@ class GeminiMatchAnalyst implements MatchAnalyst
             'Лет опыта' => $resume->experience_years,
             'Навыки' => $resume->skills,
             'Языки' => $resume->languages,
+            'Город' => $resume->applicant?->city,
+            'Ожидаемая зарплата' => $resume->desired_salary ?: null,
             'Последнее место работы' => $resume->place_work,
             'О себе' => Str::limit((string) $resume->description, self::LIMIT, ''),
         ]);
@@ -145,7 +188,16 @@ class GeminiMatchAnalyst implements MatchAnalyst
           одно предложение, чем именно отличается: «опыт есть, но в рознице, а не в финтехе».
         - Не выдумывай навыки, которых нет ни в вакансии, ни в резюме. Не повторяй один навык в двух списках.
         - verdict: 1–2 предложения по существу, почему кандидат подходит или нет. Без вежливых общих слов.
-        - score: 0–100, честная доля совпадения по требованиям вакансии.
+
+        ПРО ПРОФЕССИЮ (role_match). Сравни название вакансии с профессией и желаемой должностью
+        кандидата ПО СМЫСЛУ, а не по совпадению слов:
+        - ok — то же направление, пусть и названо иначе («Backend-разработчик» и «PHP-программист»);
+        - partial — смежное направление, переход реален («Тестировщик» на «Backend-разработчика»);
+        - no — другая профессия («Оператор станка» и «Оператор call-центра» похожи только на вид).
+        В note — одна строка, чем именно близко или далеко.
+
+        Процент совпадения не считай: его выводит система по всем критериям сразу — профессии,
+        навыкам, опыту, зарплате и городу. Твоё дело — назвать конкретику.
 
         ПРО ПОДТВЕРЖДЁННЫЕ НАВЫКИ. Если в данных есть блок «ПОДТВЕРЖДЕНО ЗАДАНИЕМ НА ПЛАТФОРМЕ» —
         это результат проверки, а не слова кандидата о себе. Такой навык считается доказанным:
@@ -190,10 +242,18 @@ class GeminiMatchAnalyst implements MatchAnalyst
                         'required' => ['title'],
                     ],
                 ],
+                'role_match' => [
+                    'type' => 'object',
+                    'description' => 'Насколько профессия кандидата отвечает названию вакансии',
+                    'properties' => [
+                        'state' => ['type' => 'string', 'enum' => ['ok', 'partial', 'no']],
+                        'note' => ['type' => 'string', 'description' => 'Короткое пояснение, одна строка'],
+                    ],
+                    'required' => ['state'],
+                ],
                 'verdict' => ['type' => 'string', 'description' => 'Один-два предложения по существу'],
-                'score' => ['type' => 'integer', 'description' => 'Доля совпадения, 0–100'],
             ],
-            'required' => ['enough_data', 'verdict'],
+            'required' => ['enough_data', 'verdict', 'role_match'],
         ];
     }
 

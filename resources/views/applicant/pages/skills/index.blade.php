@@ -24,6 +24,15 @@
 
         .sk-wrap { padding: 0 3vh 4vh 2vh; display: flex; flex-direction: column; gap: 18px; }
 
+        /* названия навыков приходят из справочника и бывают длинными —
+           переносим внутри карточек, а не выпускаем за край */
+        .sk-card, .sk-card * { min-width: 0; }
+        .sk-chip, .sk-badge, .sk-badge-name, .sk-sub, .sk-empty, .sk-table td, .sk-note, .sk-flash {
+            overflow-wrap: anywhere; word-break: break-word;
+        }
+        .sk-chip, .sk-badge { max-width: 100%; }
+        .sk-badge { flex-wrap: wrap; }
+
         .sk-card {
             background: rgba(255, 255, 255, .94); border: 1px solid rgba(255, 255, 255, .7);
             border-radius: var(--radius); overflow: hidden;

@@ -203,6 +203,23 @@ test('a second visit after publishing opens a new conversation and keeps the old
         ->and($first->fresh())->not->toBeNull();
 });
 
+test('the final version survives a page reload', function () {
+    $user = assistantUser(new FakeAssistant);
+    $draft = openAssistant($user);
+
+    $this->actingAs($user)
+        ->postJson('/applicant/resume/assistant/'.$draft->id.'/message', ['message' => 'Я backend-разработчик']);
+
+    $this->actingAs($user)->postJson('/applicant/resume/assistant/'.$draft->id.'/finalize')->assertOk();
+
+    // собранное не должно теряться: иначе перезагрузка стоит ещё одного платного вызова
+    $this->actingAs($user)->get('/applicant/resume/assistant/'.$draft->id)
+        ->assertOk()
+        ->assertSee('value="PHP-разработчик"', false)
+        ->assertSee('Опытный backend-разработчик.', false)
+        ->assertSee('Проверьте текст и сохраните', false);
+});
+
 test('an old conversation can be opened again from the list', function () {
     $user = assistantUser(new FakeAssistant);
     $first = openAssistant($user);
@@ -370,6 +387,31 @@ test('the layout can be changed later from the edit form', function () {
     ])->assertRedirect(route('applicant.resume.index', absolute: false));
 
     expect($resume->fresh()->style)->toBe('compact');
+});
+
+test('the create form offers every layout and saves the choice', function () {
+    $user = assistantUser(new FakeAssistant);
+
+    $html = $this->actingAs($user)->get('/applicant/resume/create')->assertOk()->getContent();
+
+    foreach (array_keys(Resume::STYLES) as $style) {
+        expect($html)->toContain('value="'.$style.'"')
+            ->and($html)->toContain('skin-'.$style);
+    }
+
+    // по умолчанию отмечено классическое
+    expect($html)->toMatch('/value="classic"\s+checked/');
+
+    $this->actingAs($user)->post('/applicant/resume', [
+        'profession' => 'Менеджер проектов',
+        'experience_years' => 3,
+        'desired_position' => 'Менеджер',
+        'desired_salary' => 6000,
+        'languages' => 'русский',
+        'style' => 'night',
+    ])->assertRedirect(route('applicant.resume.index', absolute: false));
+
+    expect(Resume::latest('id')->first()->style)->toBe('night');
 });
 
 test('the edit form offers every layout', function () {

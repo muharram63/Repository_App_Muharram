@@ -87,6 +87,32 @@
     .brand-name{ font-weight:700; font-size:16px; }
     .brand-name span{ color:var(--indigo-600); }
 
+    /* ---------- переключатель меню ---------- */
+    .side-toggle{
+        margin-left:auto; flex-shrink:0; cursor:pointer;
+        width:30px; height:30px; display:grid; place-items:center;
+        border:1px solid var(--gray-200); border-radius:8px;
+        background:var(--gray-100); color:var(--gray-700);
+        transition:color .15s ease, border-color .15s ease;
+    }
+    .side-toggle:hover{ color:var(--indigo-600); border-color:var(--indigo-600); }
+    .side-toggle svg{ width:16px; height:16px; transition:transform .25s ease; }
+
+    /* свёрнутое меню: остаются иконки, кнопка возврата никуда не девается */
+    .app.rail{ grid-template-columns:64px 1fr; }
+    .app.rail .sidebar{ padding:0 8px; }
+    .app.rail .brand{ flex-direction:column; gap:10px; padding:18px 0 16px; }
+    .app.rail .brand-name,
+    .app.rail .nav-group-label{ display:none; }
+    .app.rail .side-toggle{ margin:0; }
+    .app.rail .side-toggle svg{ transform:rotate(180deg); }
+    .app.rail .nav-item{ justify-content:center; padding:10px 0; position:relative; }
+    /* ссылка растягивается на всю строку: в свёрнутом виде кликают по иконке */
+    .app.rail .nav-item a{ position:absolute; inset:0; font-size:0; }
+    .app.rail .nav-item span[data-live]{ display:none; }
+    .app.rail .logout-btn{ justify-content:center; padding:10px 0; font-size:0; }
+
+
     .nav-group-label{
         font-size:11px;
         font-weight:600;
@@ -192,7 +218,9 @@
     /* ---------- cards / stats ---------- */
     .stat-row{
         display:grid;
-        grid-template-columns:repeat(3,1fr);
+        /* колонки по числу карточек: этот же ряд используется с двумя,
+           тремя и четырьмя плитками, жёсткие три оставляли пустое место */
+        grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
         gap:16px;
         margin-bottom:28px;
     }
@@ -202,6 +230,23 @@
         border-radius:var(--radius);
         padding:18px 20px;
     }
+
+    /* карточка-ссылка: ведёт к списку, который за ней стоит */
+    a.stat-card{
+        display:block; color:inherit; text-decoration:none;
+        transition:border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+    }
+    a.stat-card:hover{
+        border-color:var(--indigo-600);
+        transform:translateY(-2px);
+        box-shadow:0 14px 28px -20px rgba(79,70,229,.8);
+    }
+    .stat-go{
+        display:inline-block; margin-top:10px;
+        font-size:12px; font-weight:700; color:var(--indigo-600);
+    }
+    a.stat-card:hover .stat-go{ text-decoration:underline; }
+
     .stat-card .label{ font-size:13px; color:var(--gray-500); margin-bottom:8px; }
     .stat-card .value{ font-size:26px; font-weight:700; }
     .stat-card .trend{ font-size:12px; color:var(--green); margin-top:4px; }

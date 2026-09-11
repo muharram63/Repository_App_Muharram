@@ -313,6 +313,40 @@
 
 
         </header>
+
+        {{-- Сообщения формы — в одном месте на всю панель. Раньше их выводили
+             4 страницы из 31: отказ валидации и заблокированное удаление
+             выглядели как «нажал и ничего не произошло». --}}
+        @if ($errors->any() || session('error') || session('status'))
+            <div style="padding:18px 24px 0; max-width:900px;">
+                @if(session('status'))
+                    <div style="padding:12px 16px; border-radius:10px; font-size:13.5px;
+                                background:var(--green-50); border:1px solid var(--green); color:var(--green);">
+                        {{ session('status') }}
+                    </div>
+                @endif
+
+                @if(session('error'))
+                    <div style="margin-top:10px; padding:12px 16px; border-radius:10px; font-size:13.5px;
+                                background:var(--red-50); border:1px solid var(--red); color:var(--red);">
+                        {{ session('error') }}
+                    </div>
+                @endif
+
+                @if($errors->any())
+                    <div style="margin-top:10px; padding:12px 16px; border-radius:10px; font-size:13.5px;
+                                background:var(--red-50); border:1px solid var(--red); color:var(--red);">
+                        <b>{{ __('Проверьте форму') }}:</b>
+                        <ul style="margin:6px 0 0; padding-left:18px;">
+                            @foreach($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+            </div>
+        @endif
+
         @yield('main')
 
     </div>

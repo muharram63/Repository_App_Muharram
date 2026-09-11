@@ -34,6 +34,10 @@ class Resume extends Model
         'elegant' => 'Элегантное',
         'bold' => 'Контрастное',
         'soft' => 'Мягкое',
+        'editorial' => 'Журнальное',
+        'tech' => 'Техническое',
+        'warm' => 'Тёплое',
+        'night' => 'Тёмное',
     ];
 
     public function applicant()

@@ -47,6 +47,9 @@
             <div id="mxResult" hidden>
                 <p class="mx-verdict" id="mxVerdict"></p>
 
+                {{-- разбор по критериям: из чего сложился процент, а не только навыки --}}
+                <div class="mx-criteria" id="mxCriteria" hidden></div>
+
                 <div class="mx-group" id="mxMatchedBox" hidden>
                     <div class="mx-group-head mx-ok">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
@@ -102,6 +105,14 @@
        показывалась даже тогда, когда пояснять нечего, и клик ничего не давал. */
     .mx-card [hidden], .mx-card[hidden] { display: none !important; }
 
+    /* Ничто не должно вылезать за карточку: блок стоит в узкой колонке,
+       а названия навыков приходят от модели и бывают длинными. */
+    .mx-card, .mx-card * { min-width: 0; }
+    .mx-title, .mx-muted, .mx-verdict, .mx-tag, .mx-detail, .mx-error, .mx-stamp {
+        overflow-wrap: anywhere; word-break: break-word;
+    }
+    .mx-tag { max-width: 100%; }
+
     .mx-card {
         background: #fff; border: 1px solid #E3E7EF; border-radius: 14px;
         box-shadow: 0 18px 40px -32px rgba(16, 24, 48, .55);
@@ -143,6 +154,23 @@
 
     /* ---------- результат ---------- */
     .mx-verdict { margin: 0 0 14px; font-size: 13.5px; line-height: 1.65; color: #2B3648; }
+    /* ---------- критерии ---------- */
+    .mx-criteria { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; }
+    .mx-crit {
+        display: flex; align-items: baseline; gap: 8px;
+        padding: 8px 11px; border-radius: 10px; background: #F7F9FC;
+        border-left: 3px solid #CBD5E1; font-size: 12.5px; line-height: 1.5;
+    }
+    .mx-crit.ok { background: #F2FDF6; border-left-color: #15803D; }
+    .mx-crit.partial { background: #FFFCF2; border-left-color: #B45309; }
+    .mx-crit.no { background: #FEF6F6; border-left-color: #B91C1C; }
+    .mx-crit-name { font-weight: 700; flex: 0 0 auto; }
+    .mx-crit.ok .mx-crit-name { color: #15803D; }
+    .mx-crit.partial .mx-crit-name { color: #B45309; }
+    .mx-crit.no .mx-crit-name { color: #B91C1C; }
+    .mx-crit.unknown .mx-crit-name { color: #64748B; }
+    .mx-crit-note { color: #45536B; }
+
     .mx-group { margin-bottom: 13px; animation: mx-rise .4s ease both; }
     .mx-group-head {
         display: flex; align-items: center; gap: 6px;
@@ -163,7 +191,7 @@
     .mx-tag.ok { background: #ECFDF3; color: #15803D; border-color: #BBF7D0; }
     /* навык, доказанный заданием: плотнее рамка и галочка */
     .mx-tag.ok.proven {
-        display: inline-flex; align-items: center; gap: 5px;
+        display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap;
         border-color: #15803D; background: #DCFCE7; font-weight: 700;
     }
     .mx-tag.ok.proven svg { width: 11px; height: 11px; flex: 0 0 11px; }
@@ -274,6 +302,17 @@
             });
 
             document.getElementById('mxVerdict').textContent = a.verdict || '';
+
+            // критерии: из чего сложился процент — профессия, навыки, опыт, зарплата, город
+            const criteria = document.getElementById('mxCriteria');
+            const rows = (a.criteria || []).filter(c => c && c.label);
+
+            criteria.hidden = rows.length === 0 || a.enough_data === false;
+            criteria.innerHTML = rows.map(c =>
+                '<div class="mx-crit ' + esc(c.state || 'unknown') + '">'
+                + '<span class="mx-crit-name">' + esc(c.label) + '</span>'
+                + '<span class="mx-crit-note">' + esc(c.note || '') + '</span></div>'
+            ).join('');
 
             // данных мало — показываем только честное объяснение, без цифр и списков
             if (a.enough_data === false) {

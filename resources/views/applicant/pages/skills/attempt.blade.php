@@ -24,6 +24,13 @@
 
         .qz-wrap { padding: 0 3vh 4vh 2vh; max-width: 860px; }
 
+        /* текст вопросов и ответов пишет модель, а свой ответ — человек:
+           длину не предсказать, поэтому переносим всё внутри карточки */
+        .qz-card, .qz-card * { min-width: 0; }
+        .qz-text, .qz-opt, .qz-given, .qz-comment, .qz-right, .qz-sub, .qz-score-note, .qz-flash {
+            overflow-wrap: anywhere; word-break: break-word;
+        }
+
         .qz-card {
             background: rgba(255, 255, 255, .95); border: 1px solid rgba(255, 255, 255, .7);
             border-radius: var(--radius); overflow: hidden; margin-bottom: 18px;

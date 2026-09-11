@@ -1,9 +1,15 @@
 {{--Личный кабинет--}}
 
-<aside class="sidebar">
+<aside class="sidebar" id="cabinetSidebar">
     <div class="brand">
         @include('partials.brand-mark', ['brandSize' => 34])
         <div class="brand-name"><a href="{{ route('public.home') }}" style="color:inherit; text-decoration:none;">Work<span>io</span></a></div>
+        {{-- сворачивает меню до полосы иконок; сама кнопка при этом остаётся на виду --}}
+        <button type="button" class="side-toggle" id="sideToggle"
+                aria-controls="cabinetSidebar" aria-expanded="true" title="{{ __('Свернуть меню') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
     </div>
 
     <div class="nav-group-label">{{ __('Кабинет') }}</div>
@@ -97,6 +103,38 @@
         </form>
     </div>
 </aside>
+
+<script>
+    // Сворачивание меню. Состояние держим в браузере: страницы кабинета —
+    // отдельные документы, и без этого меню разворачивалось бы на каждом переходе.
+    (function () {
+        const app = document.querySelector('.app');
+        const button = document.getElementById('sideToggle');
+        if (!app || !button) return;
+
+        // в свёрнутом виде подписи скрыты — переносим их в подсказки
+        document.querySelectorAll('#cabinetSidebar .nav-item a').forEach(function (link) {
+            if (!link.title) link.title = link.textContent.trim();
+        });
+
+        function apply(rail) {
+            app.classList.toggle('rail', rail);
+            button.setAttribute('aria-expanded', String(!rail));
+            button.title = rail ? @json(__('Развернуть меню')) : @json(__('Свернуть меню'));
+        }
+
+        let rail = false;
+        try { rail = localStorage.getItem('workio.sidebar') === 'rail'; } catch (e) { /* приватный режим */ }
+        apply(rail);
+
+        button.addEventListener('click', function () {
+            rail = !app.classList.contains('rail');
+            apply(rail);
+            try { localStorage.setItem('workio.sidebar', rail ? 'rail' : 'full'); } catch (e) { /* не страшно */ }
+        });
+    })();
+</script>
+
 
 @include('partials.call-notify')
 @include('partials.moderation-notices')

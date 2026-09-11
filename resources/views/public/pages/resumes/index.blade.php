@@ -64,11 +64,20 @@
         }
         .rc-chip.skill{background:var(--accent-soft); border-color:transparent; color:var(--accent-ink);}
 
+        /* карточка узкая, а названия навыков бывают длинными — переносим,
+           а не выпускаем за край */
+        .resume-card, .resume-card *{min-width:0;}
+        .rc-chip, .rc-name, .rc-profession, .rc-position, .rc-city{
+            overflow-wrap:anywhere; word-break:break-word;
+        }
+        .rc-chip{max-width:100%;}
+
         /* подтверждённый навык выделяется намеренно: это проверенный факт */
         .rc-chip.proof{
             display:inline-flex; align-items:center; gap:5px;
             background:#ECFDF3; border-color:#BBF7D0; color:#15803D; font-weight:700;
         }
+        .rc-chip.proof{flex-wrap:wrap;}
         .rc-chip.proof svg{width:11px; height:11px; flex:0 0 11px;}
         .rc-chip.proof b{color:#0F5132;}
         .rc-level{

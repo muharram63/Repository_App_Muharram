@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
@@ -49,10 +51,6 @@ class User extends Authenticatable
 
 
     /**
-     * Аватар считается заданным, только если файл реально лежит на диске:
-     * ссылка на удалённый файл даёт битую картинку вместо буквы-заглушки.
-     */
-    /**
      * Инициалы для кружка-заглушки: «Далер Рахимов» -> «ДР».
      */
     public function initials(int $count = 1): string
@@ -67,9 +65,22 @@ class User extends Authenticatable
         return $letters !== '' ? $letters : '?';
     }
 
+    /**
+     * Аватар считается заданным, только если файл реально лежит на диске:
+     * ссылка на удалённый файл даёт битую картинку вместо буквы-заглушки.
+     */
     public function hasAvatar(): bool
     {
-        return ! empty($this->avatar) && is_file(public_path($this->avatar));
+        if (empty($this->avatar)) {
+            return false;
+        }
+
+        // Симлинк public/storage есть не везде: на многих хостингах
+        // `php artisan storage:link` не выполняли или симлинки запрещены.
+        // Тогда файл лежит на диске, но по public_path его не видно — и фото
+        // выглядело как незагрузившееся. Проверяем оба места.
+        return is_file(public_path($this->avatar))
+            || Storage::disk('public')->exists(Str::after($this->avatar, 'storage/'));
     }
 
     public function applicant()

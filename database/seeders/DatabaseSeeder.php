@@ -18,6 +18,9 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             UsersSeeder::class,
+            // без справочника навыков проверка навыков нерабочая: на чистой
+            // установке выбирать было бы не из чего
+            SkillsSeeder::class,
         ]);
 
 //        User::factory()->create([

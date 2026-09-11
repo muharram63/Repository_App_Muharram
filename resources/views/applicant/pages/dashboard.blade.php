@@ -47,26 +47,26 @@
                     <div class="value"><span data-live="profileViews">{{ $profileViews }}</span></div>
                     <div class="trend"><span data-live="resumesCount">{{ $resumesCount }}</span> {{ __('резюме') }} · {{ __('За всё время') }}</div>
                 </div>
-                <div class="stat-card">
-                    <div class="label">{{ __('Отклики') }}</div>
-                    <div class="value"><span data-live="responsesCount">{{ $responsesCount }}</span></div>
-                    <div class="trend"><span data-live="responsesPending">{{ $responsesPending }}</span> {{ __('ожидают ответа') }} · <span data-live="invitesCount">{{ $invitesCount }}</span> {{ __('приглашений') }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">{{ __('Заполненность анкеты') }}</div>
-                    <div class="value">{{ $completeness['percent'] }}%</div>
+                {{-- два потока разведены: что пришло вам и что отправили вы.
+                     Карточка — ссылка на соответствующий список откликов. --}}
+                <a class="stat-card" href="{{ route('public.responses.index') }}#received">
+                    <div class="label">{{ __('Получено приглашений') }}</div>
+                    <div class="value"><span data-live="invitesCount">{{ $invitesCount }}</span></div>
                     <div class="trend">
-                        @if(empty($completeness['missing']))
-                            {{ __('Анкета заполнена') }}
-                        @else
-                            {{ __('Осталось') }}:
-                            {{ collect($completeness['missing'])->map(fn($f) => __($f))->implode(', ') }}
-                        @endif
+                        <span data-live="invitesPending">{{ $invitesPending }}</span> {{ __('новых') }} ·
+                        {{ __('от работодателей по вашему резюме') }}
                     </div>
-                    <div style="margin-top:8px; height:6px; border-radius:4px; background:#EEF1F6; overflow:hidden;">
-                        <div style="height:100%; width:{{ $completeness['percent'] }}%; border-radius:4px; background:#1656D6;"></div>
+                    <span class="stat-go">{{ __('Кто откликнулся') }} →</span>
+                </a>
+                <a class="stat-card" href="{{ route('public.responses.index') }}#sent">
+                    <div class="label">{{ __('Отправлено откликов') }}</div>
+                    <div class="value"><span data-live="responsesCount">{{ $responsesCount }}</span></div>
+                    <div class="trend">
+                        <span data-live="responsesPending">{{ $responsesPending }}</span> {{ __('ожидают ответа') }} ·
+                        {{ __('ваши отклики на вакансии') }}
                     </div>
-                </div>
+                    <span class="stat-go">{{ __('Кому вы откликнулись') }} →</span>
+                </a>
             </div>
 
             <div class="card">

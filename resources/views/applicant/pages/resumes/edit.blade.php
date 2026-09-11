@@ -171,6 +171,10 @@
         .skin-elegant { background: linear-gradient(135deg, #8A6D3B, #D9C7A3); }
         .skin-bold { background: linear-gradient(180deg, #0E2456 50%, #fff 50%); }
         .skin-soft { background: linear-gradient(135deg, #EAF6F2, #9DD5C4); }
+        .skin-editorial { background: linear-gradient(135deg, #FFFFFF 50%, #111827 50%); }
+        .skin-tech { background: repeating-linear-gradient(90deg, #0F766E 0 4px, #CCFBF1 4px 8px); }
+        .skin-warm { background: linear-gradient(135deg, #C2410C, #FED7AA); }
+        .skin-night { background: linear-gradient(135deg, #111827, #7C9CFF); }
 
         .field-group.split {
             display: grid;

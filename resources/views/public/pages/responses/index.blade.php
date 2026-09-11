@@ -72,7 +72,8 @@
             @endif
 
             {{-- ===== МОИ ОТКЛИКИ ===== --}}
-            <div class="resp-panel">
+            {{-- якорь: сюда ведёт карточка «Отправлено» из кабинета --}}
+            <div class="resp-panel" id="sent">
                 <h2>{{ $isApplicant ? 'Мои отклики' : 'Мои приглашения' }} ({{ $myResponses->count() }})</h2>
                 <div class="sub">
                     {{ $isApplicant
@@ -163,7 +164,8 @@
             </div>
 
             {{-- ===== ВХОДЯЩИЕ ===== --}}
-            <div class="resp-panel">
+            {{-- якорь: сюда ведёт карточка «Получено» из кабинета --}}
+            <div class="resp-panel" id="received">
                 <h2>{{ $isApplicant ? 'Приглашения работодателей' : 'Отклики на мои вакансии' }} ({{ $incomingResponses->count() }})</h2>
                 <div class="sub">
                     {{ $isApplicant

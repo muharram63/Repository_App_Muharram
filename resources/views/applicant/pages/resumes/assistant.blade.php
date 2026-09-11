@@ -38,6 +38,15 @@
         /* ---------- каркас ---------- */
         .ai-wrap { padding: 0 3vh 4vh 2vh; }
 
+        /* содержимое листа собирает модель из слов человека — длину не
+           предсказать, поэтому переносим всё внутри карточек */
+        .ai-card, .ai-card * { min-width: 0; }
+        .ai-name, .ai-role, .ai-meta, .ai-text, .ai-tag, .ai-job-role, .ai-job-co,
+        .ai-job li, .ai-list li, .ai-sec-title, .ai-sub {
+            overflow-wrap: anywhere; word-break: break-word;
+        }
+        .ai-tag { max-width: 100%; }
+
         .ai-grid {
             display: grid;
             grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
@@ -286,6 +295,10 @@
         .ai-skin-elegant { background: linear-gradient(135deg, #8A6D3B, #D9C7A3); }
         .ai-skin-bold { background: linear-gradient(180deg, #0E2456 50%, #fff 50%); }
         .ai-skin-soft { background: linear-gradient(135deg, #EAF6F2, #9DD5C4); }
+        .ai-skin-editorial { background: linear-gradient(135deg, #FFFFFF 50%, #111827 50%); }
+        .ai-skin-tech { background: repeating-linear-gradient(90deg, #0F766E 0 4px, #CCFBF1 4px 8px); }
+        .ai-skin-warm { background: linear-gradient(135deg, #C2410C, #FED7AA); }
+        .ai-skin-night { background: linear-gradient(135deg, #111827, #7C9CFF); }
 
         /* ---------- оформление 2: современное ---------- */
         /* акцентная полоса слева, крупное имя, разделы без линеек */
@@ -401,6 +414,81 @@
             background: #fff; color: var(--accent); border-color: rgba(47, 143, 118, .3); border-radius: 999px;
         }
         .ai-sheet[data-skin="soft"] .ai-job { background: transparent; }
+
+        /* ---------- оформление 8: журнальное ---------- */
+        /* широкие поля и крупный заголовок с засечками — вид разворота */
+        .ai-sheet[data-skin="editorial"] {
+            border: 0; border-radius: 0; padding: 34px 40px 38px;
+            border-top: 6px solid #111827; box-shadow: 0 14px 34px -28px rgba(17, 24, 39, .9);
+        }
+        .ai-sheet[data-skin="editorial"] .ai-name {
+            font-family: Georgia, serif; font-size: 32px; line-height: 1.05;
+        }
+        .ai-sheet[data-skin="editorial"] .ai-role { color: #111827; font-weight: 500; }
+        .ai-sheet[data-skin="editorial"] .ai-sec-title {
+            color: #111827; border-bottom: 0; border-top: 1px solid #111827;
+            padding: 7px 0 0; letter-spacing: 3px;
+        }
+        .ai-sheet[data-skin="editorial"] .ai-tag {
+            background: transparent; border-color: #D6D9E0; color: #111827; border-radius: 0;
+        }
+
+        /* ---------- оформление 9: техническое ---------- */
+        /* моноширинные заголовки и квадратные метки — язык инженерной документации */
+        .ai-sheet[data-skin="tech"] {
+            --accent: #0F766E;
+            border-color: #99F6E4; border-radius: 4px;
+            box-shadow: 0 14px 32px -26px rgba(15, 118, 110, .9);
+        }
+        .ai-sheet[data-skin="tech"] .ai-sec-title,
+        .ai-sheet[data-skin="tech"] .ai-job-when {
+            font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+            color: var(--accent); border-bottom-color: #99F6E4;
+        }
+        .ai-sheet[data-skin="tech"] .ai-role { color: var(--accent); }
+        .ai-sheet[data-skin="tech"] .ai-tag {
+            font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+            background: #F0FDFA; color: #115E59; border-color: #99F6E4; border-radius: 3px;
+        }
+        .ai-sheet[data-skin="tech"] .ai-name { letter-spacing: -.5px; }
+
+        /* ---------- оформление 10: тёплое ---------- */
+        /* бумажный фон и терракота — мягче делового синего */
+        .ai-sheet[data-skin="warm"] {
+            --accent: #C2410C;
+            background: #FFFBF7; border-color: #F3D9C4; border-radius: 14px;
+            box-shadow: 0 20px 44px -30px rgba(194, 65, 12, .7);
+        }
+        .ai-sheet[data-skin="warm"] .ai-role { color: var(--accent); }
+        .ai-sheet[data-skin="warm"] .ai-sec-title {
+            color: var(--accent); border-bottom-color: #F3D9C4;
+        }
+        .ai-sheet[data-skin="warm"] .ai-tag {
+            background: #FFF1E6; color: #9A3412; border-color: #F3D9C4; border-radius: 999px;
+        }
+
+        /* ---------- оформление 11: тёмное ---------- */
+        /* светлый текст на тёмном листе: заметно отличается в ленте резюме */
+        .ai-sheet[data-skin="night"] {
+            background: #111827; color: #E8ECF5; border: 0; border-radius: 14px;
+            box-shadow: 0 26px 54px -30px rgba(17, 24, 39, 1);
+        }
+        .ai-sheet[data-skin="night"] .ai-name { color: #FFFFFF; }
+        .ai-sheet[data-skin="night"] .ai-role { color: #93B4FF; }
+        .ai-sheet[data-skin="night"] .ai-meta,
+        .ai-sheet[data-skin="night"] .ai-text,
+        .ai-sheet[data-skin="night"] .ai-job li,
+        .ai-sheet[data-skin="night"] .ai-list li { color: #C3CDDF; }
+        .ai-sheet[data-skin="night"] .ai-sec-title {
+            color: #93B4FF; border-bottom-color: #2A3346;
+        }
+        .ai-sheet[data-skin="night"] .ai-job-role { color: #E8ECF5; }
+        .ai-sheet[data-skin="night"] .ai-job-co { color: #93B4FF; }
+        .ai-sheet[data-skin="night"] .ai-job-when { color: #8896AE; }
+        .ai-sheet[data-skin="night"] .ai-tag {
+            background: #1C2436; color: #C9D8F3; border-color: #2A3346;
+        }
+        .ai-sheet[data-skin="night"] .ai-empty { color: #8896AE; }
 
         /* ---------- финал ---------- */
         .ai-final { padding: 0 26px 24px; }
@@ -625,7 +713,7 @@
 
                             <div class="ai-sheet" id="aiSheet" data-skin="classic"></div>
 
-                            <div class="ai-final" id="aiFinal" hidden>
+                            <div class="ai-final" id="aiFinal" @unless($final) hidden @endunless>
                                 <div class="ai-sec-title" style="margin-bottom:2px;">{{ __('Финальная версия') }}</div>
                                 <p class="ai-note">{{ __('Проверьте и поправьте текст — сохранится именно он.') }}</p>
 
@@ -635,37 +723,42 @@
                                     <div class="ai-two">
                                         <div>
                                             <label>{{ __('Профессия') }}</label>
-                                            <input type="text" name="profession" id="fProfession" maxlength="255" required>
+                                            <input type="text" name="profession" id="fProfession" maxlength="255" required
+                                                   value="{{ $final['profession'] ?? '' }}">
                                         </div>
                                         <div>
                                             <label>{{ __('Желаемая должность') }}</label>
-                                            <input type="text" name="desired_position" id="fPosition" maxlength="255" required>
+                                            <input type="text" name="desired_position" id="fPosition" maxlength="255" required
+                                                   value="{{ $final['desired_position'] ?? '' }}">
                                         </div>
                                     </div>
                                     <div class="ai-two">
                                         <div>
                                             <label>{{ __('Опыт, лет') }}</label>
-                                            <input type="number" name="experience_years" id="fYears" min="0" max="70" required>
+                                            <input type="number" name="experience_years" id="fYears" min="0" max="70" required
+                                                   value="{{ $final['experience_years'] ?? '' }}">
                                         </div>
                                         <div>
                                             <label>{{ __('Желаемая зарплата') }}</label>
-                                            <input type="number" name="desired_salary" id="fSalary" min="0" required>
+                                            <input type="number" name="desired_salary" id="fSalary" min="0" required
+                                                   value="{{ $final['desired_salary'] ?? '' }}">
                                         </div>
                                     </div>
                                     <label>{{ __('Навыки') }}</label>
-                                    <input type="text" name="skills" id="fSkills" maxlength="2000">
+                                    <input type="text" name="skills" id="fSkills" maxlength="2000" value="{{ $final['skills'] ?? '' }}">
                                     <div class="ai-two">
                                         <div>
                                             <label>{{ __('Языки') }}</label>
-                                            <input type="text" name="languages" id="fLanguages" maxlength="255" required>
+                                            <input type="text" name="languages" id="fLanguages" maxlength="255" required
+                                                   value="{{ $final['languages'] ?? '' }}">
                                         </div>
                                         <div>
                                             <label>{{ __('Место работы') }}</label>
-                                            <input type="text" name="place_work" id="fPlace" maxlength="255">
+                                            <input type="text" name="place_work" id="fPlace" maxlength="255" value="{{ $final['place_work'] ?? '' }}">
                                         </div>
                                     </div>
                                     <label>{{ __('Текст резюме') }}</label>
-                                    <textarea name="description" id="fDescription"></textarea>
+                                    <textarea name="description" id="fDescription">{{ $final['description'] ?? '' }}</textarea>
                                 </form>
                             </div>
 
@@ -691,12 +784,18 @@
                             </div>
 
                             <div class="ai-foot">
-                                <span class="ai-note" id="aiHint">{{ __('Соберём финальную версию, когда расскажете об опыте и навыках.') }}</span>
+                                {{-- финальная версия хранится в черновике: после перезагрузки
+                                     она подставляется обратно, а не собирается заново за деньги --}}
+                                <span class="ai-note" id="aiHint">
+                                    {{ $final
+                                        ? __('Проверьте текст и сохраните — резюме появится в списке.')
+                                        : __('Соберём финальную версию, когда расскажете об опыте и навыках.') }}
+                                </span>
                                 <div style="display:flex; gap:9px;">
                                     <button type="button" class="ai-btn primary" id="aiFinalize" @unless($enabled) disabled @endunless>
                                         {{ __('Сгенерировать финальную версию') }}
                                     </button>
-                                    <button type="submit" form="aiSaveForm" class="ai-btn ghost" id="aiSave" hidden>
+                                    <button type="submit" form="aiSaveForm" class="ai-btn ghost" id="aiSave" @unless($final) hidden @endunless>
                                         {{ __('Сохранить резюме') }}
                                     </button>
                                 </div>

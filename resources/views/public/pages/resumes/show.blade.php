@@ -37,7 +37,8 @@
         /* ничто не должно вылезать за рамку листа */
         .cv-sheet, .cv-sheet *{min-width:0;}
         .cv-name, .cv-role, .cv-target, .cv-text, .cv-muted, .cv-entry-title,
-        .cv-entry-meta, .cv-fact-value, .cv-tag, .cv-doc, .cv-locked{
+        .cv-entry-meta, .cv-fact-value, .cv-tag, .cv-doc, .cv-locked,
+        .cv-proof, .cv-proof-level{
             overflow-wrap:anywhere; word-break:break-word;
         }
         .cv-fact-value a, .cv-doc{word-break:break-all;}
@@ -129,7 +130,9 @@
             font-size:12.5px; font-weight:700; padding:6px 12px; border-radius:999px;
             background:#ECFDF3; color:#15803D; border:1px solid #BBF7D0; line-height:1.5;
         }
-        .cv-proof svg{width:13px; height:13px;}
+        /* плашка не шире колонки, а иконка не сжимается в ноль при переносе */
+        .cv-proof{max-width:100%; flex-wrap:wrap;}
+        .cv-proof svg{width:13px; height:13px; flex:0 0 13px;}
         .cv-proof b{color:#0F5132;}
         .cv-proof-level{
             font-style:normal; font-weight:600; font-size:11.5px;
@@ -316,6 +319,79 @@
             background:#fff; color:#2F8F76; border:1px solid rgba(47,143,118,.3); border-radius:999px;
         }
         .cv-sheet[data-skin="soft"] .cv-side{background:#FBFDFC;}
+
+        /* ---------- журнальное: широкие поля, заголовок с засечками ---------- */
+        .cv-sheet[data-skin="editorial"]{
+            --mark:#111827;
+            border:0; border-radius:0; border-top:8px solid #111827; box-shadow:none;
+        }
+        .cv-sheet[data-skin="editorial"]::before{height:0;}
+        .cv-sheet[data-skin="editorial"] .cv-head{
+            background:#fff; border-bottom:1px solid #111827; padding:44px 56px 30px;
+        }
+        .cv-sheet[data-skin="editorial"] .cv-name{
+            font-family:Georgia, 'Times New Roman', serif; text-transform:none; letter-spacing:-.5px;
+        }
+        .cv-sheet[data-skin="editorial"] .cv-role{color:#111827; text-transform:none; font-weight:600;}
+        .cv-sheet[data-skin="editorial"] .cv-section-title{
+            border-bottom:0; border-top:1px solid #111827; padding:8px 0 0; letter-spacing:.22em;
+        }
+        .cv-sheet[data-skin="editorial"] .cv-tag{background:transparent; border:1px solid var(--line); border-radius:0;}
+        .cv-sheet[data-skin="editorial"] .cv-side{background:#fff;}
+
+        /* ---------- техническое: моноширинные заголовки ---------- */
+        .cv-sheet[data-skin="tech"]{
+            --mark:#0F766E;
+            border-color:#99F6E4; border-radius:4px;
+            box-shadow:0 18px 44px -30px rgba(15,118,110,.8);
+        }
+        .cv-sheet[data-skin="tech"]::before{background:linear-gradient(90deg,#0F766E,#5EEAD4);}
+        .cv-sheet[data-skin="tech"] .cv-head{background:#F0FDFA; border-bottom-width:1px; border-bottom-color:#99F6E4;}
+        .cv-sheet[data-skin="tech"] .cv-section-title,
+        .cv-sheet[data-skin="tech"] .cv-entry-meta{
+            font-family:ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        }
+        .cv-sheet[data-skin="tech"] .cv-section-title{color:#115E59; border-bottom-color:#99F6E4;}
+        .cv-sheet[data-skin="tech"] .cv-tag{
+            font-family:ui-monospace, Consolas, monospace; font-size:11.5px;
+            background:#F0FDFA; color:#115E59; border-radius:3px;
+        }
+        .cv-sheet[data-skin="tech"] .cv-side{background:#FAFFFE;}
+
+        /* ---------- тёплое: бумажный фон и терракота ---------- */
+        .cv-sheet[data-skin="warm"]{
+            --mark:#C2410C; --line:#F3D9C4;
+            background:#FFFBF7; border-color:#F3D9C4; border-radius:14px;
+            box-shadow:0 24px 54px -32px rgba(194,65,12,.65);
+        }
+        .cv-sheet[data-skin="warm"]::before{background:linear-gradient(90deg,#C2410C,#FDBA74);}
+        .cv-sheet[data-skin="warm"] .cv-head{background:#FFF6EE; border-bottom-color:#E9C6A8;}
+        .cv-sheet[data-skin="warm"] .cv-role{color:#C2410C; text-transform:none;}
+        .cv-sheet[data-skin="warm"] .cv-tag{background:#FFF1E6; color:#9A3412; border-radius:999px;}
+        .cv-sheet[data-skin="warm"] .cv-side{background:#FFF8F2;}
+
+        /* ---------- тёмное: светлый текст на тёмном листе ----------
+           лист собран на переменных, поэтому хватает переопределить их */
+        .cv-sheet[data-skin="night"]{
+            --ink:#E8ECF5; --ink-soft:#9AA7BC; --line:#2A3346; --mark:#93B4FF;
+            background:#111827; border-color:#2A3346; border-radius:14px;
+            box-shadow:0 30px 64px -32px rgba(0,0,0,.9);
+        }
+        .cv-sheet[data-skin="night"]::before{background:linear-gradient(90deg,#93B4FF,#C084FC);}
+        .cv-sheet[data-skin="night"] .cv-head{
+            background:#161F33; border-bottom-color:#2A3346; border-bottom-width:1px;
+        }
+        .cv-sheet[data-skin="night"] .cv-name{color:#FFFFFF;}
+        .cv-sheet[data-skin="night"] .cv-photo-fallback{background:#1C2436; color:#93B4FF;}
+        .cv-sheet[data-skin="night"] .cv-tag{background:#1C2436; color:#C9D8F3; border:1px solid #2A3346;}
+        .cv-sheet[data-skin="night"] .cv-tag.line{background:transparent; color:#9AA7BC;}
+        .cv-sheet[data-skin="night"] .cv-side{background:#141C2E;}
+        .cv-sheet[data-skin="night"] .cv-entry::before{background:#111827;}
+        .cv-sheet[data-skin="night"] .cv-doc{background:#1C2436; color:#E8ECF5;}
+        /* подтверждённый навык остаётся зелёным, но читаемым на тёмном */
+        .cv-sheet[data-skin="night"] .cv-proof{background:#12301F; border-color:#1F6F43; color:#86EFAC;}
+        .cv-sheet[data-skin="night"] .cv-proof b{color:#BBF7D0;}
+        .cv-sheet[data-skin="night"] .cv-proof-level{background:#0B2416; color:#86EFAC;}
     </style>
 
     @php

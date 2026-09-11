@@ -86,10 +86,14 @@ class ProfileController extends Controller
             'cities' => $cities,
             'profileViews' => (int) $vacancies->sum('views'),
             'vacanciesCount' => $vacancies->count(),
+            // пришло: отклики кандидатов на вакансии компании
             'responsesCount' => (int) $vacancies->sum('responses_count'),
             'responsesPending' => \App\Models\VacancyResponse::whereIn('vacancy_id', $vacancyIds)
                 ->where('status', 'new')->count(),
-            'completeness' => $employer->completeness(),
+            // отправлено: приглашения, разосланные компанией по резюме
+            'invitesCount' => \App\Models\ResumeResponse::where('employer_id', $employer->id)->count(),
+            'invitesPending' => \App\Models\ResumeResponse::where('employer_id', $employer->id)
+                ->where('status', 'new')->count(),
             'candidateResponses' => \App\Models\VacancyResponse::with('applicant.user', 'vacancy')
                 ->whereIn('vacancy_id', $vacancyIds)
                 ->latest()

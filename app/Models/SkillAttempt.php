@@ -59,7 +59,9 @@ class SkillAttempt extends Model
             return 0;
         }
 
-        return max(0, now()->diffInSeconds($this->expires_at, false));
+        // diffInSeconds возвращает дробное число, а метод обещает целое:
+        // без явного округления PHP 8.1+ ругается на потерю точности
+        return (int) max(0, floor(now()->diffInSeconds($this->expires_at, false)));
     }
 
     /**

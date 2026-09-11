@@ -124,8 +124,13 @@ class LiveCounterController extends Controller
             return [
                 'profileViews' => fn () => (int) $employer->vacancies()->sum('views'),
                 'vacanciesCount' => fn () => $employer->vacancies()->count(),
+                // пришло: отклики на вакансии компании
                 'responsesCount' => fn () => VacancyResponse::whereIn('vacancy_id', $vacancyIds())->count(),
                 'responsesPending' => fn () => VacancyResponse::whereIn('vacancy_id', $vacancyIds())
+                    ->where('status', 'new')->count(),
+                // отправлено: приглашения, разосланные компанией
+                'invitesCount' => fn () => ResumeResponse::where('employer_id', $employer->id)->count(),
+                'invitesPending' => fn () => ResumeResponse::where('employer_id', $employer->id)
                     ->where('status', 'new')->count(),
             ];
         }
@@ -138,10 +143,15 @@ class LiveCounterController extends Controller
             'responsesCount' => fn () => VacancyResponse::where('applicant_id', $applicant->id)->count(),
             'responsesPending' => fn () => VacancyResponse::where('applicant_id', $applicant->id)
                 ->where('status', 'new')->count(),
+            // пришло: приглашения работодателей по резюме соискателя
             'invitesCount' => fn () => ResumeResponse::whereIn(
                 'resume_id',
                 Resume::where('applicant_id', $applicant->id)->select('id')
             )->count(),
+            'invitesPending' => fn () => ResumeResponse::whereIn(
+                'resume_id',
+                Resume::where('applicant_id', $applicant->id)->select('id')
+            )->where('status', 'new')->count(),
         ];
     }
 

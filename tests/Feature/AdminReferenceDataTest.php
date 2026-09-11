@@ -31,6 +31,69 @@ test('an unused city is deleted', function () {
     expect(City::find($city->id))->toBeNull();
 });
 
+test('an industry can be edited without renaming it', function () {
+    $admin = User::factory()->admin()->create();
+    [$city, $category, $industry] = refs();
+
+    $other = Category::create(['name' => 'Финансы', 'description' => 'Финансы', 'slug' => 'finance']);
+
+    // меняем описание и категорию, название оставляем прежним
+    $this->actingAs($admin)->put('/superadmin/industries/'.$industry->id, [
+        'name' => $industry->name,
+        'category_id' => $other->id,
+        'description' => 'Обновлённое описание',
+    ])->assertSessionHasNoErrors()
+        ->assertRedirect(route('superadmin.industries.index', absolute: false));
+
+    expect($industry->fresh()->description)->toBe('Обновлённое описание')
+        ->and($industry->fresh()->category_id)->toBe($other->id);
+});
+
+test('an industry still cannot take the name of another one', function () {
+    $admin = User::factory()->admin()->create();
+    [$city, $category, $industry] = refs();
+
+    $taken = Industry::create([
+        'name' => 'Логистика', 'category_id' => $category->id,
+        'parent_id' => 0, 'description' => 'Логистика',
+    ]);
+
+    $this->actingAs($admin)->put('/superadmin/industries/'.$industry->id, [
+        'name' => $taken->name,
+        'category_id' => $category->id,
+        'description' => 'Описание',
+    ])->assertSessionHasErrors('name');
+});
+
+test('the admin panel shows why a form was rejected', function () {
+    $admin = User::factory()->admin()->create();
+    [$city, $category, $industry] = refs();
+
+    // отказ валидации виден на странице, а не молча возвращает форму
+    $this->actingAs($admin)
+        ->from(route('superadmin.industries.edit', $industry, absolute: false))
+        ->put('/superadmin/industries/'.$industry->id, ['name' => ''])
+        ->assertRedirect(route('superadmin.industries.edit', $industry, absolute: false));
+
+    $this->actingAs($admin)->get('/superadmin/industries/'.$industry->id.'/edit')
+        ->assertOk()
+        ->assertSee('Проверьте форму');
+});
+
+test('a blocked deletion explains itself', function () {
+    $admin = User::factory()->admin()->create();
+    $employer = makeEmployer(User::factory()->employer()->create());
+
+    $this->actingAs($admin)
+        ->from(route('superadmin.industries.index', absolute: false))
+        ->delete('/superadmin/industries/'.$employer->industry_id);
+
+    // сообщение о причине отказа доходит до страницы
+    $this->actingAs($admin)->get('/superadmin/industries')
+        ->assertOk()
+        ->assertSee('Индустрия используется');
+});
+
 test('a category and an industry in use cannot be deleted', function () {
     $admin = User::factory()->admin()->create();
     $employer = makeEmployer(User::factory()->employer()->create());

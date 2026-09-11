@@ -111,13 +111,26 @@ test('a change that cannot affect the breakdown does not cost a recount', functi
 
     $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
 
-    // зарплата и просмотры в отпечаток не входят
-    $resume->update(['desired_salary' => 9000]);
+    // просмотры на разбор не влияют
     $vacancy->increment('views');
 
     $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
 
     expect($analyst->calls)->toBe(1);
+});
+
+test('salary became a criterion, so changing it refreshes the breakdown', function () {
+    $analyst = new FakeAnalyst;
+    [$vacancy, $resume, $applicantUser] = matchPair($analyst);
+
+    $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
+
+    // зарплата теперь один из критериев процента
+    $resume->update(['desired_salary' => 99000]);
+
+    $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
+
+    expect($analyst->calls)->toBe(2);
 });
 
 test('passing a skill test makes the stored breakdown stale', function () {

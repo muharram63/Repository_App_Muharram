@@ -118,30 +118,4 @@ class Employer extends Model
             ->exists();
     }
 
-    /**
-     * Заполненность анкеты компании в процентах и список незаполненных полей.
-     */
-    public function completeness(): array
-    {
-        $fields = [
-            'Название компании' => $this->company_name,
-            'Должность' => $this->job,
-            'Рабочий E-mail' => $this->email_company,
-            'Телефон' => $this->phone,
-            'Категория' => $this->category_id,
-            'Индустрия' => $this->industry_id,
-            'Город' => $this->city_id,
-            'Сайт' => $this->website_url,
-            'О компании' => $this->description,
-            'Фото' => $this->user?->avatar,
-        ];
-
-        $filled = array_filter($fields, fn ($value) => ! empty($value));
-
-        return [
-            'percent' => (int) round(count($filled) / count($fields) * 100),
-            'missing' => array_keys(array_diff_key($fields, $filled)),
-        ];
-    }
-
 }

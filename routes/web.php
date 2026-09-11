@@ -11,6 +11,25 @@ Route::get('/', [\App\Http\Controllers\PublicHomeController::class, 'index'])->n
 
 Route::get('/locale/{locale}', [\App\Http\Controllers\LocaleController::class, 'switch'])->name('locale.switch');
 
+/*
+ * Запасная отдача аватаров.
+ *
+ * Обычно public/storage — симлинк, и файл отдаёт веб-сервер, сюда запрос даже
+ * не доходит. Но на хостингах, где симлинка нет, файл существует на диске и
+ * недоступен по прямой ссылке — фото выглядит как незагрузившееся. Этот
+ * маршрут подхватывает такие запросы.
+ *
+ * Открыты ТОЛЬКО аватары: на том же диске остались старые вложения чатов и
+ * документы резюме, их отдаёт SecureFileController с проверкой прав.
+ */
+Route::get('/storage/avatars/{name}', function (string $name) {
+    $path = 'avatars/'.$name;
+
+    abort_unless(\Illuminate\Support\Facades\Storage::disk('public')->exists($path), 404);
+
+    return \Illuminate\Support\Facades\Storage::disk('public')->response($path);
+})->where('name', '[A-Za-z0-9._-]+')->name('public.files.avatar');
+
 
 
 Route::middleware('auth')->group(function () {

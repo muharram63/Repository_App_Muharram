@@ -111,6 +111,82 @@ test('analytics numbers are served on request', function () {
     expect($numbers['an-dist-schedule-fullday'])->toBe(1);
 });
 
+test('both cabinets separate what came in from what was sent', function () {
+    $employerUser = User::factory()->employer()->create();
+    $employer = makeEmployer($employerUser);
+    $vacancy = makeVacancy($employer);
+
+    $applicantUser = User::factory()->applicant()->create();
+    $applicant = makeApplicant($applicantUser);
+    $resume = makeResume($applicant);
+
+    // кандидат откликнулся на вакансию, компания пригласила по резюме
+    App\Models\VacancyResponse::create([
+        'applicant_id' => $applicant->id, 'vacancy_id' => $vacancy->id, 'status' => 'new',
+    ]);
+    App\Models\ResumeResponse::create([
+        'employer_id' => $employer->id, 'resume_id' => $resume->id, 'status' => 'new',
+    ]);
+
+    // у соискателя: приглашение пришло, отклик отправлен
+    $mine = $this->actingAs($applicantUser->fresh())
+        ->get('/live-counters?keys=invitesCount,invitesPending,responsesCount,responsesPending')
+        ->assertOk()->json();
+
+    expect($mine['invitesCount'])->toBe(1)
+        ->and($mine['invitesPending'])->toBe(1)
+        ->and($mine['responsesCount'])->toBe(1);
+
+    // у компании — ровно наоборот
+    $theirs = $this->actingAs($employerUser->fresh())
+        ->get('/live-counters?keys=invitesCount,invitesPending,responsesCount,responsesPending')
+        ->assertOk()->json();
+
+    expect($theirs['responsesCount'])->toBe(1)
+        ->and($theirs['responsesPending'])->toBe(1)
+        ->and($theirs['invitesCount'])->toBe(1);
+
+    // обе карточки видны в кабинетах и ведут к своим спискам
+    $this->actingAs($applicantUser->fresh())->get('/applicant/profile')
+        ->assertOk()
+        ->assertSee('Получено приглашений')
+        ->assertSee('Отправлено откликов')
+        ->assertSee(route('public.responses.index').'#received', false)
+        ->assertSee(route('public.responses.index').'#sent', false);
+
+    $this->actingAs($employerUser->fresh())->get('/employer/profile')
+        ->assertOk()
+        ->assertSee('Получено откликов')
+        ->assertSee('Отправлено приглашений')
+        ->assertSee(route('public.responses.index').'#received', false)
+        ->assertSee(route('public.responses.index').'#sent', false);
+
+    // якоря существуют на странице, куда ведут карточки
+    $this->actingAs($applicantUser->fresh())->get('/responses')
+        ->assertOk()
+        ->assertSee('id="sent"', false)
+        ->assertSee('id="received"', false);
+});
+
+test('both cabinets can collapse the sidebar', function () {
+    $applicantUser = User::factory()->applicant()->create();
+    makeApplicant($applicantUser);
+
+    $employerUser = User::factory()->employer()->create();
+    makeEmployer($employerUser);
+
+    foreach ([[$applicantUser, '/applicant/profile'], [$employerUser, '/employer/profile']] as [$user, $uri]) {
+        $html = $this->actingAs($user->fresh())->get($uri)->assertOk()->getContent();
+
+        // кнопка, стили свёрнутого состояния и сохранение выбора — всё вместе,
+        // иначе меню сворачивалось бы и разворачивалось само на каждой странице
+        expect($html)->toContain('id="sideToggle"')
+            ->and($html)->toContain('aria-controls="cabinetSidebar"')
+            ->and($html)->toContain('.app.rail')
+            ->and($html)->toContain('workio.sidebar');
+    }
+});
+
 test('the call log and analytics pages carry live markers', function () {
     $employerUser = User::factory()->employer()->create();
     makeEmployer($employerUser);

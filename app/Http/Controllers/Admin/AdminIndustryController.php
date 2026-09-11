@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Industry;
 use Illuminate\Http\Request;
-use function Pest\Laravel\get;
+use Illuminate\Validation\Rule;
 
 class AdminIndustryController extends Controller
 {
@@ -69,7 +69,9 @@ class AdminIndustryController extends Controller
     public function update(Request $request, Industry $industry)
     {
         $validated = $request->validate([
-            'name' => 'required|string|unique:industries',
+            // саму запись из проверки исключаем: иначе сохранение без смены
+            // названия отклонялось как «такое название уже занято»
+            'name' => ['required', 'string', Rule::unique('industries')->ignore($industry)],
             'category_id' => 'required|exists:categories,id',
             'parent_id' => 'nullable|integer|min:0|max:99999',
             'description' => 'required|string|max:255',

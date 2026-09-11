@@ -78,10 +78,13 @@ class ProfileController extends Controller
             'applicant' => $applicant,
             'profileViews' => (int) $resumes->sum('views'),
             'resumesCount' => $resumes->count(),
+            // отправлено: отклики соискателя на вакансии
             'responsesCount' => $applicant->vacancyResponses()->count(),
             'responsesPending' => $applicant->vacancyResponses()->where('status', 'new')->count(),
+            // пришло: приглашения работодателей по резюме соискателя
             'invitesCount' => (int) $resumes->sum('responses_count'),
-            'completeness' => $applicant->completeness(),
+            'invitesPending' => \App\Models\ResumeResponse::whereIn('resume_id', $resumes->pluck('id'))
+                ->where('status', 'new')->count(),
             'companyResponses' => \App\Models\ResumeResponse::with('employer.user', 'resume')
                 ->whereIn('resume_id', $resumes->pluck('id'))
                 ->latest()
