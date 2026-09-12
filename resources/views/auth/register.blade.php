@@ -136,6 +136,9 @@
             background:none; border:none; cursor:pointer; color:var(--text-muted); display:flex; padding:0;
         }
         .toggle-pass svg{position:static; width:17px; height:17px;}
+        .toggle-pass:hover{color:var(--text);}
+        /* место под глазок, иначе длинный пароль уезжает под иконку */
+        .field-input.has-toggle{padding-right:42px;}
 
         .pass-strength{display:flex; gap:5px; margin-top:8px;}
         .pass-strength-bar{height:3px; flex:1; border-radius:99px; background:var(--border); transition:.2s;}
@@ -298,9 +301,9 @@
                     <label class="field-label">{{ __('Пароль') }}</label>
                     <div class="field-input-wrap">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        <input type="password" name="password" id="passwordField" class="field-input" placeholder="{{ __('Минимум 8 символов') }}" required oninput="checkStrength(this.value)">
-                        <button type="button" class="toggle-pass" onclick="togglePass()">
-                            <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" style="margin-top: 2.7vh;" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <input type="password" name="password" id="passwordField" class="field-input has-toggle" placeholder="{{ __('Минимум 8 символов') }}" required oninput="checkStrength(this.value)">
+                        <button type="button" class="toggle-pass" onclick="togglePass(this)" aria-label="{{ __('Показать пароль') }}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top: 2.4vh;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
                     </div>
                     <div class="pass-strength">
@@ -315,7 +318,10 @@
                     <label class="field-label">{{ __('Подтвердите пароль') }}</label>
                     <div class="field-input-wrap">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        <input type="password" name="password_confirmation" class="field-input" placeholder="••••••••" required>
+                        <input type="password" name="password_confirmation" class="field-input has-toggle" placeholder="••••••••" required>
+                        <button type="button" class="toggle-pass" onclick="togglePass(this)" aria-label="{{ __('Показать пароль') }}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top: 2.4vh;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
                     </div>
                 </div>
 
@@ -393,16 +399,20 @@
         document.getElementById('lightBtn').classList.toggle('active', t === 'light');
         document.getElementById('darkBtn').classList.toggle('active', t === 'dark');
     }
-    function togglePass() {
-        const f = document.getElementById('passwordField');
-        const icon = document.getElementById('eyeIcon');
-        if (f.type === 'password') {
-            f.type = 'text';
-            icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
-        } else {
-            f.type = 'password';
-            icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
-        }
+    // Глазок стоит у обоих полей пароля, поэтому переключатель работает не по
+    // фиксированному id, а по кнопке: поле и иконка берутся из её же обёртки.
+    const EYE_OPEN = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    const EYE_OFF = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+
+    function togglePass(button) {
+        const field = button.parentElement.querySelector('input');
+        const icon = button.querySelector('svg');
+        if (!field || !icon) return;
+
+        const hidden = field.type === 'password';
+        field.type = hidden ? 'text' : 'password';
+        icon.innerHTML = hidden ? EYE_OFF : EYE_OPEN;
+        button.setAttribute('aria-label', hidden ? @json(__('Скрыть пароль')) : @json(__('Показать пароль')));
     }
     function checkStrength(val) {
         const bars = [document.getElementById('bar1'), document.getElementById('bar2'), document.getElementById('bar3')];

@@ -52,3 +52,13 @@ test('registration requires a known role', function () {
     $response->assertSessionHasErrors('role');
     $this->assertGuest();
 });
+
+/*
+ * Глазок стоит у обоих полей пароля. Раньше он был только у первого, и
+ * подтверждение приходилось набирать вслепую — самое место для опечатки.
+ */
+test('оба поля пароля можно показать', function () {
+    $html = $this->get('/register')->assertOk()->getContent();
+
+    expect(substr_count($html, 'class="toggle-pass"'))->toBe(2);
+});
