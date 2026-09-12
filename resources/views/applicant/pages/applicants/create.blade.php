@@ -302,7 +302,7 @@
                     <input type="text" name="education" placeholder="{{ __('Какой университет вы закончели') }}" value="{{old('education')}}">
                 </div>
                 <div class="field full">
-                    <label>{{ __('О себе') }} <span class="opt">{{ __('(необязательно)') }}</span></label>
+                    <label>{{ __('О себе') }} <span class="opt">{{ __('(обязательно)') }}</span></label>
                     <textarea name="about_me" placeholder="{{ __('Коротко расскажите о своём опыте и ключевых навыках') }}">{{old('about_me')}}</textarea>
                 </div>
 
