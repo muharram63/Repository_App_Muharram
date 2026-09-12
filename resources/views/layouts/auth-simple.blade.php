@@ -87,5 +87,8 @@
     @yield('content')
 </div>
 
+{{-- глазок для полей пароля: сброс пароля и подтверждение личности --}}
+@include('partials.password-eye')
+
 </body>
 </html>
