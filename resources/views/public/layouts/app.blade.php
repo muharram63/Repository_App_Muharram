@@ -1,8 +1,5 @@
 <!DOCTYPE html>
-@php
-    $appTheme = auth()->check() ? (auth()->user()->theme ?: 'light') : session('theme', 'light');
-@endphp
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="{{ $appTheme === 'dark' ? 'dark' : 'light' }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -424,7 +421,7 @@
             }
 
         }
-        :root[data-theme="light"]{
+        :root{
             --bg:#F7F8FB;
             --surface:#FFFFFF;
             --surface-alt:#F1F3F8;
@@ -437,6 +434,13 @@
             --warn:#FF8A3D;
             --good:#1FAE6E;
             --shadow: 0 16px 40px -16px rgba(23,27,44,.16);
+            --accent-text:#2A3FCC;
+            /* освещение и скругление: на светлой теме подсветка почти незаметна */
+            --glow-a:rgba(61,90,254,.10);
+            --glow-b:rgba(0,200,255,.07);
+            --art-radius:26px;
+            --art-dim:0;
+            --art-glow:0 30px 70px -40px rgba(23,27,44,.35);
         }
         :root[data-theme="dark"]{
             --bg:#0E1120;
@@ -450,8 +454,44 @@
             --accent-soft:#202750;
             --warn:#FFA15C;
             --good:#36CC8E;
-            --shadow: 0 16px 40px -16px rgba(0,0,0,.55);
+            --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px -16px rgba(0,0,0,.7);
+            --accent-text:#8C9CFF;
+            /* на тёмной теме подсветка работает в полную силу */
+            --glow-a:rgba(110,132,255,.22);
+            --glow-b:rgba(0,200,255,.13);
+            --art-radius:26px;
+            /* затемнение картинки: без него она светится пятном на тёмном фоне */
+            --art-dim:.42;
+            --art-glow:0 40px 90px -50px rgba(110,132,255,.5);
         }
+        /* «системная» тема: атрибута нет, решает настройка устройства.
+           :not([data-theme="light"]) нужен, чтобы явно выбранная светлая
+           тема побеждала тёмную систему. */
+        @media (prefers-color-scheme: dark){
+            :root:not([data-theme="light"]){
+            --bg:#0E1120;
+            --surface:#161A2C;
+            --surface-alt:#1D2238;
+            --border:#272C45;
+            --text:#F2F3F9;
+            --text-muted:#8A8FA8;
+            --accent:#6E84FF;
+            --accent-ink:#8C9CFF;
+            --accent-soft:#202750;
+            --warn:#FFA15C;
+            --good:#36CC8E;
+            --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px -16px rgba(0,0,0,.7);
+            --accent-text:#8C9CFF;
+            /* на тёмной теме подсветка работает в полную силу */
+            --glow-a:rgba(110,132,255,.22);
+            --glow-b:rgba(0,200,255,.13);
+            --art-radius:26px;
+            /* затемнение картинки: без него она светится пятном на тёмном фоне */
+            --art-dim:.42;
+            --art-glow:0 40px 90px -50px rgba(110,132,255,.5);
+            }
+        }
+
         *{box-sizing:border-box; margin:0; padding:0;}
         body{
             font-family:'Inter', sans-serif;
@@ -509,11 +549,10 @@
         .hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center;}
         .eyebrow{
             display:inline-flex; align-items:center; gap:8px;
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             font-size:12.5px; font-weight:700; padding:7px 13px; border-radius:99px;
             margin-bottom:22px;
         }
-        :root[data-theme="dark"] .eyebrow{color:var(--accent);}
         .eyebrow .dot{width:6px; height:6px; border-radius:50%; background:var(--good);}
         h1.hero-title{
             font-size:50px; line-height:1.08; font-weight:800; letter-spacing:-1.2px;
@@ -565,8 +604,7 @@
         .fc-row:last-child{border-bottom:none;}
         .fc-job{font-weight:600;}
         .fc-co{color:var(--text-muted); font-size:12px;}
-        .fc-salary{font-weight:700; color:var(--accent-ink); font-size:13px;}
-        :root[data-theme="dark"] .fc-salary{color:var(--accent);}
+        .fc-salary{font-weight:700; color:var(--accent-text); font-size:13px;}
         .float-stat{
             position:absolute; bottom:-22px; left:-26px;
             background:var(--surface); border:1px solid var(--border); border-radius:14px;
@@ -576,9 +614,8 @@
         .float-stat .lbl{font-size:11.5px; color:var(--text-muted); font-weight:600;}
         .float-icn{
             width:38px; height:38px; border-radius:10px; background:var(--accent-soft);
-            display:flex; align-items:center; justify-content:center; color:var(--accent-ink); flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; color:var(--accent-text); flex-shrink:0;
         }
-        :root[data-theme="dark"] .float-icn{color:var(--accent);}
 
         /* ===== LOGO STRIP ===== */
         .logo-strip{padding:36px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border);}
@@ -608,8 +645,7 @@
             position:relative; overflow:hidden;
         }
         .audience-card.company{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
-        .audience-kicker{font-size:12px; font-weight:700; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.6px; margin-bottom:10px;}
-        :root[data-theme="dark"] .audience-kicker{color:var(--accent);}
+        .audience-kicker{font-size:12px; font-weight:700; color:var(--accent-text); text-transform:uppercase; letter-spacing:.6px; margin-bottom:10px;}
         .audience-card h3{font-size:22px; font-weight:800; margin-bottom:10px;}
         .audience-card p{color:var(--text-muted); font-size:14.5px; line-height:1.6; margin-bottom:22px;}
         .step-list{display:flex; flex-direction:column; gap:14px; margin-bottom:24px;}
@@ -630,10 +666,9 @@
         }
         .cat-card:hover{border-color:var(--accent); transform:translateY(-2px);}
         .cat-icn{
-            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-ink);
+            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; margin-bottom:14px;
         }
-        :root[data-theme="dark"] .cat-icn{color:var(--accent);}
         .cat-name{font-weight:700; font-size:14.5px; margin-bottom:3px;}
         .cat-count{font-size:12.5px; color:var(--text-muted);}
 
@@ -647,7 +682,7 @@
         .cta-band p{opacity:.9; font-size:14.5px; max-width:420px;}
         .cta-actions{display:flex; gap:12px;}
         .btn-white{
-            background:#fff; color:var(--accent-ink); padding:12px 22px; border-radius:10px;
+            background:#fff; color:var(--accent-text); padding:12px 22px; border-radius:10px;
             font-weight:700; font-size:14.5px; border:none; cursor:pointer;
         }
         .btn-outline-white{
@@ -672,7 +707,17 @@
             h1.hero-title{font-size:36px;}
             .cta-band{flex-direction:column; align-items:flex-start;}
         }
-    </style>
+            /* ---------- перенос длинных подписей ----------
+        Таджикские строки заметно длиннее русских: «Зачтено» превращается
+        в «Ба ҳисоб гирифта шуд», «Email» — в «Почтаи электронӣ». Без этого
+        подпись выходит за рамку кнопки или карточки. break-word срабатывает
+        только когда слово физически не помещается, поэтому вёрстку
+        на русском не трогает. */
+        h1, h2, h3, h4, p, li, td, th, label, button, a,
+        .btn, .chip, .tag, .badge, .pill {
+        overflow-wrap: break-word;
+        }
+</style>
 </head>
 <body>
 

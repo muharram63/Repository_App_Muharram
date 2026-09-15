@@ -276,7 +276,7 @@
                                 <td class="bold">{{ $response->applicant?->user?->name ?? '—' }}</td>
                                 <td>{{ $response->vacancy?->title ?? '—' }}</td>
                                 <td>
-                                    {{ ['new' => 'Новый', 'viewed' => 'Просмотрен', 'accepted' => 'Принят', 'rejected' => 'Отклонён'][$response->status] ?? $response->status }}
+                                    {{ ['new' => __('Новый'), 'viewed' => __('Просмотрен'), 'accepted' => __('Принят'), 'rejected' => __('Отклонён')][$response->status] ?? $response->status }}
                                 </td>
                                 <td>{{ $response->created_at->format('d.m.Y') }}</td>
                             </tr>

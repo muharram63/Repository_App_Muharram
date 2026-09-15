@@ -25,19 +25,19 @@ class MatchAnalysis extends Model
      * сохранённые разборы старой формы читались бы новым интерфейсом молча
      * и наполовину — так было, когда подтверждённые навыки стали объектами.
      */
-    private const VERSION = 3;
+    private const VERSION = 5;
 
     public static function hash(Vacancy $vacancy, Resume $resume): string
     {
         return md5(json_encode([
             self::VERSION,
+            // только то, из чего теперь складывается разбор: профессия, навыки
+            // и языки. Правка зарплаты или города результат не меняет, и
+            // держать их в отпечатке значило бы пересчитывать разбор впустую
             $vacancy->title, $vacancy->description, $vacancy->skill,
-            $vacancy->experience_required, $vacancy->employment_type, $vacancy->work_schedule,
-            // зарплата и город теперь тоже критерии, поэтому влияют на разбор
-            $vacancy->salary_to, $vacancy->city_id,
+            $vacancy->employment_type, $vacancy->work_schedule,
             $resume->profession, $resume->desired_position, $resume->skills,
-            $resume->languages, $resume->description, $resume->experience_years,
-            $resume->desired_salary, $resume->applicant?->city,
+            $resume->languages, $resume->description,
             // подтверждённые заданием навыки тоже влияют на разбор: сдал тест —
             // старый разбор устарел, иначе новый навык не был бы учтён
             SkillAttempt::badgesFor($resume->applicant)

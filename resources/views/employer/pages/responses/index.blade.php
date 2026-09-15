@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -76,10 +76,10 @@
 
             @php
                 $statusLabels = [
-                    'new' => 'Новый',
-                    'viewed' => 'Просмотрен',
-                    'accepted' => 'Принят',
-                    'rejected' => 'Отклонён',
+                    'new' => __('Новый'),
+                    'viewed' => __('Просмотрен'),
+                    'accepted' => __('Принят'),
+                    'rejected' => __('Отклонён'),
                 ];
                 $applicantsCount = $responses->pluck('applicant_id')->unique()->count();
                 $newCount = $responses->where('status', 'new')->count();
@@ -164,7 +164,7 @@
                             </div>
 
                             <div class="resp-meta">
-                                На вакансию:
+                                {{ __('На вакансию:') }}
                                 @if($vacancy)
                                     <a href="{{ route('employer.vacancies.show', $vacancy) }}">{{ $vacancy->title }}</a>
                                 @else

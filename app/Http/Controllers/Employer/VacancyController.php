@@ -51,13 +51,18 @@ class VacancyController extends Controller
         $validated = $request->validate([
            'title' => 'required|string|max:255',
            'description' => 'required|string|max:600',
-           'salary_from' => 'required|numeric',
-           'salary_to' => 'required|numeric',
+           // колонка int: без верхней границы «зарплата-гигант» роняла сохранение (22003),
+           // а gte не даёт указать верхнюю границу вилки ниже нижней
+           'salary_from' => 'required|numeric|min:0|max:2000000000',
+           'salary_to' => 'required|numeric|min:0|max:2000000000|gte:salary_from',
            'currency' => 'required|string|max:255',
            'employment_type' => 'required|string|max:255',
             'work_schedule' => 'required|string|max:255',
             'experience_required' => 'required|string|max:255',
             'skill' => 'required|string|max:255',
+            // языки необязательны: многим вакансиям они не важны,
+            // и пустое поле значит «не требуется», а не «не заполнено»
+            'languages' => 'nullable|string|max:255',
             'status' => 'required|string|max:255',
             'city_id' => 'required|exists:cities,id',
               ]);
@@ -102,14 +107,21 @@ class VacancyController extends Controller
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'description' => 'required|string|max:255',
-            'salary_from' => 'required|numeric',
-            'salary_to' => 'required|numeric',
+            // тот же предел, что и при создании: иначе вакансию с описанием
+            // длиннее 255 нельзя было пересохранить после любой правки
+            'description' => 'required|string|max:600',
+            // колонка int: без верхней границы «зарплата-гигант» роняла сохранение (22003),
+            // а gte не даёт указать верхнюю границу вилки ниже нижней
+            'salary_from' => 'required|numeric|min:0|max:2000000000',
+            'salary_to' => 'required|numeric|min:0|max:2000000000|gte:salary_from',
             'currency' => 'required|string|max:255',
             'employment_type' => 'required|string|max:255',
             'work_schedule' => 'required|string|max:255',
             'experience_required' => 'required|string|max:255',
             'skill' => 'required|string|max:255',
+            // языки необязательны: многим вакансиям они не важны,
+            // и пустое поле значит «не требуется», а не «не заполнено»
+            'languages' => 'nullable|string|max:255',
             'status' => 'required|string|max:255',
             'city_id' => 'required|exists:cities,id',
 

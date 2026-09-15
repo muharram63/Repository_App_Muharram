@@ -66,12 +66,12 @@ class Complaint extends Model
 
     public function reasonLabel(): string
     {
-        return self::REASONS[$this->reason] ?? $this->reason;
+        return __(self::REASONS[$this->reason] ?? $this->reason);
     }
 
     public function statusLabel(): string
     {
-        return self::STATUSES[$this->status] ?? $this->status;
+        return __(self::STATUSES[$this->status] ?? $this->status);
     }
 
     /**
@@ -123,7 +123,7 @@ class Complaint extends Model
 
     public function targetLabel(): string
     {
-        return self::TARGETS[$this->target_type] ?? $this->target_type;
+        return __(self::TARGETS[$this->target_type] ?? $this->target_type);
     }
 
     /**

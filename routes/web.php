@@ -149,6 +149,12 @@ Route::middleware('auth')->group(function () {
         ->names('public.applicants')
         ->only(['create', 'store']);
 });
+// ===== Публичная статистика платформы =====
+Route::get('/statistics', [\App\Http\Controllers\PublicStatsController::class, 'index'])
+    ->name('public.stats');
+Route::get('/statistics/hired', [\App\Http\Controllers\PublicStatsController::class, 'hired'])
+    ->name('public.stats.hired');
+
 Route::resource('/vacancies', \App\Http\Controllers\PublicVacancyController::class)->names('public.vacancies')->only(['index', 'show' ]);
 Route::resource('/resume' , \App\Http\Controllers\PublicResumeController::class)->names('public.resumes')->only(['index', 'show' ]);
 Route::resource('/companies' , \App\Http\Controllers\PublicCompanyController::class)->names('public.companies')->only(['index' , 'show']);

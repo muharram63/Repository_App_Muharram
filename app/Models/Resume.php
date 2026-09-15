@@ -38,6 +38,8 @@ class Resume extends Model
         'tech' => 'Техническое',
         'warm' => 'Тёплое',
         'night' => 'Тёмное',
+        'blueprint' => 'Чертёж',
+        'brutal' => 'Брутальное',
     ];
 
     public function applicant()

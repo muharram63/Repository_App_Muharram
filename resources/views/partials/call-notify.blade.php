@@ -18,7 +18,7 @@
 
         .call-toast .ava{
             width:46px; height:46px; border-radius:14px; flex-shrink:0;
-            background:#4F46E5; display:flex; align-items:center; justify-content:center;
+            background:var(--accent, var(--indigo-600, #4F46E5)); display:flex; align-items:center; justify-content:center;
             animation:call-pulse 1.4s ease-in-out infinite;
         }
         .call-toast .ava svg{width:22px; height:22px; stroke:#fff;}
@@ -48,7 +48,7 @@
         .call-toast .decline:hover{background:#DC2626; border-color:#DC2626;}
         .call-toast.missed .ava{background:#EF4444; animation:none;}
         .call-toast .open{
-            padding:8px 14px; border-radius:10px; background:#4F46E5; color:#fff;
+            padding:8px 14px; border-radius:10px; background:var(--accent, var(--indigo-600, #4F46E5)); color:#fff;
             font-size:13px; font-weight:700; white-space:nowrap; text-decoration:none; text-align:center;
         }
         .call-toast .sound{

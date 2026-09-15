@@ -17,7 +17,7 @@ class Vacancy extends Model
      */
     public function currencyLabel(): string
     {
-        return in_array((string) $this->currency, self::SOMONI, true) ? 'сомони' : (string) $this->currency;
+        return in_array((string) $this->currency, self::SOMONI, true) ? __('сомони') : (string) $this->currency;
     }
 
     /**
@@ -40,6 +40,7 @@ class Vacancy extends Model
       'work_schedule',
       'experience_required',
       'skill',
+      'languages',
       'status',
       'city_id',
     ];

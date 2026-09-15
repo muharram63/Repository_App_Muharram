@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -69,7 +69,7 @@
                     <label>{{ __('Категория') }}</label>
                     <select name="category_id">
                         @foreach($categories as $category)
-                            <option value="{{$category->id}}">{{$category->name}}</option>
+                            <option value="{{$category->id}}">{{ __($category->name) }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -77,7 +77,7 @@
                     <label>{{ __('Индустрия') }}</label>
                     <select name="industry_id">
                         @foreach($industries as $industry)
-                            <option value="{{$industry->id}}">{{$industry->name}}</option>
+                            <option value="{{$industry->id}}">{{ __($industry->name) }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -85,7 +85,7 @@
                     <label>{{ __('Город') }}</label>
                     <select name="city_id">
                         @foreach($cities as $city)
-                            <option value="{{$city->id}}">{{$city->country}} , {{$city->region}}</option>
+                            <option value="{{$city->id}}">{{ __($city->country) }} , {{ __($city->region) }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -559,7 +559,7 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m9 5h-9m9 5h-9M5 7h.01M5 12h.01M5 17h.01"/></svg>
             </div>
             <div class="stat-num">1 284</div>
-            <div class="stat-lbl">активных вакансий на платформе</div>
+            <div class="stat-lbl">{{ __('активных вакансий на платформе') }}</div>
         </div>
         <div class="stat-box">
             <div class="stat-icon">

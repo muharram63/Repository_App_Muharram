@@ -46,6 +46,8 @@
 
             <div id="mxResult" hidden>
                 <p class="mx-verdict" id="mxVerdict"></p>
+                {{-- ноль без объяснения читается как поломка --}}
+                <p class="mx-gate" id="mxGate" hidden>{{ __('Профессия другая, поэтому совпадение нулевое. Навыки и языки ниже показаны как есть — в процент они не идут.') }}</p>
 
                 {{-- разбор по критериям: из чего сложился процент, а не только навыки --}}
                 <div class="mx-criteria" id="mxCriteria" hidden></div>
@@ -154,6 +156,10 @@
 
     /* ---------- результат ---------- */
     .mx-verdict { margin: 0 0 14px; font-size: 13.5px; line-height: 1.65; color: #2B3648; }
+    .mx-gate {
+        margin: -6px 0 14px; padding: 9px 12px; border-radius: 10px;
+        background: #FFF4E5; color: #8A5200; font-size: 12.5px; line-height: 1.55;
+    }
     /* ---------- критерии ---------- */
     .mx-criteria { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; }
     .mx-crit {
@@ -303,9 +309,15 @@
 
             document.getElementById('mxVerdict').textContent = a.verdict || '';
 
-            // критерии: из чего сложился процент — профессия, навыки, опыт, зарплата, город
+            // критерии: из чего сложился процент — профессия, навыки, языки
             const criteria = document.getElementById('mxCriteria');
             const rows = (a.criteria || []).filter(c => c && c.label);
+
+            // профессия работает как ворота: другая профессия — ноль,
+            // и это нужно объяснить, иначе цифра выглядит ошибкой
+            const roleRow = rows.find(c => c.key === 'role');
+            document.getElementById('mxGate').hidden =
+                a.enough_data === false || !roleRow || roleRow.state !== 'no';
 
             criteria.hidden = rows.length === 0 || a.enough_data === false;
             criteria.innerHTML = rows.map(c =>

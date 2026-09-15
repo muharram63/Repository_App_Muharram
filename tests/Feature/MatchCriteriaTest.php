@@ -1,110 +1,147 @@
 <?php
 
-use App\Models\City;
-use App\Models\User;
 use App\Support\MatchCriteria;
 
 /**
- * Точные критерии совпадения. Опыт, зарплата и город считаются без модели,
- * поэтому и проверяются без неё — обычной арифметикой.
+ * Совпадение считается по трём критериям: профессия, навыки и языки.
+ * Оценивает их модель, а сложение весов — обычная арифметика, поэтому
+ * проверяется без обращения к ИИ.
  */
-function criteriaFor(array $vacancyFields, array $resumeFields, ?string $city = null)
-{
-    $employer = makeEmployer(User::factory()->employer()->create());
-    $vacancy = makeVacancy($employer);
-    $vacancy->update($vacancyFields);
 
-    $applicant = makeApplicant(User::factory()->applicant()->create());
+test('ответ модели превращается в критерий, а молчание — в unknown', function () {
+    $ok = MatchCriteria::fromModel('role', 'Профессия', ['state' => 'ok', 'note' => 'то же направление']);
+    expect($ok['state'])->toBe('ok')
+        ->and($ok['label'])->toBe('Профессия')
+        ->and($ok['note'])->toBe('то же направление');
 
-    if ($city !== null) {
-        $applicant->update(['city' => $city]);
-    }
+    // вакансия молчит о языках — модель поле не заполняет, критерий не учитывается
+    expect(MatchCriteria::fromModel('languages', 'Языки', null)['state'])->toBe('unknown');
 
-    $resume = makeResume($applicant);
-    $resume->update($resumeFields);
-
-    return collect(MatchCriteria::for($vacancy->fresh(), $resume->fresh()))->keyBy('key');
-}
-
-test('experience is compared with the requirement, not guessed', function () {
-    $enough = criteriaFor(['experience_required' => '3_years'], ['experience_years' => 5]);
-    expect($enough['experience']['state'])->toBe('ok');
-
-    // недобор в один год — повод поговорить, а не отказать
-    $almost = criteriaFor(['experience_required' => '3_years'], ['experience_years' => 2]);
-    expect($almost['experience']['state'])->toBe('partial');
-
-    $far = criteriaFor(['experience_required' => 'more_6years'], ['experience_years' => 1]);
-    expect($far['experience']['state'])->toBe('no')
-        ->and($far['experience']['note'])->toContain('при требуемых от 6');
-
-    $none = criteriaFor(['experience_required' => 'not'], ['experience_years' => 0]);
-    expect($none['experience']['state'])->toBe('ok');
+    // и мусор в состоянии тоже не должен превращаться в оценку
+    expect(MatchCriteria::fromModel('languages', 'Языки', ['state' => 'наверное'])['state'])->toBe('unknown');
 });
 
-test('salary is compared with the upper bound of the range', function () {
-    $fits = criteriaFor(['salary_to' => 6000], ['desired_salary' => 5000]);
-    expect($fits['salary']['state'])->toBe('ok');
-
-    // небольшой разрыв закрывается на переговорах
-    $close = criteriaFor(['salary_to' => 6000], ['desired_salary' => 6500]);
-    expect($close['salary']['state'])->toBe('partial');
-
-    $far = criteriaFor(['salary_to' => 6000], ['desired_salary' => 20000]);
-    expect($far['salary']['state'])->toBe('no');
-
-    // не указана — критерий не учитывается, а не занижает результат
-    $silent = criteriaFor(['salary_to' => 6000], ['desired_salary' => 0]);
-    expect($silent['salary']['state'])->toBe('unknown');
-});
-
-test('remote work makes the city irrelevant', function () {
-    $remote = criteriaFor(['work_schedule' => 'remote_work'], [], 'Худжанд');
-
-    expect($remote['city']['state'])->toBe('ok')
-        ->and($remote['city']['note'])->toContain('Удалённая работа');
-});
-
-test('a different city is counted against the match', function () {
-    $same = criteriaFor(['work_schedule' => 'full_day'], [], 'Душанбе');
-    expect($same['city']['state'])->toBe('ok');
-
-    $other = criteriaFor(['work_schedule' => 'full_day'], [], 'Худжанд');
-    expect($other['city']['state'])->toBe('no')
-        ->and($other['city']['note'])->toContain('вакансия в городе Душанбе');
-});
-
-test('the score is weighted across the criteria that have data', function () {
-    // всё совпало — сто процентов
+test('оценка взвешивается по критериям, о которых есть данные', function () {
     expect(MatchCriteria::score([
         ['key' => 'role', 'state' => 'ok'],
         ['key' => 'skills', 'state' => 'ok'],
-        ['key' => 'experience', 'state' => 'ok'],
+        ['key' => 'languages', 'state' => 'ok'],
     ]))->toBe(100);
 
-    // навыки весомее города: провал по навыкам роняет результат сильнее
+    // навыки весомее языка: провал по навыкам роняет результат сильнее
     $noSkills = MatchCriteria::score([
         ['key' => 'skills', 'state' => 'no'],
-        ['key' => 'city', 'state' => 'ok'],
+        ['key' => 'languages', 'state' => 'ok'],
     ]);
-    $noCity = MatchCriteria::score([
+    $noLanguages = MatchCriteria::score([
         ['key' => 'skills', 'state' => 'ok'],
-        ['key' => 'city', 'state' => 'no'],
+        ['key' => 'languages', 'state' => 'no'],
     ]);
 
-    expect($noSkills)->toBeLessThan($noCity);
+    expect($noSkills)->toBeLessThan($noLanguages);
 
-    // критерии без данных не занижают оценку
+    // критерий без данных не занижает оценку, а выпадает из расчёта
     expect(MatchCriteria::score([
         ['key' => 'skills', 'state' => 'ok'],
-        ['key' => 'salary', 'state' => 'unknown'],
-        ['key' => 'city', 'state' => 'unknown'],
+        ['key' => 'languages', 'state' => 'unknown'],
     ]))->toBe(100);
 
     // считать не из чего — числа нет вовсе
-    expect(MatchCriteria::score([['key' => 'salary', 'state' => 'unknown']]))->toBeNull();
+    expect(MatchCriteria::score([['key' => 'languages', 'state' => 'unknown']]))->toBeNull();
 });
 
-test('a partial state counts as half', function () {
+test('частичное совпадение считается за половину', function () {
     expect(MatchCriteria::score([['key' => 'skills', 'state' => 'partial']]))->toBe(50);
 });
+
+/*
+ * Город, зарплата и стаж из разбора убраны намеренно: это условия и «корочки»,
+ * а не признак того, что человек справится с работой. Даже если такая строка
+ * каким-то образом окажется в списке, на процент она влиять не должна.
+ */
+test('город, зарплата и стаж не имеют веса', function () {
+    expect(MatchCriteria::WEIGHTS)->toHaveKeys(['role', 'skills', 'languages'])
+        ->and(MatchCriteria::WEIGHTS)->not->toHaveKey('city')
+        ->and(MatchCriteria::WEIGHTS)->not->toHaveKey('salary')
+        ->and(MatchCriteria::WEIGHTS)->not->toHaveKey('experience');
+
+    // провал по снятому критерию не должен уронить стопроцентное совпадение
+    expect(MatchCriteria::score([
+        ['key' => 'skills', 'state' => 'ok'],
+        ['key' => 'city', 'state' => 'no'],
+        ['key' => 'salary', 'state' => 'no'],
+        ['key' => 'experience', 'state' => 'no'],
+    ]))->toBe(100);
+});
+
+/*
+ * Профессия работает как ворота, а не как слагаемое.
+ *
+ * Повару не поможет знание английского, если ищут электрика: направление
+ * другое — совпадения нет. Навыки и языки при этом остаются в разборе,
+ * чтобы было видно, что у человека есть, просто в процент это не идёт.
+ */
+test('другая профессия обнуляет совпадение', function () {
+    $score = MatchCriteria::score([
+        ['key' => 'role', 'state' => 'no'],
+        ['key' => 'skills', 'state' => 'ok'],
+        ['key' => 'languages', 'state' => 'ok'],
+    ]);
+
+    // навыки и язык совпали полностью, но направление другое
+    expect($score)->toBe(0);
+});
+
+test('совпавшая профессия открывает счёт навыкам и языкам', function () {
+    $all = MatchCriteria::score([
+        ['key' => 'role', 'state' => 'ok'],
+        ['key' => 'skills', 'state' => 'ok'],
+        ['key' => 'languages', 'state' => 'ok'],
+    ]);
+
+    $noSkills = MatchCriteria::score([
+        ['key' => 'role', 'state' => 'ok'],
+        ['key' => 'skills', 'state' => 'no'],
+        ['key' => 'languages', 'state' => 'ok'],
+    ]);
+
+    $noLanguages = MatchCriteria::score([
+        ['key' => 'role', 'state' => 'ok'],
+        ['key' => 'skills', 'state' => 'ok'],
+        ['key' => 'languages', 'state' => 'no'],
+    ]);
+
+    expect($all)->toBe(100)
+        // 30 за профессию и 15 за язык из 100
+        ->and($noSkills)->toBe(45)
+        // 30 за профессию и 55 за навыки
+        ->and($noLanguages)->toBe(85);
+});
+
+/*
+ * Частичное совпадение воротами не считается: «тестировщик» на
+ * «backend-разработчика» — переход реальный, и такой случай считается
+ * обычным взвешенным средним.
+ */
+test('смежная профессия совпадение не обнуляет', function () {
+    $score = MatchCriteria::score([
+        ['key' => 'role', 'state' => 'partial'],
+        ['key' => 'skills', 'state' => 'ok'],
+        ['key' => 'languages', 'state' => 'ok'],
+    ]);
+
+    expect($score)->toBe(85)
+        ->and($score)->toBeGreaterThan(0);
+});
+
+test('без данных о профессии ворота не срабатывают', function () {
+    $score = MatchCriteria::score([
+        ['key' => 'role', 'state' => 'unknown'],
+        ['key' => 'skills', 'state' => 'ok'],
+        ['key' => 'languages', 'state' => 'ok'],
+    ]);
+
+    // профессию сравнить не удалось — считаем по тому, что известно
+    expect($score)->toBe(100);
+});
+

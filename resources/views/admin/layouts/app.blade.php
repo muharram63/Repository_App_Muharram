@@ -249,10 +249,10 @@
             <a href="{{route('public.home')}}" class="workio-logo" style="display:flex; align-items:center; gap:12px; text-decoration:none;">
                 @include('partials.brand-mark', ['brandSize' => 52])
                 <div style="line-height:1.1;">
-                    <div style="font-family: Arial, sans-serif; font-size: 24px; font-weight: 700; color:#111827;">
+                    <div style="font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif; font-size: 24px; font-weight: 700; color:#111827;">
                         <a href="{{route('public.home')}}"> Work<span style="color:#4F46E5;">io</span></a>
                     </div>
-                    <div style="font-family: Arial, sans-serif; font-size: 12px; color:white;">
+                    <div style="font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; font-size: 12px; color:white;">
                         работа без лишних шагов
                     </div>
                 </div>

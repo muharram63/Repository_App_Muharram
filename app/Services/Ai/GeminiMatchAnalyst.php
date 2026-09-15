@@ -45,16 +45,14 @@ class GeminiMatchAnalyst implements MatchAnalyst
         $missing = $this->items($answer['missing_skills'] ?? [], 12);
         $partial = $this->partials($answer['partial_matches'] ?? []);
 
-        // Разбор по критериям: направление и навыки судит модель, опыт,
-        // зарплату и город сервер считает точно. Общий процент складывается
-        // из всех, а не только из навыков.
-        $criteria = array_merge(
-            [
-                MatchCriteria::fromModel('role', 'Профессия', $answer['role_match'] ?? null),
-                $this->skillsCriterion($matched, $missing, $partial),
-            ],
-            MatchCriteria::for($vacancy, $resume),
-        );
+        // Разбор по трём критериям: профессия, навыки и языки. Город,
+        // зарплату и стаж не сравниваем — это условия и «корочки», а не
+        // признак того, что человек справится с работой.
+        $criteria = [
+            MatchCriteria::fromModel('role', 'Профессия', $answer['role_match'] ?? null),
+            $this->skillsCriterion($matched, $missing, $partial),
+            MatchCriteria::fromModel('languages', 'Языки', $answer['language_match'] ?? null),
+        ];
 
         return [
             'matched_skills' => $matched,
@@ -127,22 +125,17 @@ class GeminiMatchAnalyst implements MatchAnalyst
         $vacancyText = collect([
             'Должность' => $vacancy->title,
             'Требуемые навыки' => $vacancy->skill,
-            'Требуемый опыт' => $vacancy->experience_required,
+            'Требуемые языки' => $vacancy->languages,
             'Занятость' => $vacancy->employment_type,
             'График' => $vacancy->work_schedule,
-            'Город' => $vacancy->city?->region,
-            'Вилка' => $vacancy->salary_to ? 'до '.$vacancy->salary_to : null,
             'Описание' => Str::limit((string) $vacancy->description, self::LIMIT, ''),
         ]);
 
         $resumeText = collect([
             'Профессия' => $resume->profession,
             'Желаемая должность' => $resume->desired_position,
-            'Лет опыта' => $resume->experience_years,
             'Навыки' => $resume->skills,
             'Языки' => $resume->languages,
-            'Город' => $resume->applicant?->city,
-            'Ожидаемая зарплата' => $resume->desired_salary ?: null,
             'Последнее место работы' => $resume->place_work,
             'О себе' => Str::limit((string) $resume->description, self::LIMIT, ''),
         ]);
@@ -196,8 +189,17 @@ class GeminiMatchAnalyst implements MatchAnalyst
         - no — другая профессия («Оператор станка» и «Оператор call-центра» похожи только на вид).
         В note — одна строка, чем именно близко или далеко.
 
-        Процент совпадения не считай: его выводит система по всем критериям сразу — профессии,
-        навыкам, опыту, зарплате и городу. Твоё дело — назвать конкретику.
+        ПРО ЯЗЫКИ (language_match). Требование указано в поле «Требуемые языки». Сравни его
+        с языками из резюме. Если поле пустое, посмотри название и описание вакансии:
+        - ok — все нужные языки у кандидата есть;
+        - partial — язык есть, но уровнем ниже требуемого, либо из нескольких нужных владеет частью;
+        - no — требуемым языком кандидат не владеет.
+        Если в вакансии о языках не сказано ни слова, поле language_match НЕ ЗАПОЛНЯЙ вовсе —
+        система тогда просто не учтёт этот критерий. Не додумывай требование, которого нет.
+
+        Процент совпадения не считай: его выводит система по трём критериям — профессии,
+        навыкам и языкам. Город, зарплату и стаж не обсуждай вовсе, их в разборе нет.
+        Твоё дело — назвать конкретику.
 
         ПРО ПОДТВЕРЖДЁННЫЕ НАВЫКИ. Если в данных есть блок «ПОДТВЕРЖДЕНО ЗАДАНИЕМ НА ПЛАТФОРМЕ» —
         это результат проверки, а не слова кандидата о себе. Такой навык считается доказанным:
@@ -251,8 +253,19 @@ class GeminiMatchAnalyst implements MatchAnalyst
                     ],
                     'required' => ['state'],
                 ],
+                'language_match' => [
+                    'type' => 'object',
+                    'description' => 'Владеет ли кандидат языками, которых требует вакансия. '
+                        .'Не заполнять, если о языках в вакансии не сказано',
+                    'properties' => [
+                        'state' => ['type' => 'string', 'enum' => ['ok', 'partial', 'no']],
+                        'note' => ['type' => 'string', 'description' => 'Короткое пояснение, одна строка'],
+                    ],
+                    'required' => ['state'],
+                ],
                 'verdict' => ['type' => 'string', 'description' => 'Один-два предложения по существу'],
             ],
+            // language_match намеренно не обязателен: вакансия может молчать о языках
             'required' => ['enough_data', 'verdict', 'role_match'],
         ];
     }

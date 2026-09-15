@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -195,8 +195,9 @@
                         <p class="sk-eyebrow">{{ __('Новая проверка') }}</p>
                         <h2 class="sk-title">{{ __('Выберите навык и уровень') }}</h2>
                         <p class="sk-sub">
-                            {{ __('Пять практических вопросов. У каждого есть варианты ответа и поле «свой ответ» — если готовые формулировки вам не подходят, ответьте своими словами, это проверит ИИ.') }}
-                            {{ __('На задание отводится') }} {{ \App\Models\SkillAttempt::MINUTES }} {{ __('минут.') }}
+                            {{ __('Практические вопросы: у каждого есть варианты ответа и поле «свой ответ» — если готовые формулировки вам не подходят, ответьте своими словами, это проверит ИИ.') }}
+                            {{ __('Длину задания выбираете вы, времени даётся по') }}
+                            {{ \App\Models\SkillAttempt::MINUTES_PER_QUESTION }} {{ __('минуты на вопрос.') }}
                             {{ __('Повторить проверку по тому же навыку можно через') }}
                             {{ \App\Models\SkillAttempt::COOLDOWN_MINUTES }} {{ __('минут.') }}
                         </p>
@@ -227,6 +228,19 @@
                                         <input type="radio" name="level" value="{{ $key }}"
                                                @checked($key === 'confident')>
                                         {{ __($label) }}
+                                    </label>
+                                @endforeach
+                            </div>
+
+                            <div class="sk-area-name" style="margin-top:20px;">{{ __('Длина задания') }}</div>
+                            <div class="sk-levels">
+                                @foreach(\App\Models\SkillTest::LENGTHS as $count => $label)
+                                    <label class="sk-chip">
+                                        <input type="radio" name="questions" value="{{ $count }}"
+                                               @checked($count === \App\Models\SkillTest::DEFAULT_LENGTH)>
+                                        {{-- 5, 10 и 15 — у всех одна форма слова, склонять нечего --}}
+                                        {{ __($label) }} — {{ $count }} {{ __('вопросов') }},
+                                        {{ \App\Models\SkillAttempt::minutesFor($count) }} {{ __('мин') }}
                                     </label>
                                 @endforeach
                             </div>

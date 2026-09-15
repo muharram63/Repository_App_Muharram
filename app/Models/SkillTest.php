@@ -16,6 +16,28 @@ class SkillTest extends Model
     /** Сколько вариантов одного уровня держим, чтобы задания не разошлись по рукам. */
     public const VARIANTS = 3;
 
+    /**
+     * Из скольких вопросов состоит задание — выбирает сам кандидат.
+     * Короткое даёт быстро подтвердить навык, полное — показать глубину,
+     * и заодно задания перестают быть одинаковыми у всех.
+     *
+     * Банк вариантов ведётся отдельно для каждой длины: задание на 5 вопросов
+     * не годится тому, кто попросил 15.
+     */
+    public const LENGTHS = [
+        5 => 'Короткое',
+        10 => 'Обычное',
+        15 => 'Полное',
+    ];
+
+    public const DEFAULT_LENGTH = 5;
+
+    /** Сколько вопросов в этом задании. */
+    public function length(): int
+    {
+        return count($this->questions ?? []);
+    }
+
     protected $fillable = ['skill_id', 'level', 'variant', 'questions'];
 
     protected $casts = ['questions' => 'array'];
@@ -45,6 +67,6 @@ class SkillTest extends Model
 
     public function levelLabel(): string
     {
-        return Skill::LEVELS[$this->level] ?? $this->level;
+        return __(Skill::LEVELS[$this->level] ?? $this->level);
     }
 }

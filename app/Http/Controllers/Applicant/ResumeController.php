@@ -120,13 +120,13 @@ class ResumeController extends Controller
             'profession' => 'required|string|max:255',
             'experience_years' => 'required|integer|min:0|max:70',
             'desired_position' => 'required|string|max:255',
-            'desired_salary' => 'required|integer|min:0',
+            'desired_salary' => 'required|integer|min:0|max:2000000000',
             'url_website' => 'nullable|string|max:255',
             // колонка стала text: помощник собирает длинные перечни навыков
             'skills' => 'nullable|string|max:2000',
             'languages' => 'required|string|max:255',
             'place_work' => 'nullable|string|max:255',
-            'description' => 'nullable|string',
+            'description' => 'nullable|string|max:20000',
             // оформление приходит из помощника; обычная форма его не показывает
             'style' => 'nullable|in:'.implode(',', array_keys(Resume::STYLES)),
         ];

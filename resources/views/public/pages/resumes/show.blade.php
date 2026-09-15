@@ -251,7 +251,7 @@
 
         /* ---------- строгое: типографика без цвета ---------- */
         .cv-sheet[data-skin="strict"]{
-            font-family:Georgia, 'Times New Roman', serif; --mark:#1F2937;
+            font-family:Georgia, 'PT Serif', Cambria, 'Times New Roman', serif; --mark:#1F2937;
             /* прямые углы и жёсткая рамка — документ, а не карточка */
             border-radius:0; border:2px solid #111827; box-shadow:none;
         }
@@ -330,7 +330,7 @@
             background:#fff; border-bottom:1px solid #111827; padding:44px 56px 30px;
         }
         .cv-sheet[data-skin="editorial"] .cv-name{
-            font-family:Georgia, 'Times New Roman', serif; text-transform:none; letter-spacing:-.5px;
+            font-family:Georgia, 'PT Serif', Cambria, 'Times New Roman', serif; text-transform:none; letter-spacing:-.5px;
         }
         .cv-sheet[data-skin="editorial"] .cv-role{color:#111827; text-transform:none; font-weight:600;}
         .cv-sheet[data-skin="editorial"] .cv-section-title{
@@ -392,6 +392,113 @@
         .cv-sheet[data-skin="night"] .cv-proof{background:#12301F; border-color:#1F6F43; color:#86EFAC;}
         .cv-sheet[data-skin="night"] .cv-proof b{color:#BBF7D0;}
         .cv-sheet[data-skin="night"] .cv-proof-level{background:#0B2416; color:#86EFAC;}
+
+        /* ---------- оформление 12: чертёж ---------- */
+        /* инженерная калька: миллиметровая сетка, циан по тёмно-синему,
+           моноширинные подписи. Резко выделяется в ленте резюме */
+        .cv-sheet[data-skin="blueprint"]{
+            --ink:#DCF3F8; --ink-soft:#8FC3D6; --line:#1C4468; --mark:#7FE3F0;
+            border-radius:0; border-color:#1C4468;
+            background-color:#0B2340;
+            background-image:
+                linear-gradient(rgba(127,227,240,.09) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(127,227,240,.09) 1px, transparent 1px);
+            background-size:22px 22px;
+            box-shadow:0 28px 60px -30px rgba(3,18,38,.95);
+        }
+        .cv-sheet[data-skin="blueprint"]::before{background:#7FE3F0; height:3px;}
+        /* шапка и колонка чуть плотнее фона, но сетка сквозь них видна */
+        .cv-sheet[data-skin="blueprint"] .cv-head{
+            background:rgba(9,30,56,.72); border-bottom:1px dashed #1C4468;
+        }
+        .cv-sheet[data-skin="blueprint"] .cv-side{background:rgba(9,30,56,.55);}
+        .cv-sheet[data-skin="blueprint"] .cv-name{
+            color:#FFFFFF; letter-spacing:.06em; text-transform:uppercase;
+        }
+        .cv-sheet[data-skin="blueprint"] .cv-role{color:#7FE3F0; letter-spacing:.14em;}
+        .cv-sheet[data-skin="blueprint"] .cv-photo,
+        .cv-sheet[data-skin="blueprint"] .cv-photo-fallback{
+            border-radius:0; border:1px solid #2E6486;
+        }
+        .cv-sheet[data-skin="blueprint"] .cv-photo-fallback{background:#0E2A4D; color:#7FE3F0;}
+        .cv-sheet[data-skin="blueprint"] .cv-section-title{
+            color:#7FE3F0; border-bottom:1px dashed #1C4468; letter-spacing:.2em;
+        }
+        /* подписи как на чертеже — моноширинные */
+        .cv-sheet[data-skin="blueprint"] .cv-fact-label,
+        .cv-sheet[data-skin="blueprint"] .cv-entry-meta,
+        .cv-sheet[data-skin="blueprint"] .cv-tag,
+        .cv-sheet[data-skin="blueprint"] .cv-muted{
+            font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+            font-size:12px; letter-spacing:.02em;
+        }
+        .cv-sheet[data-skin="blueprint"] .cv-tag{
+            background:transparent; color:#A8DCEC;
+            border:1px dashed #2E6486; border-radius:0;
+        }
+        .cv-sheet[data-skin="blueprint"] .cv-entry::before{background:#0B2340;}
+        .cv-sheet[data-skin="blueprint"] .cv-doc{
+            background:#0E2A4D; color:#DCF3F8; border-radius:0;
+        }
+        .cv-sheet[data-skin="blueprint"] .cv-proof{
+            background:#0C3A33; border-color:#1F7F6B; color:#7FEBD0; border-radius:0;
+        }
+        .cv-sheet[data-skin="blueprint"] .cv-proof b{color:#B4F5E4;}
+        .cv-sheet[data-skin="blueprint"] .cv-proof-level{background:#082A25; color:#7FEBD0;}
+
+        /* ---------- оформление 13: брутальное ---------- */
+        /* жирные чёрные рамки, ноль скруглений и жёсткая тень со сдвигом:
+           плакатная подача для творческих профессий */
+        .cv-sheet[data-skin="brutal"]{
+            --ink:#0A0A0A; --ink-soft:#3F3F3F; --line:#0A0A0A; --mark:#0A0A0A;
+            background:#FCFBF7;
+            border:3px solid #0A0A0A; border-radius:0;
+            box-shadow:10px 10px 0 #0A0A0A;
+        }
+        .cv-sheet[data-skin="brutal"]::before{background:#FFE600; height:12px;}
+        .cv-sheet[data-skin="brutal"] .cv-head{
+            background:#FCFBF7; border-bottom:3px solid #0A0A0A;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-name{
+            text-transform:uppercase; font-weight:900;
+            letter-spacing:-.04em; line-height:.95; color:#0A0A0A;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-role{
+            text-transform:uppercase; letter-spacing:.16em; color:#0A0A0A;
+            background:#FFE600; display:inline-block; padding:2px 8px;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-photo,
+        .cv-sheet[data-skin="brutal"] .cv-photo-fallback{
+            border-radius:0; border:3px solid #0A0A0A;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-photo-fallback{background:#FFE600; color:#0A0A0A;}
+        /* заголовок раздела — вывернутая плашка, а не подчёркивание */
+        .cv-sheet[data-skin="brutal"] .cv-section-title{
+            background:#0A0A0A; color:#FCFBF7;
+            padding:4px 9px; border:0; letter-spacing:.14em;
+            display:inline-block;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-side{
+            background:#F2F0E8; border-left:3px solid #0A0A0A;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-fact-label,
+        .cv-sheet[data-skin="brutal"] .cv-entry-meta{
+            font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+            font-size:12px; text-transform:uppercase; letter-spacing:.06em;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-tag{
+            background:#FCFBF7; color:#0A0A0A;
+            border:2px solid #0A0A0A; border-radius:0; font-weight:600;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-entry::before{background:#FCFBF7;}
+        .cv-sheet[data-skin="brutal"] .cv-doc{
+            background:#FFE600; color:#0A0A0A; border-radius:0; border:2px solid #0A0A0A;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-proof{
+            background:#FCFBF7; border:2px solid #0A0A0A; color:#0A0A0A; border-radius:0;
+        }
+        .cv-sheet[data-skin="brutal"] .cv-proof b{color:#0A0A0A;}
+        .cv-sheet[data-skin="brutal"] .cv-proof-level{background:#0A0A0A; color:#FCFBF7;}
     </style>
 
     @php
@@ -420,10 +527,10 @@
             : [];
 
         $statusLabels = [
-            'new' => 'Новый',
-            'viewed' => 'Просмотрен',
-            'accepted' => 'Принят',
-            'rejected' => 'Отклонён',
+            'new' => __('Новый'),
+            'viewed' => __('Просмотрен'),
+            'accepted' => __('Принят'),
+            'rejected' => __('Отклонён'),
         ];
 
         $experienceLine = $years > 0 ? $years.' г. опыта' : 'Без опыта';
@@ -653,7 +760,7 @@
                                 @php $respEmployer = $response->employer; @endphp
                                 <div class="resp-item">
                                     <div style="width:44px; height:44px; border-radius:12px; flex-shrink:0;
-                                                background:var(--accent-soft); color:var(--accent-ink);
+                                                background:var(--accent-soft); color:var(--accent-text);
                                                 display:flex; align-items:center; justify-content:center; font-weight:800;">
                                         @if($respEmployer?->user?->hasAvatar())
                                             <img src="{{ asset($respEmployer->user->avatar) }}" alt=""
@@ -667,7 +774,7 @@
                                             @if($respEmployer)
                                                 <a href="{{ route('public.companies.show', $respEmployer) }}">{{ $respEmployer->company_name }}</a>
                                             @else
-                                                Компания удалена
+                                                {{ __('Компания удалена') }}
                                             @endif
                                         </div>
                                         <div class="muted" style="margin-top:2px;">

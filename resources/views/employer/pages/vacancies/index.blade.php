@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -84,7 +84,7 @@
                                     </a>
                                 </div>
                                 <div class="hint" style="display:flex; gap:12px; margin-top:4px;">
-                                    <span>📍 {{ $vacancy->city->country }} , {{ $vacancy->city->region }}</span>| <span>👥 {{ $vacancy->responses_count ?? 0 }} {{ __('откликов') }}</span>| <span>👁 {{ $vacancy->views }} {{ __('просмотров') }}</span>|
+                                    <span>📍 {{ __($vacancy->city->country) }} , {{ __($vacancy->city->region) }}</span>| <span>👥 {{ $vacancy->responses_count ?? 0 }} {{ __('откликов') }}</span>| <span>👁 {{ $vacancy->views }} {{ __('просмотров') }}</span>|
                                     <span>{{ $vacancy->created_at->format('d M Y') }}</span>
                                 </div>
                             </div>

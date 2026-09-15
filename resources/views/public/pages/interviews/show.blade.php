@@ -20,10 +20,9 @@
             border:2px solid var(--surface); flex-shrink:0;
         }
         .room-ava{
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px;
         }
-        :root[data-theme="dark"] .room-ava{color:var(--accent);}
         .room-ava-pair > *:not(:first-child){margin-left:-12px;}
         .room-title{font-weight:800; font-size:16.5px; letter-spacing:-.2px;}
         .room-sub{font-size:13px; color:var(--text-muted); margin-top:3px;}
@@ -103,10 +102,9 @@
         .hint{display:flex; gap:10px; font-size:13px; color:var(--text-muted); line-height:1.55;}
         .hint .b{
             width:22px; height:22px; border-radius:7px; flex-shrink:0;
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;
         }
-        :root[data-theme="dark"] .hint .b{color:var(--accent);}
 
         .back-link{
             display:inline-flex; gap:8px; font-size:14px; font-weight:600;

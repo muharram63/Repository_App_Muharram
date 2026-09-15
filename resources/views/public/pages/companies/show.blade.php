@@ -243,10 +243,10 @@
                     <p class="company-job">{{ $company->job }} · {{ $company->user->name }}</p>
                     <div class="company-header-tags">
                         @if($company->category)
-                            <span class="tag">{{ $company->category->name }}</span>
+                            <span class="tag">{{ __($company->category->name) }}</span>
                         @endif
                         @if($company->industry)
-                            <span class="tag">{{ $company->industry->name }}</span>
+                            <span class="tag">{{ __($company->industry->name) }}</span>
                         @endif
                     </div>
                 </div>
@@ -298,7 +298,7 @@
                             </svg>
                             <div>
                                 <div class="detail-label">{{ __('Местоположение') }}</div>
-                                <div class="detail-value">{{ $company->city->country }}, {{ $company->city->region }}, г. {{ $company->city->name ?? $company->city->city }}</div>
+                                <div class="detail-value">{{ __($company->city->country) }}, {{ __($company->city->region) }}, г. {{ $company->city->name ?? $company->city->city }}</div>
                             </div>
                         </div>
 

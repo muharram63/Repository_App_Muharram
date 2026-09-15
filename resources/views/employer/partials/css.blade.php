@@ -16,6 +16,19 @@
             --white:#FFFFFF;
             --green:#16A34A;
             --radius:12px;
+            /* плашки статусов и опасные действия */
+            --danger:#DC2626;
+            --wash-danger:#FEF2F2;
+            --wash-good:#DCFCE7;
+            --ink-good:#15803D;
+            --wash-warn:#FEF3C7;
+            --ink-warn:#B45309;
+            /* подсветка фона: на светлой теме она почти незаметна */
+            --glow-a:rgba(79,70,229,0.10);
+            --glow-b:rgba(99,102,241,0.07);
+            --glow-c:transparent;
+            --card-glow:none;
+            --rail-glow:none;
         }
 
         *{ box-sizing:border-box; }
@@ -23,8 +36,9 @@
         body{
             font-family:"Inter","Segoe UI",Arial,sans-serif;
             background:
-                radial-gradient(1100px 600px at 85% -10%, rgba(79,70,229,0.10), transparent 60%),
-                radial-gradient(900px 500px at -10% 20%, rgba(99,102,241,0.07), transparent 55%),
+                radial-gradient(1100px 600px at 85% -10%, var(--glow-a), transparent 60%),
+                radial-gradient(900px 500px at -10% 20%, var(--glow-b), transparent 55%),
+            radial-gradient(700px 420px at 50% 110%, var(--glow-c), transparent 60%),
                 var(--bg);
             color:var(--ink);
             -webkit-font-smoothing:antialiased;
@@ -43,6 +57,8 @@
         .sidebar{
             background:var(--white);
             border-right:1px solid var(--gray-200);
+            /* на тёмной теме грань меню подсвечена, на светлой токен пустой */
+            box-shadow:var(--rail-glow);
             padding:0 16px;
             display:flex;
             flex-direction:column;
@@ -92,7 +108,7 @@
             margin-left:auto; flex-shrink:0; cursor:pointer;
             width:30px; height:30px; display:grid; place-items:center;
             border:1px solid var(--gray-200); border-radius:8px;
-            background:var(--gray-100); color:var(--gray-700);
+            background:var(--gray-100); color:var(--ink);
             transition:color .15s ease, border-color .15s ease;
         }
         .side-toggle:hover{ color:var(--indigo-600); border-color:var(--indigo-600); }
@@ -159,7 +175,7 @@
             gap:10px;
             padding:10px 12px;
             border-radius:10px;
-            color:#DC2626;
+            color:var(--danger);
             font-size:14px;
             font-weight:500;
             cursor:pointer;
@@ -168,7 +184,7 @@
             width:100%;
             text-align:left;
         }
-        .logout-btn:hover{ background:#FEF2F2; }
+        .logout-btn:hover{ background:var(--wash-danger); }
 
         /* ---------- main content ---------- */
         .main{
@@ -257,6 +273,7 @@
             border-radius:var(--radius);
             padding:24px;
             margin-bottom:20px;
+            box-shadow:var(--card-glow);
         }
         .card-header{
             display:flex;
@@ -348,8 +365,8 @@
             font-size:12px;
             font-weight:600;
         }
-        .badge-active{ background:#DCFCE7; color:#15803D; }
-        .badge-pending{ background:#FEF3C7; color:#B45309; }
+        .badge-active{ background:var(--wash-good); color:var(--ink-good); }
+        .badge-pending{ background:var(--wash-warn); color:var(--ink-warn); }
         .company-cell{ display:flex; align-items:center; gap:10px; }
         .company-logo{
             width:32px; height:32px;
@@ -370,4 +387,97 @@
             .stat-row{ grid-template-columns:1fr; }
             .form-grid{ grid-template-columns:1fr; }
         }
-    </style>
+    
+        /* ================= ТЁМНАЯ ТЕМА =================
+
+           Светлая палитра лежит в :root выше и остаётся значением по умолчанию.
+           Тёмная описана дважды намеренно, и это не копипаста по недосмотру:
+
+           - media-запрос срабатывает, когда атрибут темы не выставлен вовсе.
+             Так выглядит «системная» тема: решает настройка устройства. Оговорка
+             :not([data-theme="light"]) нужна, чтобы явно выбранная светлая тема
+             побеждала тёмную систему;
+           - :root[data-theme="dark"] перебивает систему в другую сторону, когда
+             тёмную выбрали руками.
+
+           CSS не умеет переиспользовать блок объявлений, поэтому список токенов
+           повторяется. Правила компонентов при этом не дублируются ни разу: всё,
+           что меняется между темами, вынесено в токены выше.
+
+           Имена оставлены прежними: --white здесь означает не белый, а «поверхность
+           карточки». Благодаря этому вся вёрстка кабинета переключается разом,
+           без правки сотен мест.
+        */
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                /* поверхности и текст */
+                --ink:#E9ECF7;
+                --gray-500:#99A1BA;
+                --gray-300:#3A4260;
+                --gray-200:#272E45;
+                --gray-100:#1B2133;
+                --bg:#0C0F1A;
+                --white:#151A2B;
+                /* акцент на тёмном нужен светлее: исходный индиго на нём глухой */
+                --indigo-600:#7C8CFF;
+                --indigo-700:#98A5FF;
+                --indigo-50:#1B2145;
+                --indigo-100:#232B57;
+                --green:#34D399;
+                /* плашки статусов: светлые заливки на тёмном слепят */
+                --danger:#F87171;
+                --wash-danger:#2A1620;
+                --wash-good:#0F2E20;
+                --ink-good:#6EE7B7;
+                --wash-warn:#2E2415;
+                --ink-warn:#FBBF24;
+                /* то самое освещение: подсветка фона и мягкое свечение поверхностей */
+                --glow-a:rgba(124,140,255,0.20);
+                --glow-b:rgba(99,102,241,0.13);
+                --glow-c:rgba(56,189,248,0.07);
+                --card-glow:0 1px 0 rgba(255,255,255,.04) inset, 0 18px 40px -30px rgba(0,0,0,.9);
+                --rail-glow:1px 0 0 rgba(255,255,255,.03) inset, 24px 0 60px -50px rgba(124,140,255,.55);
+            }
+        }
+
+        :root[data-theme="dark"] {
+            /* поверхности и текст */
+            --ink:#E9ECF7;
+            --gray-500:#99A1BA;
+            --gray-300:#3A4260;
+            --gray-200:#272E45;
+            --gray-100:#1B2133;
+            --bg:#0C0F1A;
+            --white:#151A2B;
+            /* акцент на тёмном нужен светлее: исходный индиго на нём глухой */
+            --indigo-600:#7C8CFF;
+            --indigo-700:#98A5FF;
+            --indigo-50:#1B2145;
+            --indigo-100:#232B57;
+            --green:#34D399;
+            /* плашки статусов: светлые заливки на тёмном слепят */
+            --danger:#F87171;
+            --wash-danger:#2A1620;
+            --wash-good:#0F2E20;
+            --ink-good:#6EE7B7;
+            --wash-warn:#2E2415;
+            --ink-warn:#FBBF24;
+            /* то самое освещение: подсветка фона и мягкое свечение поверхностей */
+            --glow-a:rgba(124,140,255,0.20);
+            --glow-b:rgba(99,102,241,0.13);
+            --glow-c:rgba(56,189,248,0.07);
+            --card-glow:0 1px 0 rgba(255,255,255,.04) inset, 0 18px 40px -30px rgba(0,0,0,.9);
+            --rail-glow:1px 0 0 rgba(255,255,255,.03) inset, 24px 0 60px -50px rgba(124,140,255,.55);
+        }
+
+        /* ---------- перенос длинных подписей ----------
+        Таджикские строки заметно длиннее русских: «Зачтено» превращается
+        в «Ба ҳисоб гирифта шуд», «Email» — в «Почтаи электронӣ». Без этого
+        подпись выходит за рамку кнопки или карточки. break-word срабатывает
+        только когда слово физически не помещается, поэтому вёрстку
+        на русском не трогает. */
+        h1, h2, h3, h4, p, li, td, th, label, button, a,
+        .btn, .chip, .tag, .badge, .pill {
+        overflow-wrap: break-word;
+        }
+</style>

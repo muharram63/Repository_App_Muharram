@@ -69,12 +69,14 @@ class Interview extends Model
 
     public function statusLabel(): string
     {
-        return [
+        $map = [
             'scheduled' => 'Ожидает подтверждения',
             'confirmed' => 'Подтверждено',
             'declined' => 'Отклонено',
             'canceled' => 'Отменено',
             'finished' => 'Завершено',
-        ][$this->status] ?? $this->status;
+        ];
+
+        return __($map[$this->status] ?? $this->status);
     }
 }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -175,6 +175,9 @@
         .skin-tech { background: repeating-linear-gradient(90deg, #0F766E 0 4px, #CCFBF1 4px 8px); }
         .skin-warm { background: linear-gradient(135deg, #C2410C, #FED7AA); }
         .skin-night { background: linear-gradient(135deg, #111827, #7C9CFF); }
+        /* сетка чертежа и жёлтая плашка брутального — образцы читаются в списке */
+        .skin-blueprint { background: #0B2340 repeating-linear-gradient(90deg, rgba(127,227,240,.55) 0 1px, transparent 1px 6px); }
+        .skin-brutal { background: linear-gradient(135deg, #FFE600 50%, #0A0A0A 50%); }
 
         .field-group.split {
             display: grid;

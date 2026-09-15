@@ -48,11 +48,10 @@
         .rc-top{display:flex; align-items:center; gap:13px;}
         .rc-avatar{
             width:46px; height:46px; border-radius:50%; flex-shrink:0; object-fit:cover;
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center;
             font-weight:800; font-size:17px;
         }
-        :root[data-theme="dark"] .rc-avatar{color:var(--accent);}
         .rc-name{font-weight:700; font-size:15.5px;}
         .rc-city{font-size:12.5px; color:var(--text-muted); margin-top:2px;}
         .rc-profession{font-size:18px; font-weight:800; letter-spacing:-.3px;}
@@ -62,7 +61,7 @@
             font-size:12px; font-weight:600; padding:5px 11px; border-radius:999px;
             background:var(--surface-alt); border:1px solid var(--border); color:var(--text-muted);
         }
-        .rc-chip.skill{background:var(--accent-soft); border-color:transparent; color:var(--accent-ink);}
+        .rc-chip.skill{background:var(--accent-soft); border-color:transparent; color:var(--accent-text);}
 
         /* карточка узкая, а названия навыков бывают длинными — переносим,
            а не выпускаем за край */
@@ -104,13 +103,11 @@
         .proof-chip:hover{border-color:#15803D;}
         .proof-chip.on{background:#15803D; color:#fff; border-color:#15803D;}
         .proof-clear{margin-left:auto; font-size:12.5px; color:#6B7A90; text-decoration:underline;}
-        :root[data-theme="dark"] .rc-chip.skill{color:var(--accent);}
         .rc-foot{
             margin-top:auto; padding-top:16px; border-top:1px solid var(--border);
             display:flex; align-items:center; justify-content:space-between; gap:12px;
         }
-        .rc-salary{font-size:17px; font-weight:800; color:var(--accent-ink); white-space:nowrap;}
-        :root[data-theme="dark"] .rc-salary{color:var(--accent);}
+        .rc-salary{font-size:17px; font-weight:800; color:var(--accent-text); white-space:nowrap;}
         .rc-foot .btn-primary{padding:10px 18px; border-radius:11px; font-size:13.5px;}
 
         .empty-state{
@@ -130,7 +127,7 @@
             <div class="section-head">
                 <div class="eyebrow">{{ __('Соискатели') }}</div>
                 <h2>{{ __('Резюме кандидатов, готовых к работе') }}</h2>
-                <p>{{ method_exists($resumes, 'total') ? $resumes->total() : $resumes->count() }} резюме на платформе. Найдите специалиста по профессии, навыкам или городу.</p>
+                <p>{{ method_exists($resumes, 'total') ? $resumes->total() : $resumes->count() }} {{ __('резюме на платформе. Найдите специалиста по профессии, навыкам или городу.') }}</p>
             </div>
 
             <form class="resume-toolbar" action="{{ route('public.resumes.index') }}" method="get">
@@ -138,8 +135,8 @@
                     @foreach(['all' => __('Все'), 'noexp' => __('Без опыта'), 'junior' => __('1–2 года'), 'middle' => __('3–5 лет'), 'senior' => __('6+ лет')] as $key => $label)
                         <a href="{{ route('public.resumes.index', array_filter(['exp' => $key === 'all' ? null : $key, 'q' => $query ?: null])) }}"
                            style="display:inline-block; padding:8px 14px; border-radius:999px; text-decoration:none; font-size:13px; font-weight:600;
-                                  border:1px solid {{ $exp === $key ? '#4F46E5' : 'rgba(120,130,160,.3)' }};
-                                  background:{{ $exp === $key ? '#4F46E5' : 'transparent' }};
+                                  border:1px solid {{ $exp === $key ? 'var(--accent)' : 'var(--border)' }};
+                                  background:{{ $exp === $key ? 'var(--accent)' : 'transparent' }};
                                   color:{{ $exp === $key ? '#fff' : 'inherit' }};">{{ $label }}</a>
                     @endforeach
                 </div>
@@ -154,7 +151,7 @@
                 @if($proven)
                     <input type="hidden" name="proven" value="{{ $proven }}">
                 @endif
-                <button type="submit" class="btn-primary" style="padding:10px 20px; border:none; border-radius:10px; background:#4F46E5; color:#fff; font-weight:700; cursor:pointer;">{{ __('Найти') }}</button>
+                <button type="submit" class="btn-primary" style="padding:10px 20px; border:none; border-radius:10px; background:var(--accent); color:#fff; font-weight:700; cursor:pointer;">{{ __('Найти') }}</button>
             </form>
 
             {{-- Фильтр по навыкам, доказанным заданием. Показываем только те,

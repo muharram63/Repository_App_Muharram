@@ -14,8 +14,11 @@ use Illuminate\Support\Str;
  */
 class GeminiSkillExaminer implements SkillExaminer
 {
-    /** Сколько вопросов в задании: 5 укладывается в 10–15 минут. */
-    public const QUESTIONS = 5;
+    /**
+     * Потолок токенов на один вопрос. Задание на 15 вопросов длиннее втрое,
+     * и с прежним общим лимитом ответ обрывался бы на середине.
+     */
+    private const TOKENS_PER_QUESTION = 600;
 
     public function __construct(private readonly GeminiClient $client)
     {
@@ -26,16 +29,16 @@ class GeminiSkillExaminer implements SkillExaminer
         return $this->client->configured();
     }
 
-    public function compose(Skill $skill, string $level, int $variant): array
+    public function compose(Skill $skill, string $level, int $variant, int $count): array
     {
         $answer = $this->client->structured(
-            $this->composePrompt($skill, $level, $variant),
+            $this->composePrompt($skill, $level, $variant, $count),
             [['role' => 'user', 'text' => 'Составь задание по навыку «'.$skill->name.'».']],
-            $this->composeSchema(),
-            maxTokens: 3000,
+            $this->composeSchema($count),
+            maxTokens: $count * self::TOKENS_PER_QUESTION,
         );
 
-        return $this->clean($answer['questions'] ?? []);
+        return $this->clean($answer['questions'] ?? [], $count);
     }
 
     public function grade(Skill $skill, array $answers): array
@@ -51,8 +54,9 @@ class GeminiSkillExaminer implements SkillExaminer
         $answer = $this->client->structured(
             $this->gradePrompt($skill),
             [['role' => 'user', 'text' => $payload]],
-            $this->gradeSchema(),
-            maxTokens: 1500,
+            // проверяем ровно столько свободных ответов, сколько пришло
+            $this->gradeSchema(count($answers)),
+            maxTokens: max(1500, count($answers) * 300),
         );
 
         $verdicts = [];
@@ -75,10 +79,9 @@ class GeminiSkillExaminer implements SkillExaminer
         return $verdicts;
     }
 
-    private function composePrompt(Skill $skill, string $level, int $variant): string
+    private function composePrompt(Skill $skill, string $level, int $variant, int $count): string
     {
         $level = Skill::LEVELS[$level] ?? $level;
-        $count = self::QUESTIONS;
 
         return <<<PROMPT
         Ты составляешь короткую практическую проверку навыка для площадки поиска работы.
@@ -119,14 +122,14 @@ class GeminiSkillExaminer implements SkillExaminer
         PROMPT;
     }
 
-    private function composeSchema(): array
+    private function composeSchema(int $count): array
     {
         return [
             'type' => 'object',
             'properties' => [
                 'questions' => [
                     'type' => 'array',
-                    'maxItems' => self::QUESTIONS,
+                    'maxItems' => $count,
                     'items' => [
                         'type' => 'object',
                         'properties' => [
@@ -147,14 +150,14 @@ class GeminiSkillExaminer implements SkillExaminer
         ];
     }
 
-    private function gradeSchema(): array
+    private function gradeSchema(int $count): array
     {
         return [
             'type' => 'object',
             'properties' => [
                 'verdicts' => [
                     'type' => 'array',
-                    'maxItems' => self::QUESTIONS,
+                    'maxItems' => $count,
                     'items' => [
                         'type' => 'object',
                         'properties' => [
@@ -173,7 +176,7 @@ class GeminiSkillExaminer implements SkillExaminer
      * Приводит задание в годный вид: вопрос без четырёх вариантов и без
      * указанного верного ответа проверить нельзя, такой лучше выбросить.
      */
-    private function clean(mixed $questions): array
+    private function clean(mixed $questions, int $count): array
     {
         if (! is_array($questions)) {
             return [];
@@ -181,7 +184,7 @@ class GeminiSkillExaminer implements SkillExaminer
 
         $clean = [];
 
-        foreach (array_slice($questions, 0, self::QUESTIONS) as $question) {
+        foreach (array_slice($questions, 0, $count) as $question) {
             if (! is_array($question)) {
                 continue;
             }

@@ -60,10 +60,10 @@
 
     @php
         $statusLabels = [
-            'new' => 'Новый',
-            'viewed' => 'Просмотрен',
-            'accepted' => 'Принят',
-            'rejected' => 'Отклонён',
+            'new' => __('Новый'),
+            'viewed' => __('Просмотрен'),
+            'accepted' => __('Принят'),
+            'rejected' => __('Отклонён'),
         ];
         $newCount = $rows->where('status', 'new')->count();
         $acceptedCount = $rows->where('status', 'accepted')->count();

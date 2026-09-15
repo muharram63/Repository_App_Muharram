@@ -16,13 +16,14 @@ interface SkillExaminer
     public function available(): bool;
 
     /**
-     * Составить задание: вопросы с вариантами, верным ответом и пояснением.
+     * Составить задание из $count вопросов: каждый с вариантами,
+     * верным ответом и пояснением.
      *
      * @return array<int,array{text:string,options:array<int,string>,answer:int,explain:string}>
      *
      * @throws AiUnavailableException
      */
-    public function compose(Skill $skill, string $level, int $variant): array;
+    public function compose(Skill $skill, string $level, int $variant, int $count): array;
 
     /**
      * Проверить свободные ответы кандидата.

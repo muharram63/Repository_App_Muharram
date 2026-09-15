@@ -64,7 +64,11 @@ class SkillCheckController extends Controller
         $validated = $request->validate([
             'skill_id' => 'required|exists:skills,id',
             'level' => 'required|in:'.implode(',', array_keys(Skill::LEVELS)),
+            // длину задания выбирает кандидат; если поле не пришло — короткое
+            'questions' => 'nullable|integer|in:'.implode(',', array_keys(SkillTest::LENGTHS)),
         ]);
+
+        $count = (int) ($validated['questions'] ?? SkillTest::DEFAULT_LENGTH);
 
         $skill = Skill::findOrFail($validated['skill_id']);
 
@@ -91,7 +95,7 @@ class SkillCheckController extends Controller
         }
 
         try {
-            $test = $this->pickTest($skill, $validated['level'], $applicant->id);
+            $test = $this->pickTest($skill, $validated['level'], $applicant->id, $count);
         } catch (AiUnavailableException $e) {
             return back()->with('error', $e->getMessage());
         }
@@ -104,7 +108,8 @@ class SkillCheckController extends Controller
             'applicant_id' => $applicant->id,
             'skill_test_id' => $test->id,
             'answers' => [],
-            'expires_at' => now()->addMinutes(SkillAttempt::MINUTES),
+            // время считаем от длины задания, а не фиксированные 15 минут
+            'expires_at' => now()->addMinutes(SkillAttempt::minutesFor($test->length())),
         ]);
 
         return redirect()->route('applicant.skills.attempt', $attempt);
@@ -265,9 +270,13 @@ class SkillCheckController extends Controller
      * Если непройденных вариантов нет, а банк не заполнен — просим модель
      * составить новый: повторно то же задание давать бессмысленно.
      */
-    private function pickTest(Skill $skill, string $level, int $applicantId): ?SkillTest
+    private function pickTest(Skill $skill, string $level, int $applicantId, int $count): ?SkillTest
     {
-        $tests = SkillTest::where('skill_id', $skill->id)->where('level', $level)->get();
+        $all = SkillTest::where('skill_id', $skill->id)->where('level', $level)->get();
+
+        // банк ведётся отдельно по длине: задание на 5 вопросов не подходит
+        // тому, кто попросил 15, поэтому чужие длины сразу отсеиваем
+        $tests = $all->filter(fn (SkillTest $t) => $t->length() === $count)->values();
 
         $seen = SkillAttempt::where('applicant_id', $applicantId)
             ->whereIn('skill_test_id', $tests->pluck('id'))
@@ -278,8 +287,11 @@ class SkillCheckController extends Controller
         }
 
         if ($tests->count() < SkillTest::VARIANTS) {
-            $variant = (int) $tests->max('variant') + 1;
-            $questions = $this->examiner->compose($skill, $level, $variant);
+            // номер варианта сквозной по навыку и уровню, а не внутри длины:
+            // на (skill_id, level, variant) стоит уникальный индекс, и отдельная
+            // нумерация по длинам упиралась бы в дубль
+            $variant = (int) $all->max('variant') + 1;
+            $questions = $this->examiner->compose($skill, $level, $variant, $count);
 
             if ($questions === []) {
                 return $tests->shuffle()->first();

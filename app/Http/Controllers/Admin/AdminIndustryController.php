@@ -36,7 +36,7 @@ class AdminIndustryController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-           'name' => 'required|string|unique:industries',
+           'name' => 'required|string|max:255|unique:industries',
            'category_id' => 'required|exists:categories,id',
            // поле ни на что не влияет и внешним ключом не является — не требуем его
            'parent_id' => 'nullable|integer|min:0|max:99999',
@@ -71,7 +71,7 @@ class AdminIndustryController extends Controller
         $validated = $request->validate([
             // саму запись из проверки исключаем: иначе сохранение без смены
             // названия отклонялось как «такое название уже занято»
-            'name' => ['required', 'string', Rule::unique('industries')->ignore($industry)],
+            'name' => ['required', 'string', 'max:255', Rule::unique('industries')->ignore($industry)],
             'category_id' => 'required|exists:categories,id',
             'parent_id' => 'nullable|integer|min:0|max:99999',
             'description' => 'required|string|max:255',

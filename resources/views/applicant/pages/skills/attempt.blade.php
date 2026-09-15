@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -118,7 +118,10 @@
             letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
         .qz-verdict.ok { color: #15803D; }
         .qz-verdict.no { color: #B91C1C; }
-        .qz-verdict svg { width: 14px; height: 14px; }
+        /* «Зачтено» по-таджикски втрое длиннее — даём подписи перенос,
+           а иконке запрещаем сжиматься */
+        .qz-verdict { flex-wrap: wrap; }
+        .qz-verdict svg { width: 14px; height: 14px; flex-shrink: 0; }
 
         .qz-given {
             font-size: 13.5px; line-height: 1.6; padding: 10px 13px; border-radius: 10px;
@@ -257,7 +260,10 @@
                                 </div>
                                 <p class="qz-sub">
                                     {{ __('Выберите вариант — или напишите свой ответ в поле ниже вопроса. Свой ответ проверит ИИ по смыслу, а не по совпадению слов.') }}
-                                    {{ __('На задание отводится') }} {{ \App\Models\SkillAttempt::MINUTES }} {{ __('минут; когда время выйдет, ответы отправятся сами.') }}
+                                    {{-- срок зависит от выбранной длины задания --}}
+                                    {{ __('В задании') }} {{ count($questions) }} {{ __('вопросов, на них отводится') }}
+                                    {{ \App\Models\SkillAttempt::minutesFor(count($questions)) }}
+                                    {{ __('минут; когда время выйдет, ответы отправятся сами.') }}
                                 </p>
                             </div>
 

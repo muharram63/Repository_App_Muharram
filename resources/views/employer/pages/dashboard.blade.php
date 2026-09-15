@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -116,7 +116,7 @@
                             <label for="position">{{ __('Категория') }}</label>
                             <select name="category_id">
                                 @foreach($categories as $category)
-                                    <option value="{{$category->id}}">{{$category->name}}</option>
+                                    <option value="{{$category->id}}">{{ __($category->name) }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -124,7 +124,7 @@
                             <label for="position">{{ __('Индустрия') }}</label>
                             <select name="industry_id">
                                 @foreach($industries as $industry)
-                                    <option value="{{$industry->id}}">{{$industry->name}}</option>
+                                    <option value="{{$industry->id}}">{{ __($industry->name) }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -147,7 +147,7 @@
                             <label for="city">{{ __('Город') }}</label>
                             <select name="city_id">
                                 @foreach($cities as $city)
-                                    <option value="{{$city->id}}">{{$city->country}} , {{$city->region}}</option>
+                                    <option value="{{$city->id}}">{{ __($city->country) }} , {{ __($city->region) }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -193,10 +193,10 @@
                     <tbody>
                     @php
                         $statusLabels = [
-                            'new' => 'Новый',
-                            'viewed' => 'Просмотрен',
-                            'accepted' => 'Принят',
-                            'rejected' => 'Отклонён',
+                            'new' => __('Новый'),
+                            'viewed' => __('Просмотрен'),
+                            'accepted' => __('Принят'),
+                            'rejected' => __('Отклонён'),
                         ];
                     @endphp
                     @forelse($candidateResponses as $response)

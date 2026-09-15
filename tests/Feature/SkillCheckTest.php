@@ -29,7 +29,7 @@ class FakeExaminer implements SkillExaminer
         return $this->available;
     }
 
-    public function compose(Skill $skill, string $level, int $variant): array
+    public function compose(Skill $skill, string $level, int $variant, int $count): array
     {
         if ($this->failure) {
             throw new AiUnavailableException($this->failure);
@@ -37,7 +37,7 @@ class FakeExaminer implements SkillExaminer
 
         $this->composed++;
 
-        return collect(range(1, 5))->map(fn (int $n) => [
+        return collect(range(1, $count))->map(fn (int $n) => [
             'text' => 'Вопрос '.$n.' про '.$skill->name.' (вариант '.$variant.')',
             'options' => ['Верно', 'Неверно A', 'Неверно B', 'Неверно C'],
             'answer' => 0,
@@ -361,10 +361,12 @@ test('an attempt carries a deadline and a running clock', function () {
     $user = skillUser(new FakeExaminer);
     $attempt = startCheck($user);
 
+    $minutes = SkillAttempt::minutesFor($attempt->test->length());
+
     expect($attempt->expires_at)->not->toBeNull()
         // ровно столько, сколько обещано, с поправкой на время самого запроса
-        ->and(now()->diffInMinutes($attempt->expires_at))->toBeGreaterThan(SkillAttempt::MINUTES - 1)
-        ->and(now()->diffInMinutes($attempt->expires_at))->toBeLessThanOrEqual(SkillAttempt::MINUTES);
+        ->and(now()->diffInMinutes($attempt->expires_at))->toBeGreaterThan($minutes - 1)
+        ->and(now()->diffInMinutes($attempt->expires_at))->toBeLessThanOrEqual($minutes);
 
     $this->actingAs($user)->get('/applicant/skills/attempt/'.$attempt->id)
         ->assertOk()
@@ -376,7 +378,7 @@ test('answers sent after the deadline are not counted', function () {
     $user = skillUser(new FakeExaminer);
     $attempt = startCheck($user);
 
-    $this->travelTo(now()->addMinutes(SkillAttempt::MINUTES + 2));
+    $this->travelTo(now()->addMinutes(SkillAttempt::minutesFor($attempt->test->length()) + 2));
 
     $this->actingAs($user)->post('/applicant/skills/attempt/'.$attempt->id, [
         'option' => [0 => 0, 1 => 0, 2 => 0, 3 => 0, 4 => 0],
@@ -566,4 +568,81 @@ test('the page works without a key, but the check cannot be started', function (
     $this->actingAs($user)->get('/applicant/skills')
         ->assertOk()
         ->assertSee('GEMINI_API_KEY');
+});
+
+/*
+ * Длину задания выбирает кандидат: раньше во всех проверках было ровно пять
+ * вопросов, и задания получались одинаковыми у всех.
+ */
+
+test('кандидат выбирает длину задания, и время считается от неё', function () {
+    $user = skillUser(new FakeExaminer);
+
+    $this->actingAs($user)->post('/applicant/skills/start', [
+        'skill_id' => someSkill()->id,
+        'level' => 'confident',
+        'questions' => 15,
+    ])->assertRedirect();
+
+    $attempt = SkillAttempt::latest('id')->first();
+
+    expect($attempt->test->length())->toBe(15)
+        // по три минуты на вопрос, а не прежние фиксированные 15 минут
+        ->and(now()->diffInMinutes($attempt->expires_at))->toBeGreaterThan(44)
+        ->and(now()->diffInMinutes($attempt->expires_at))->toBeLessThanOrEqual(45);
+});
+
+test('без выбора длины задание короткое', function () {
+    $user = skillUser(new FakeExaminer);
+    $attempt = startCheck($user);
+
+    expect($attempt->test->length())->toBe(SkillTest::DEFAULT_LENGTH);
+});
+
+test('банк заданий ведётся отдельно по длине', function () {
+    $examiner = new FakeExaminer;
+    $user = skillUser($examiner);
+    $skill = someSkill();
+
+    // короткое задание уже составлено и лежит в банке
+    $this->actingAs($user)->post('/applicant/skills/start', [
+        'skill_id' => $skill->id, 'level' => 'confident', 'questions' => 5,
+    ])->assertRedirect();
+
+    SkillAttempt::latest('id')->first()->update(['finished_at' => now(), 'score' => 100]);
+    $this->travelTo(now()->addMinutes(SkillAttempt::COOLDOWN_MINUTES + 1));
+
+    // просьба о полном задании не должна отдать короткое из банка
+    $this->actingAs($user)->post('/applicant/skills/start', [
+        'skill_id' => $skill->id, 'level' => 'confident', 'questions' => 15,
+    ])->assertRedirect();
+
+    expect(SkillAttempt::latest('id')->first()->test->length())->toBe(15)
+        ->and($examiner->composed)->toBe(2);
+
+    // варианты нумеруются сквозным счётчиком: на (навык, уровень, вариант)
+    // стоит уникальный индекс, и отдельная нумерация по длинам дала бы дубль
+    expect(SkillTest::where('skill_id', $skill->id)->pluck('variant')->sort()->values()->all())
+        ->toBe([1, 2]);
+});
+
+test('чужая длина задания не принимается', function () {
+    $user = skillUser(new FakeExaminer);
+
+    $this->actingAs($user)->post('/applicant/skills/start', [
+        'skill_id' => someSkill()->id,
+        'level' => 'confident',
+        'questions' => 7,
+    ])->assertSessionHasErrors('questions');
+});
+
+test('каталог предлагает выбрать длину', function () {
+    $user = skillUser(new FakeExaminer);
+    someSkill();
+
+    $html = $this->actingAs($user)->get('/applicant/skills')->assertOk()->getContent();
+
+    foreach (array_keys(SkillTest::LENGTHS) as $count) {
+        expect($html)->toContain('name="questions" value="'.$count.'"');
+    }
 });

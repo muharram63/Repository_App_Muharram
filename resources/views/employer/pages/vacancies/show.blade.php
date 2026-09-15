@@ -28,6 +28,11 @@
         $skills = collect(explode(',', $vacancy->skill))
             ->map(fn($s) => trim($s))
             ->filter();
+
+        // языки требуются не всегда: пустое поле значит «не важно»
+        $languages = collect(explode(',', (string) $vacancy->languages))
+            ->map(fn($s) => trim($s))
+            ->filter();
     @endphp
 
     <section class="section vacancy-page">
@@ -61,7 +66,7 @@
                                     <div>
                                         <div class="vacancy-company-name">Компания : {{ $vacancy->employer->company_name ?? 'Компания' }}</div>
                                         @if($vacancy->city)
-                                            <div class="vacancy-company-loc">📍 {{ $vacancy->city->country }} , {{ $vacancy->city->region }}</div>
+                                            <div class="vacancy-company-loc">📍 {{ __($vacancy->city->country) }} , {{ __($vacancy->city->region) }}</div>
                                         @endif
                                     </div>
                                 </div>
@@ -110,6 +115,17 @@
                         </div>
                     @endif
 
+                    @if($languages->isNotEmpty())
+                        <div class="vacancy-card">
+                            <h2 class="vacancy-block-title">{{ __('Требуемые языки') }}</h2>
+                            <div class="hero-tags">
+                                @foreach($languages as $language)
+                                    <span class="tag-chip">{{ $language }}</span>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
                 </div>
 
                 {{-- ===== ПРАВАЯ КОЛОНКА ===== --}}
@@ -136,7 +152,7 @@
                             <div>
                                 <div class="vacancy-company-name">{{ $vacancy->employer->company_name ?? 'Компания' }}</div>
                                 @if($vacancy->city)
-                                    <div class="stat-lbl">{{ $vacancy->city->country }} , {{ $vacancy->city->region }}</div>
+                                    <div class="stat-lbl">{{ __($vacancy->city->country) }} , {{ __($vacancy->city->region) }}</div>
                                 @endif
                             </div>
                         </div>

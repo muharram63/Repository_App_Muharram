@@ -18,11 +18,10 @@
         .resp-row:last-child{border-bottom:none;}
         .resp-ava{
             width:44px; height:44px; border-radius:50%; flex-shrink:0; overflow:hidden;
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-weight:800;
         }
         .resp-ava.square{border-radius:12px;}
-        :root[data-theme="dark"] .resp-ava{color:var(--accent);}
         .resp-body{flex:1; min-width:0;}
         .resp-title{font-weight:700; font-size:15.5px;}
         .resp-meta{font-size:13px; color:var(--text-muted); margin-top:3px;}
@@ -46,10 +45,10 @@
 
     @php
         $statusLabels = [
-            'new' => 'Новый',
-            'viewed' => 'Просмотрен',
-            'accepted' => 'Принят',
-            'rejected' => 'Отклонён',
+            'new' => __('Новый'),
+            'viewed' => __('Просмотрен'),
+            'accepted' => __('Принят'),
+            'rejected' => __('Отклонён'),
         ];
         $isApplicant = $user->role === 'applicant';
     @endphp
@@ -59,7 +58,7 @@
 
             <div class="section-head">
                 <div class="eyebrow">{{ __('Отклики') }}</div>
-                <h2>{{ $isApplicant ? 'Ваши отклики и приглашения' : 'Отклики соискателей и ваши приглашения' }}</h2>
+                <h2>{{ $isApplicant ? __('Ваши отклики и приглашения') : __('Отклики соискателей и ваши приглашения') }}</h2>
                 <p>{{ __('Кто откликнулся, когда и на что — в одном месте.') }}</p>
             </div>
 
@@ -95,12 +94,12 @@
                                     @if($vacancy)
                                         <a href="{{ route('public.vacancies.show', $vacancy) }}">{{ $vacancy->title }}</a>
                                     @else
-                                        Вакансия удалена
+                                        {{ __('Вакансия удалена') }}
                                     @endif
                                 </div>
                                 <div class="resp-meta">
                                     {{ $vacancy?->employer?->company_name ?: '—' }}
-                                    @if($vacancy?->city) · {{ $vacancy->city->country }}, {{ $vacancy->city->region }} @endif
+                                    @if($vacancy?->city) · {{ __($vacancy->city->country) }}, {{ __($vacancy->city->region) }} @endif
                                     · отклик от {{ $response->created_at->format('d.m.Y H:i') }}
                                 </div>
                                 @if($response->message)
@@ -131,7 +130,7 @@
                                     @if($resume)
                                         <a href="{{ route('public.resumes.show', $resume) }}">{{ $resume->profession }}</a>
                                     @else
-                                        Резюме удалено
+                                        {{ __('Резюме удалено') }}
                                     @endif
                                 </div>
                                 <div class="resp-meta">
@@ -187,7 +186,7 @@
                                     @if($employer)
                                         <a href="{{ route('public.companies.show', $employer) }}">{{ $employer->company_name }}</a>
                                     @else
-                                        Компания удалена
+                                        {{ __('Компания удалена') }}
                                     @endif
                                 </div>
                                 <div class="resp-meta">

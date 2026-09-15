@@ -17,10 +17,9 @@
             width:46px; height:46px; border-radius:50%; flex-shrink:0; object-fit:cover;
         }
         .chat-ava{
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-weight:800; font-size:17px;
         }
-        :root[data-theme="dark"] .chat-ava{color:var(--accent);}
         .chat-body{flex:1; min-width:0;}
         .chat-name{font-weight:700; font-size:15.5px;}
         .chat-last{
@@ -66,9 +65,9 @@
                     <div class="e">💬</div>
                     <p>
                         @if($isEmployer)
-                            Диалогов пока нет. Откройте резюме кандидата или отклик на вакансию — там есть кнопка «Написать».
+                            {{ __('Диалогов пока нет. Откройте резюме кандидата или отклик на вакансию — там есть кнопка «Написать».') }}
                         @else
-                            Диалогов пока нет. Напишите компании со страницы вакансии — кнопка «Написать работодателю».
+                            {{ __('Диалогов пока нет. Напишите компании со страницы вакансии — кнопка «Написать работодателю».') }}
                         @endif
                     </p>
                 </div>
@@ -78,7 +77,7 @@
                         @php
                             $counterName = $isEmployer
                                 ? ($conversation->applicant?->user?->name ?? 'Соискатель удалён')
-                                : ($conversation->employer?->company_name ?? 'Компания удалена');
+                                : ($conversation->employer?->company_name ?? __('Компания удалена'));
                             $counterAvatar = $isEmployer
                                 ? $conversation->applicant?->user?->avatar
                                 : $conversation->employer?->user?->avatar;

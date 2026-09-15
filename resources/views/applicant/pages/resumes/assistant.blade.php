@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -49,7 +49,9 @@
 
         .ai-grid {
             display: grid;
-            grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+            /* одна колонка: сверху разговор, под ним черновик во всю ширину —
+               лист резюме видно целиком, а не в узкой боковой полосе */
+            grid-template-columns: minmax(0, 1fr);
             gap: 22px;
             align-items: start;
         }
@@ -221,10 +223,11 @@
         .ai-send:disabled { opacity: .5; cursor: default; }
 
         /* ---------- превью резюме ---------- */
-        .ai-paper { position: sticky; top: 18px; }
+        .ai-paper { position: static; }
         /* лист внутри карточки: рамку задаёт выбранное оформление */
         .ai-sheet {
-            padding: 26px 28px 30px; min-height: 320px; margin: 18px 22px 22px;
+            padding: 26px 28px 30px; min-height: 320px;
+            margin: 18px auto 22px; max-width: min(820px, calc(100% - 44px));
             background: #fff; overflow: hidden;
             border: 1px solid rgba(44, 95, 224, .14); border-radius: 8px;
             box-shadow: 0 16px 36px -26px rgba(7, 20, 51, .5);
@@ -299,6 +302,8 @@
         .ai-skin-tech { background: repeating-linear-gradient(90deg, #0F766E 0 4px, #CCFBF1 4px 8px); }
         .ai-skin-warm { background: linear-gradient(135deg, #C2410C, #FED7AA); }
         .ai-skin-night { background: linear-gradient(135deg, #111827, #7C9CFF); }
+        .ai-skin-blueprint { background: #0B2340 repeating-linear-gradient(90deg, rgba(127,227,240,.55) 0 1px, transparent 1px 6px); }
+        .ai-skin-brutal { background: linear-gradient(135deg, #FFE600 50%, #0A0A0A 50%); }
 
         /* ---------- оформление 2: современное ---------- */
         /* акцентная полоса слева, крупное имя, разделы без линеек */
@@ -334,11 +339,11 @@
         /* ---------- оформление 4: строгое ---------- */
         /* типографика без цвета — для консервативных отраслей */
         .ai-sheet[data-skin="strict"] {
-            font-family: Georgia, 'Times New Roman', serif;
+            font-family: Georgia, 'PT Serif', Cambria, 'Times New Roman', serif;
             /* прямые углы и жёсткая рамка — документ, а не карточка */
             border-radius: 0; border: 2px solid #111827; box-shadow: none;
         }
-        .ai-sheet[data-skin="strict"] .ai-name { font-family: Georgia, serif; font-weight: 700; letter-spacing: -.2px; }
+        .ai-sheet[data-skin="strict"] .ai-name { font-family: Georgia, 'PT Serif', Cambria, serif; font-weight: 700; letter-spacing: -.2px; }
         .ai-sheet[data-skin="strict"] .ai-role,
         .ai-sheet[data-skin="strict"] .ai-job-co { color: #1F2937; font-style: italic; }
         .ai-sheet[data-skin="strict"] .ai-sec-title {
@@ -346,7 +351,7 @@
         }
         .ai-sheet[data-skin="strict"] .ai-tag {
             background: #fff; color: #1F2937; border: 0; border-radius: 0; padding: 2px 0;
-            font-family: Georgia, serif;
+            font-family: Georgia, 'PT Serif', Cambria, serif;
         }
         /* без плашек список навыков читается строкой через запятую */
         .ai-sheet[data-skin="strict"] .ai-tag:not(:last-child)::after { content: ","; }
@@ -422,7 +427,7 @@
             border-top: 6px solid #111827; box-shadow: 0 14px 34px -28px rgba(17, 24, 39, .9);
         }
         .ai-sheet[data-skin="editorial"] .ai-name {
-            font-family: Georgia, serif; font-size: 32px; line-height: 1.05;
+            font-family: Georgia, 'PT Serif', Cambria, serif; font-size: 32px; line-height: 1.05;
         }
         .ai-sheet[data-skin="editorial"] .ai-role { color: #111827; font-weight: 500; }
         .ai-sheet[data-skin="editorial"] .ai-sec-title {
@@ -490,6 +495,77 @@
         }
         .ai-sheet[data-skin="night"] .ai-empty { color: #8896AE; }
 
+        /* ---------- оформление 12: чертёж ---------- */
+        /* инженерная калька: миллиметровая сетка и циан по тёмно-синему */
+        .ai-sheet[data-skin="blueprint"] {
+            color: #DCF3F8; border: 1px solid #1C4468; border-radius: 0;
+            background-color: #0B2340;
+            background-image:
+                linear-gradient(rgba(127, 227, 240, .09) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(127, 227, 240, .09) 1px, transparent 1px);
+            background-size: 22px 22px;
+            box-shadow: 0 26px 54px -30px rgba(3, 18, 38, .95);
+        }
+        .ai-sheet[data-skin="blueprint"] .ai-name {
+            color: #FFFFFF; text-transform: uppercase; letter-spacing: .06em;
+        }
+        .ai-sheet[data-skin="blueprint"] .ai-role { color: #7FE3F0; letter-spacing: .14em; }
+        .ai-sheet[data-skin="blueprint"] .ai-meta,
+        .ai-sheet[data-skin="blueprint"] .ai-text,
+        .ai-sheet[data-skin="blueprint"] .ai-job li,
+        .ai-sheet[data-skin="blueprint"] .ai-list li { color: #B9DCE8; }
+        .ai-sheet[data-skin="blueprint"] .ai-sec-title {
+            color: #7FE3F0; border-bottom: 1px dashed #1C4468; letter-spacing: .2em;
+        }
+        .ai-sheet[data-skin="blueprint"] .ai-job-role { color: #DCF3F8; }
+        .ai-sheet[data-skin="blueprint"] .ai-job-co { color: #7FE3F0; }
+        /* подписи как на чертеже — моноширинные */
+        .ai-sheet[data-skin="blueprint"] .ai-job-when,
+        .ai-sheet[data-skin="blueprint"] .ai-meta,
+        .ai-sheet[data-skin="blueprint"] .ai-tag {
+            font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+            font-size: 12px;
+        }
+        .ai-sheet[data-skin="blueprint"] .ai-job-when { color: #7FA8C0; }
+        .ai-sheet[data-skin="blueprint"] .ai-tag {
+            background: transparent; color: #A8DCEC;
+            border: 1px dashed #2E6486; border-radius: 0;
+        }
+        .ai-sheet[data-skin="blueprint"] .ai-empty { color: #7FA8C0; }
+
+        /* ---------- оформление 13: брутальное ---------- */
+        /* жирные чёрные рамки, ноль скруглений, жёсткая тень со сдвигом */
+        .ai-sheet[data-skin="brutal"] {
+            background: #FCFBF7; color: #0A0A0A;
+            border: 3px solid #0A0A0A; border-radius: 0;
+            box-shadow: 10px 10px 0 #0A0A0A;
+        }
+        .ai-sheet[data-skin="brutal"] .ai-name {
+            color: #0A0A0A; text-transform: uppercase; font-weight: 900;
+            letter-spacing: -.04em; line-height: .95;
+        }
+        .ai-sheet[data-skin="brutal"] .ai-role {
+            color: #0A0A0A; background: #FFE600; display: inline-block;
+            padding: 2px 8px; text-transform: uppercase; letter-spacing: .16em;
+        }
+        .ai-sheet[data-skin="brutal"] .ai-meta,
+        .ai-sheet[data-skin="brutal"] .ai-job-when {
+            font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+            font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #3F3F3F;
+        }
+        /* заголовок раздела — вывернутая плашка, а не подчёркивание */
+        .ai-sheet[data-skin="brutal"] .ai-sec-title {
+            background: #0A0A0A; color: #FCFBF7; border: 0;
+            padding: 4px 9px; display: inline-block; letter-spacing: .14em;
+        }
+        .ai-sheet[data-skin="brutal"] .ai-job-role { color: #0A0A0A; font-weight: 800; }
+        .ai-sheet[data-skin="brutal"] .ai-job-co { color: #0A0A0A; }
+        .ai-sheet[data-skin="brutal"] .ai-tag {
+            background: #FCFBF7; color: #0A0A0A;
+            border: 2px solid #0A0A0A; border-radius: 0; font-weight: 600;
+        }
+        .ai-sheet[data-skin="brutal"] .ai-empty { color: #3F3F3F; }
+
         /* ---------- финал ---------- */
         .ai-final { padding: 0 26px 24px; }
         .ai-final label { display: block; font-size: 12.5px; font-weight: 600; color: var(--slate); margin: 14px 0 6px; }
@@ -552,11 +628,6 @@
             .ai-msg, .ai-sec { animation: none; }
             .ai-fresh { animation: none; }
             .ai-progress span { transition: none; }
-        }
-
-        @media (max-width: 1200px) {
-            .ai-grid { grid-template-columns: 1fr; }
-            .ai-paper { position: static; }
         }
     </style>
 </head>

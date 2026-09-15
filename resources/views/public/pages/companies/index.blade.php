@@ -2,7 +2,6 @@
 
 
 @section('content')
-    <link href="{{asset('assets/css.1/bootstrap.css')}}" rel="stylesheet">
     <style>
         .companies-page {
             background: var(--bg);
@@ -83,6 +82,28 @@
             justify-content: center;
         }
 
+        /* родитель — колонка с центрированием, поэтому ширину задаём явно;
+           раньше ширина задавалась в единицах высоты окна и плыла при ресайзе */
+        .company-search-wrap { width: min(560px, 100%); }
+
+        /* своё поле поиска: ради одного чужого класса страница тянула 280 КБ bootstrap */
+        .company-search {
+            font-family: inherit;
+            width: 100%;
+            padding: 11px 18px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+        }
+        .company-search::placeholder { color: var(--text-muted); }
+        .company-search:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+
         .filter-select {
             font-family: inherit;
             padding: 10px 36px 10px 16px;
@@ -122,8 +143,6 @@
             background: var(--surface);
         }
 
-        :root[data-theme="dark"] .company-card-tags .tag { color: var(--accent); }
-        :root[data-theme="dark"] .company-avatar-fallback { color: #fff; }
 
         .companies-count {
             text-align: center;
@@ -233,7 +252,7 @@
         .company-card-tags .tag {
             font-size: 12px;
             font-weight: 600;
-            color: var(--accent-ink);
+            color: var(--accent-text);
             background: var(--accent-soft);
             padding: 4px 10px;
             border-radius: 999px;
@@ -295,7 +314,7 @@
 
             <form class="companies-controls" action="{{ route('public.companies.index') }}" method="get">
                 <div class="company-search-wrap">
-                    <input type="text" name="q" value="{{ $query }}" class="form-control" style="width: 77vh;border-radius: 4vh;"
+                    <input type="text" name="q" value="{{ $query }}" class="company-search"
                            placeholder="{{ __('Поиск по имени, email, компании или стране...') }}" >
                 </div>
 
@@ -303,18 +322,18 @@
                     <select name="category" class="filter-select">
                         <option value="">{{ __('Все категории') }}</option>
                         @foreach($categoriesList as $category)
-                            <option value="{{ $category->id }}" @selected((string) $categoryId === (string) $category->id)>{{ $category->name }}</option>
+                            <option value="{{ $category->id }}" @selected((string) $categoryId === (string) $category->id)>{{ __($category->name) }}</option>
                         @endforeach
                     </select>
 
-                    <select name="industry" class="filter-select" style="width: 25vh">
+                    <select name="industry" class="filter-select">
                         <option value="">{{ __('Все индустрии') }}</option>
                         @foreach($industriesList as $industry)
-                            <option value="{{ $industry->id }}" @selected((string) $industryId === (string) $industry->id)>{{ $industry->name }}</option>
+                            <option value="{{ $industry->id }}" @selected((string) $industryId === (string) $industry->id)>{{ __($industry->name) }}</option>
                         @endforeach
                     </select>
 
-                    <button type="submit" class="filter-select" style="cursor:pointer; background:#4F46E5; color:#fff; border-color:#4F46E5; font-weight:700;width: 12.7vh;">{{ __('Найти') }}</button>
+                    <button type="submit" class="filter-select" style="cursor:pointer; background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700;">{{ __('Найти') }}</button>
                 </div>
             </form>
 
@@ -348,10 +367,10 @@
 
                         <div class="company-card-tags">
                             @if($company->category)
-                                <span class="tag">{{ $company->category->name }}</span>
+                                <span class="tag">{{ __($company->category->name) }}</span>
                             @endif
                             @if($company->industry)
-                                <span class="tag">{{ $company->industry->name }}</span>
+                                <span class="tag">{{ __($company->industry->name) }}</span>
                             @endif
                         </div>
 
@@ -368,7 +387,7 @@
                                     <path d="M12 21C12 21 19 15.5 19 10C19 6.13 15.87 3 12 3C8.13 3 5 6.13 5 10C5 15.5 12 21 12 21Z" stroke="currentColor" stroke-width="1.5"/>
                                     <circle cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="1.5"/>
                                 </svg>
-                                <span>{{ $company->city ? $company->city->country.', '.$company->city->region : 'Город не указан' }}</span>
+                                <span>{{ $company->city ? __($company->city->country).', '.__($company->city->region) : __('Город не указан') }}</span>
                             </div>
                             <div class="meta-row">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

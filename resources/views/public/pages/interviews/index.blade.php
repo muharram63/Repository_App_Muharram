@@ -15,11 +15,10 @@
         .iv-stat .icn{
             width:48px; height:48px; border-radius:14px; flex-shrink:0;
             background:color-mix(in srgb, var(--accent) 12%, transparent);
-            color:var(--accent-ink);
+            color:var(--accent-text);
             display:flex; align-items:center; justify-content:center;
         }
         .iv-stat .icn svg{width:24px; height:24px;}
-        :root[data-theme="dark"] .iv-stat .icn{color:var(--accent);}
         .iv-stat .n{font-size:24px; font-weight:800; line-height:1;}
         .iv-stat .l{font-size:12.5px; color:var(--text-muted); margin-top:4px;}
 
@@ -64,10 +63,9 @@
         .iv-who{display:flex; align-items:center; gap:11px; min-width:0;}
         .iv-ava, .iv-ava-img{width:40px; height:40px; border-radius:50%; flex-shrink:0; object-fit:cover;}
         .iv-ava{
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px;
         }
-        :root[data-theme="dark"] .iv-ava{color:var(--accent);}
         .iv-name{font-weight:700; font-size:15.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
         .iv-role{font-size:12.5px; color:var(--text-muted); margin-top:2px;}
 
@@ -211,7 +209,7 @@
                             @php
                                 $counterName = $isEmployerUser
                                     ? ($interview->applicant?->user?->name ?? 'Соискатель удалён')
-                                    : ($interview->employer?->company_name ?? 'Компания удалена');
+                                    : ($interview->employer?->company_name ?? __('Компания удалена'));
                                 $counterAvatar = $isEmployerUser
                                     ? $interview->applicant?->user?->avatar
                                     : $interview->employer?->user?->avatar;

@@ -1,8 +1,5 @@
 <!DOCTYPE html>
-@php
-    $appTheme = auth()->check() ? (auth()->user()->theme ?: 'light') : session('theme', 'light');
-@endphp
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="{{ $appTheme === 'dark' ? 'dark' : 'light' }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -23,7 +20,7 @@
             position:absolute;
             width:550px;
             height:550px;
-            background:rgba(61,90,254,.18);
+            background:var(--glow-a);
             border-radius:50%;
             filter:blur(120px);
             top:-180px;
@@ -36,7 +33,7 @@
             position:absolute;
             width:420px;
             height:420px;
-            background:rgba(0,200,255,.12);
+            background:var(--glow-b);
             border-radius:50%;
             filter:blur(110px);
             bottom:-150px;
@@ -231,7 +228,7 @@
             }
 
         }
-        :root[data-theme="light"]{
+        :root{
             --bg:#F7F8FB;
             --surface:#FFFFFF;
             --surface-alt:#F1F3F8;
@@ -244,6 +241,13 @@
             --warn:#FF8A3D;
             --good:#1FAE6E;
             --shadow: 0 16px 40px -16px rgba(23,27,44,.16);
+            --accent-text:#2A3FCC;
+            /* освещение и скругление: на светлой теме подсветка почти незаметна */
+            --glow-a:rgba(61,90,254,.10);
+            --glow-b:rgba(0,200,255,.07);
+            --art-radius:26px;
+            --art-dim:0;
+            --art-glow:0 30px 70px -40px rgba(23,27,44,.35);
         }
         :root[data-theme="dark"]{
             --bg:#0E1120;
@@ -257,8 +261,44 @@
             --accent-soft:#202750;
             --warn:#FFA15C;
             --good:#36CC8E;
-            --shadow: 0 16px 40px -16px rgba(0,0,0,.55);
+            --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px -16px rgba(0,0,0,.7);
+            --accent-text:#8C9CFF;
+            /* на тёмной теме подсветка работает в полную силу */
+            --glow-a:rgba(110,132,255,.22);
+            --glow-b:rgba(0,200,255,.13);
+            --art-radius:26px;
+            /* затемнение картинки: без него она светится пятном на тёмном фоне */
+            --art-dim:.42;
+            --art-glow:0 40px 90px -50px rgba(110,132,255,.5);
         }
+        /* «системная» тема: атрибута нет, решает настройка устройства.
+           :not([data-theme="light"]) нужен, чтобы явно выбранная светлая
+           тема побеждала тёмную систему. */
+        @media (prefers-color-scheme: dark){
+            :root:not([data-theme="light"]){
+            --bg:#0E1120;
+            --surface:#161A2C;
+            --surface-alt:#1D2238;
+            --border:#272C45;
+            --text:#F2F3F9;
+            --text-muted:#8A8FA8;
+            --accent:#6E84FF;
+            --accent-ink:#8C9CFF;
+            --accent-soft:#202750;
+            --warn:#FFA15C;
+            --good:#36CC8E;
+            --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px -16px rgba(0,0,0,.7);
+            --accent-text:#8C9CFF;
+            /* на тёмной теме подсветка работает в полную силу */
+            --glow-a:rgba(110,132,255,.22);
+            --glow-b:rgba(0,200,255,.13);
+            --art-radius:26px;
+            /* затемнение картинки: без него она светится пятном на тёмном фоне */
+            --art-dim:.42;
+            --art-glow:0 40px 90px -50px rgba(110,132,255,.5);
+            }
+        }
+
         *{box-sizing:border-box; margin:0; padding:0;}
         body{
             font-family:'Inter', sans-serif;
@@ -316,11 +356,10 @@
         .hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center;}
         .eyebrow{
             display:inline-flex; align-items:center; gap:8px;
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             font-size:12.5px; font-weight:700; padding:7px 13px; border-radius:99px;
             margin-bottom:22px;
         }
-        :root[data-theme="dark"] .eyebrow{color:var(--accent);}
         .eyebrow .dot{width:6px; height:6px; border-radius:50%; background:var(--good);}
         h1.hero-title{
             font-size:50px; line-height:1.08; font-weight:800; letter-spacing:-1.2px;
@@ -353,6 +392,41 @@
             border:1px solid var(--border); padding:6px 12px; border-radius:99px;
         }
 
+        /*
+         * Картинка героя. Раньше это был голый <img> без единого правила:
+         * прямоугольник с резкими краями просто лежал поверх фона, и было
+         * видно, что он «приклеен». Теперь у него скругление, края растворены
+         * маской, снизу подсветка, а на тёмной теме сверху лежит затемнение —
+         * иначе светлый рисунок светится пятном.
+         */
+        .hero-art{
+            position:relative;
+            max-width:477px;
+            margin-inline:auto;
+            border-radius:var(--art-radius);
+            overflow:hidden;
+            box-shadow:var(--art-glow);
+            isolation:isolate;
+        }
+        .hero-art img{
+            display:block;
+            width:100%;
+            height:auto;
+            border-radius:var(--art-radius);
+            /* края уходят в фон, а не обрываются рамкой */
+            -webkit-mask-image:radial-gradient(115% 115% at 50% 45%, #000 58%, transparent 100%);
+            mask-image:radial-gradient(115% 115% at 50% 45%, #000 58%, transparent 100%);
+        }
+        /* затемнение: на светлой теме прозрачность 0, слой просто не виден */
+        .hero-art::after{
+            content:"";
+            position:absolute; inset:0;
+            border-radius:var(--art-radius);
+            background:linear-gradient(160deg, rgba(14,17,32,.15), rgba(14,17,32,.85));
+            opacity:var(--art-dim);
+            pointer-events:none;
+        }
+
         /* hero visual: mock dashboard card */
         .hero-visual{position:relative;}
         .float-card{
@@ -372,8 +446,7 @@
         .fc-row:last-child{border-bottom:none;}
         .fc-job{font-weight:600;}
         .fc-co{color:var(--text-muted); font-size:12px;}
-        .fc-salary{font-weight:700; color:var(--accent-ink); font-size:13px;}
-        :root[data-theme="dark"] .fc-salary{color:var(--accent);}
+        .fc-salary{font-weight:700; color:var(--accent-text); font-size:13px;}
         .float-stat{
             position:absolute; bottom:-22px; left:-26px;
             background:var(--surface); border:1px solid var(--border); border-radius:14px;
@@ -383,9 +456,8 @@
         .float-stat .lbl{font-size:11.5px; color:var(--text-muted); font-weight:600;}
         .float-icn{
             width:38px; height:38px; border-radius:10px; background:var(--accent-soft);
-            display:flex; align-items:center; justify-content:center; color:var(--accent-ink); flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; color:var(--accent-text); flex-shrink:0;
         }
-        :root[data-theme="dark"] .float-icn{color:var(--accent);}
 
         /* ===== LOGO STRIP ===== */
         .logo-strip{padding:36px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border);}
@@ -403,11 +475,10 @@
         .stat-icon{
             width:52px; height:52px; border-radius:14px; margin-bottom:14px;
             background:color-mix(in srgb, var(--accent) 12%, transparent);
-            color:var(--accent-ink);
+            color:var(--accent-text);
             display:flex; align-items:center; justify-content:center;
         }
         .stat-icon svg{width:26px; height:26px;}
-        :root[data-theme="dark"] .stat-icon{color:var(--accent);}
         .stat-num{font-size:30px; font-weight:800; margin-bottom:4px;}
         .stat-lbl{font-size:13px; color:var(--text-muted); font-weight:500;}
 
@@ -423,8 +494,7 @@
             position:relative; overflow:hidden;
         }
         .audience-card.company{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
-        .audience-kicker{font-size:12px; font-weight:700; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.6px; margin-bottom:10px;}
-        :root[data-theme="dark"] .audience-kicker{color:var(--accent);}
+        .audience-kicker{font-size:12px; font-weight:700; color:var(--accent-text); text-transform:uppercase; letter-spacing:.6px; margin-bottom:10px;}
         .audience-card h3{font-size:22px; font-weight:800; margin-bottom:10px;}
         .audience-card p{color:var(--text-muted); font-size:14.5px; line-height:1.6; margin-bottom:22px;}
         .step-list{display:flex; flex-direction:column; gap:14px; margin-bottom:24px;}
@@ -445,10 +515,9 @@
         }
         .cat-card:hover{border-color:var(--accent); transform:translateY(-2px);}
         .cat-icn{
-            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-ink);
+            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; margin-bottom:14px;
         }
-        :root[data-theme="dark"] .cat-icn{color:var(--accent);}
         .cat-name{font-weight:700; font-size:14.5px; margin-bottom:3px;}
         .cat-count{font-size:12.5px; color:var(--text-muted);}
 
@@ -462,7 +531,7 @@
         .cta-band p{opacity:.9; font-size:14.5px; max-width:420px;}
         .cta-actions{display:flex; gap:12px;}
         .btn-white{
-            background:#fff; color:var(--accent-ink); padding:12px 22px; border-radius:10px;
+            background:#fff; color:var(--accent-text); padding:12px 22px; border-radius:10px;
             font-weight:700; font-size:14.5px; border:none; cursor:pointer;
         }
         .btn-outline-white{
@@ -507,8 +576,7 @@
         margin-top:auto; padding-top:14px; border-top:1px solid var(--border);
         display:flex; align-items:center; justify-content:space-between; gap:10px;
     }
-    .job-salary{font-weight:800; color:var(--accent-ink); font-size:15px; white-space:nowrap;}
-    :root[data-theme="dark"] .job-salary{color:var(--accent);}
+    .job-salary{font-weight:800; color:var(--accent-text); font-size:15px; white-space:nowrap;}
     .job-link{font-size:13.5px; font-weight:700; color:var(--accent);}
     .section-actions{margin-top:28px; display:flex; gap:12px; flex-wrap:wrap;}
     .empty-block{
@@ -541,11 +609,10 @@
     .about-icn{
         width:52px; height:52px; border-radius:14px; margin-bottom:16px;
         background:color-mix(in srgb, var(--accent) 12%, transparent);
-        color:var(--accent-ink);
+        color:var(--accent-text);
         display:flex; align-items:center; justify-content:center;
     }
     .about-icn svg{width:26px; height:26px;}
-    :root[data-theme="dark"] .about-icn{color:var(--accent);}
     .about-card h3{font-size:15px; font-weight:700; margin-bottom:7px;}
     .about-card p{font-size:13.5px; color:var(--text-muted); line-height:1.6;}
 
@@ -583,10 +650,9 @@
         width:46px; height:46px; border-radius:12px; flex-shrink:0; object-fit:cover;
     }
     .co-logo{
-        background:var(--accent-soft); color:var(--accent-ink);
+        background:var(--accent-soft); color:var(--accent-text);
         display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px;
     }
-    :root[data-theme="dark"] .co-logo{color:var(--accent);}
     .co-name{
         font-weight:700; font-size:15.5px; overflow:hidden;
         text-overflow:ellipsis; white-space:nowrap;
@@ -597,12 +663,21 @@
         display:flex; align-items:center; justify-content:space-between; gap:10px;
         font-size:12.5px; color:var(--text-muted); flex-wrap:wrap;
     }
-    .co-count{font-weight:700; color:var(--accent-ink); white-space:nowrap;}
-    :root[data-theme="dark"] .co-count{color:var(--accent);}
+    .co-count{font-weight:700; color:var(--accent-text); white-space:nowrap;}
     @media (max-width:1024px){ .co-grid{grid-template-columns:repeat(2,1fr);} }
     @media (max-width:720px){ .co-grid{grid-template-columns:1fr;} }
     @media (max-width:1024px){ .job-grid{grid-template-columns:repeat(2,1fr);} }
     @media (max-width:720px){ .job-grid{grid-template-columns:1fr;} }
+        /* ---------- перенос длинных подписей ----------
+        Таджикские строки заметно длиннее русских: «Зачтено» превращается
+        в «Ба ҳисоб гирифта шуд», «Email» — в «Почтаи электронӣ». Без этого
+        подпись выходит за рамку кнопки или карточки. break-word срабатывает
+        только когда слово физически не помещается, поэтому вёрстку
+        на русском не трогает. */
+        h1, h2, h3, h4, p, li, td, th, label, button, a,
+        .btn, .chip, .tag, .badge, .pill {
+        overflow-wrap: break-word;
+        }
 </style>
 
 <div class="liquid-bg"></div>
@@ -610,7 +685,7 @@
 <section class="hero">
     <div class="container hero-grid">
         <div>
-            <div class="eyebrow"><span class="dot"></span>{{ $activeVacancies }} активных вакансий</div>
+            <div class="eyebrow"><span class="dot"></span>{{ $activeVacancies }} {{ __('активных вакансий') }}</div>
             <h1 class="hero-title">{{ __('Работа мечты') }}<br>{{ __('и сильная команда') }} <em>{{ __('в одном месте') }}</em></h1>
             <p class="hero-sub">{{ __('Workio соединяет компании и соискателей: умный поиск, быстрые отклики и прозрачная модерация — всё в одной панели.') }}</p>
 
@@ -650,7 +725,9 @@
                 <a href="{{ route('public.vacancies.index') }}" class="btn-ghost">{{ __('Ищу работу') }}</a>
             </div>
 
-            <img src="{{ asset('assets/img/hh_ru.png') }}" alt="Workio" width="477" height="477">
+            <div class="hero-art">
+                <img src="{{ asset('assets/img/hh_ru.png') }}" alt="Workio" width="477" height="477">
+            </div>
         </div>
     </div>
 </section>
@@ -700,7 +777,7 @@
 
                         <div class="job-meta">
                             @if($vacancy->city)
-                                <span class="tag-chip">📍 {{ $vacancy->city->country }}, {{ $vacancy->city->region }}</span>
+                                <span class="tag-chip">📍 {{ __($vacancy->city->country) }}, {{ __($vacancy->city->region) }}</span>
                             @endif
                             <span class="tag-chip">👥 {{ $vacancy->responses_count }} {{ __('откликов') }}</span>
                             <span class="tag-chip">👁 {{ $vacancy->views }} {{ __('просмотров') }}</span>
@@ -743,7 +820,7 @@
                                      style="width:44px; height:44px; border-radius:50%; object-fit:cover;">
                             @else
                                 <div style="width:44px; height:44px; border-radius:50%; background:var(--accent-soft);
-                                            color:var(--accent-ink); display:flex; align-items:center; justify-content:center;
+                                            color:var(--accent-text); display:flex; align-items:center; justify-content:center;
                                             font-weight:800;">{{ $resumeUser->initials(1) }}</div>
                             @endif
                             <div>
@@ -799,13 +876,13 @@
                             @endif
                             <div style="min-width:0;">
                                 <div class="co-name">{{ $company->company_name }}</div>
-                                <div class="co-sub">{{ $company->industry->name ?? 'Компания' }}</div>
+                                <div class="co-sub">{{ $company->industry ? __($company->industry->name) : __('Компания') }}</div>
                             </div>
                         </div>
 
                         <div class="co-foot">
                             <span class="co-city">
-                                📍 {{ $company->city ? $company->city->country.', '.$company->city->region : 'Город не указан' }}
+                                📍 {{ $company->city ? __($company->city->country).', '.__($company->city->region) : __('Город не указан') }}
                             </span>
                             <span class="co-count">{{ $company->vacancies_count }} вакансий</span>
                         </div>
@@ -830,12 +907,8 @@
 
         <div class="about-lead">
             <div class="about-text">
-                <p><b>Workio</b> — это job-платформа с двумя кабинетами. Соискатель один раз заполняет анкету
-                и публикует резюме, работодатель — карточку компании и вакансии. Дальше всё происходит в один клик:
-                отклик на вакансию, приглашение на резюме, статус «принят» или «отклонён».</p>
-                <p style="margin-top:14px;">Никаких скрытых тарифов и платных откликов: публикация вакансий и резюме,
-                поиск и переписка по откликам доступны сразу после регистрации. Модерация следит за тем,
-                чтобы в каталоге не было дублей и фиктивных вакансий.</p>
+                <p><b>Workio</b> {{ __('— это job-платформа с двумя кабинетами. Соискатель один раз заполняет анкету и публикует резюме, работодатель — карточку компании и вакансии. Дальше всё происходит в один клик: отклик на вакансию, приглашение на резюме, статус «принят» или «отклонён».') }}</p>
+                <p style="margin-top:14px;">{{ __('Никаких скрытых тарифов и платных откликов: публикация вакансий и резюме, поиск и переписка по откликам доступны сразу после регистрации. Модерация следит за тем, чтобы в каталоге не было дублей и фиктивных вакансий.') }}</p>
             </div>
 
             <div class="about-numbers">

@@ -67,12 +67,12 @@ class AdminComment extends Model
 
     public function topicLabel(): string
     {
-        return self::TOPICS[$this->topic] ?? $this->topic;
+        return __(self::TOPICS[$this->topic] ?? $this->topic);
     }
 
     public function statusLabel(): string
     {
-        return self::STATUSES[$this->status] ?? $this->status;
+        return __(self::STATUSES[$this->status] ?? $this->status);
     }
 
     /**
@@ -107,7 +107,7 @@ class AdminComment extends Model
 
     public function userStatusLabel(): string
     {
-        return self::STATUSES[$this->userStatusKey()] ?? $this->userStatusKey();
+        return __(self::STATUSES[$this->userStatusKey()] ?? $this->userStatusKey());
     }
 
     /**

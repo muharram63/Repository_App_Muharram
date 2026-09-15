@@ -119,14 +119,29 @@ test('a change that cannot affect the breakdown does not cost a recount', functi
     expect($analyst->calls)->toBe(1);
 });
 
-test('salary became a criterion, so changing it refreshes the breakdown', function () {
+test('зарплата больше не критерий — её правка разбор не пересчитывает', function () {
     $analyst = new FakeAnalyst;
     [$vacancy, $resume, $applicantUser] = matchPair($analyst);
 
     $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
 
-    // зарплата теперь один из критериев процента
+    // зарплата и город на процент не влияют, поэтому пересчитывать нечего:
+    // повторный разбор стоил бы запроса к модели впустую
     $resume->update(['desired_salary' => 99000]);
+    $vacancy->update(['salary_to' => 99000]);
+
+    $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
+
+    expect($analyst->calls)->toBe(1);
+});
+
+test('языки — критерий, поэтому их правка разбор обновляет', function () {
+    $analyst = new FakeAnalyst;
+    [$vacancy, $resume, $applicantUser] = matchPair($analyst);
+
+    $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
+
+    $resume->update(['languages' => 'русский, английский C1']);
 
     $this->actingAs($applicantUser)->getJson('/match/'.$vacancy->id.'/'.$resume->id)->assertOk();
 

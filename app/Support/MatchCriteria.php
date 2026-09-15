@@ -2,43 +2,38 @@
 
 namespace App\Support;
 
-use App\Models\Resume;
-use App\Models\Vacancy;
-
 /**
- * Критерии совпадения кандидата и вакансии, которые считаются точно.
+ * Критерии совпадения кандидата и вакансии.
  *
- * Опыт, зарплата и город — это числа и названия, а не смысл текста: спрашивать
- * о них модель значило бы платить за то, что известно наверняка, и рисковать
- * ошибкой там, где её быть не может. Модели остаются навыки.
+ * Сравниваем только то, что говорит об умении работать: профессию, навыки и
+ * языки. Город и зарплата — условия, о которых договариваются, а не признак
+ * пригодности: кандидат может переехать, работать удалённо или сойтись на
+ * другой сумме, и занижать за это процент значило бы отсеивать подходящих.
+ *
+ * Стаж тоже не считаем. Годы — такая же «корочка», как диплом: они говорят,
+ * сколько человек проработал, а не что он умеет. Умение показывают навыки,
+ * тем более подтверждённые заданием на платформе.
+ *
+ * Все три критерия оценивает модель: строками их не сверить. «Backend-
+ * разработчик» и «PHP-программист» — одно и то же, а требование к языку
+ * обычно спрятано в тексте вакансии, а не в отдельном поле.
  */
 class MatchCriteria
 {
-    /** Сколько лет опыта стоит за каждым значением требования вакансии. */
-    private const EXPERIENCE = [
-        'not' => 0,
-        'year' => 1,
-        '3_years' => 3,
-        '3-6years' => 3,
-        'more_6years' => 6,
-    ];
-
     /**
-     * Вес критерия в общей оценке. Навыки весомее всего: остальное — условия,
-     * о которых можно договориться, а навыков либо нет, либо есть.
+     * Вес критерия в общей оценке. Навыки весомее всего: профессия задаёт
+     * направление, язык — условие допуска, а навыки решают, справится ли человек.
      */
     public const WEIGHTS = [
-        'role' => 20,
-        'skills' => 45,
-        'experience' => 20,
-        'salary' => 8,
-        'city' => 7,
+        'role' => 30,
+        'skills' => 55,
+        'languages' => 15,
     ];
 
     /**
-     * Критерий из ответа модели: направление и навыки сверить строками нельзя.
-     * «Backend-разработчик» и «PHP-программист» — одно и то же, а «Оператор
-     * станка» и «Оператор call-центра» — разное, хотя написано похоже.
+     * Критерий из ответа модели. Состояние вне списка (в том числе когда
+     * модель промолчала) становится unknown и в оценку не идёт — так критерий,
+     * о котором в текстах ничего нет, не занижает результат.
      */
     public static function fromModel(string $key, string $label, ?array $answer): array
     {
@@ -53,89 +48,6 @@ class MatchCriteria
     }
 
     /**
-     * Точные критерии пары. Критерий без данных получает состояние unknown
-     * и в оценку не входит — иначе незаполненное поле занижало бы результат.
-     *
-     * @return array<int,array{key:string,label:string,state:string,note:string}>
-     */
-    public static function for(Vacancy $vacancy, Resume $resume): array
-    {
-        return array_values(array_filter([
-            self::experience($vacancy, $resume),
-            self::salary($vacancy, $resume),
-            self::city($vacancy, $resume),
-        ]));
-    }
-
-    private static function experience(Vacancy $vacancy, Resume $resume): array
-    {
-        $needed = self::EXPERIENCE[$vacancy->experience_required] ?? null;
-        $has = (int) $resume->experience_years;
-
-        if ($needed === null) {
-            return self::row('experience', 'Опыт', 'unknown', 'Требование не указано');
-        }
-
-        if ($needed === 0) {
-            return self::row('experience', 'Опыт', 'ok', 'Опыт не требуется');
-        }
-
-        $note = $has.' '.self::years($has).' при требуемых от '.$needed;
-
-        return self::row('experience', 'Опыт', match (true) {
-            $has >= $needed => 'ok',
-            // год недобора — повод поговорить, а не отказать
-            $has >= $needed - 1 => 'partial',
-            default => 'no',
-        }, $note);
-    }
-
-    private static function salary(Vacancy $vacancy, Resume $resume): array
-    {
-        $wants = (int) $resume->desired_salary;
-        $offers = (int) $vacancy->salary_to;
-
-        if ($wants <= 0 || $offers <= 0) {
-            return self::row('salary', 'Зарплата', 'unknown', 'Не указана с одной из сторон');
-        }
-
-        $note = 'ожидает '.number_format($wants, 0, ',', ' ')
-            .', вакансия до '.number_format($offers, 0, ',', ' ');
-
-        return self::row('salary', 'Зарплата', match (true) {
-            $wants <= $offers => 'ok',
-            // небольшой разрыв обычно закрывается на переговорах
-            $wants <= $offers * 1.15 => 'partial',
-            default => 'no',
-        }, $note);
-    }
-
-    private static function city(Vacancy $vacancy, Resume $resume): array
-    {
-        if ($vacancy->work_schedule === 'remote_work') {
-            return self::row('city', 'Город', 'ok', 'Удалённая работа, город не важен');
-        }
-
-        $where = trim((string) $vacancy->city?->region);
-        $lives = trim((string) $resume->applicant?->city);
-
-        if ($where === '' || $lives === '') {
-            return self::row('city', 'Город', 'unknown', 'Город не указан');
-        }
-
-        $same = mb_strtolower($where) === mb_strtolower($lives)
-            || str_contains(mb_strtolower($where), mb_strtolower($lives))
-            || str_contains(mb_strtolower($lives), mb_strtolower($where));
-
-        return self::row(
-            'city',
-            'Город',
-            $same ? 'ok' : 'no',
-            $same ? $lives : $lives.', вакансия в городе '.$where,
-        );
-    }
-
-    /**
      * Общая оценка: взвешенное среднее по критериям, о которых есть данные.
      *
      * Критерии со state = unknown исключаются, а веса оставшихся
@@ -143,6 +55,15 @@ class MatchCriteria
      */
     public static function score(array $criteria): ?int
     {
+        // Профессия — ворота, а не слагаемое. Если направление другое,
+        // совпадение равно нулю, сколько бы навыков и языков ни совпало:
+        // повару не поможет знание английского, если ищут электрика.
+        // Навыки и языки при этом остаются в разборе — видно, что у человека
+        // есть, просто в процент это не идёт.
+        if (self::roleRejected($criteria)) {
+            return 0;
+        }
+
         $sum = 0;
         $weight = 0;
 
@@ -164,21 +85,26 @@ class MatchCriteria
         return $weight > 0 ? (int) round($sum / $weight * 100) : null;
     }
 
+    /**
+     * Модель прямо сказала, что профессия другая.
+     *
+     * Частичное совпадение воротами не считается: «тестировщик» на
+     * «backend-разработчика» — переход реальный, такой случай считаем обычным
+     * взвешенным средним, где partial стоит половину.
+     */
+    private static function roleRejected(array $criteria): bool
+    {
+        foreach ($criteria as $one) {
+            if ($one['key'] === 'role') {
+                return $one['state'] === 'no';
+            }
+        }
+
+        return false;
+    }
+
     public static function row(string $key, string $label, string $state, string $note): array
     {
         return ['key' => $key, 'label' => $label, 'state' => $state, 'note' => $note];
-    }
-
-    private static function years(int $count): string
-    {
-        $last = $count % 10;
-        $tens = $count % 100;
-
-        return match (true) {
-            $tens >= 11 && $tens <= 14 => 'лет',
-            $last === 1 => 'год',
-            $last >= 2 && $last <= 4 => 'года',
-            default => 'лет',
-        };
     }
 }

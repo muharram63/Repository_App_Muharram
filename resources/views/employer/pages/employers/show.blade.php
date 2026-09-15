@@ -33,7 +33,7 @@
                     <p class="ea-subtitle">
                         {{$employer->job}}
                         <span class="ea-dot">•</span>
-                        {{$employer->city->country}} , {{$employer->city->region}}
+                        {{ __($employer->city->country) }} , {{ __($employer->city->region) }}
                     </p>
 
                     <div class="ea-chips">

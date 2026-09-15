@@ -22,7 +22,7 @@
 
     /* логотип — не сжимается */
     header.site .brand{flex:0 0 auto !important; margin:0 !important; min-width:0;}
-    header.site .brand .hdr-tagline{white-space:nowrap;}
+    header.site .brand .hdr-tagline{white-space:normal; overflow-wrap:break-word; max-width:22ch;}
 
     /* навигация занимает свободное место и сжимается первой */
     header.site nav.main-nav{
@@ -93,8 +93,7 @@
         color:var(--text-muted); white-space:nowrap;
     }
     .lang-menu a:hover{background:var(--surface-alt); color:var(--text);}
-    .lang-menu a.active{background:var(--accent-soft); color:var(--accent-ink);}
-    :root[data-theme="dark"] .lang-menu a.active{color:var(--accent);}
+    .lang-menu a.active{background:var(--accent-soft); color:var(--accent-text);}
 
     header.site .btn-ghost,
     header.site .btn-primary{
@@ -149,12 +148,12 @@
         <div class="brand">
             <a href="{{ route('public.home') }}" class="workio-logo"
                style="display:flex; align-items:center; gap:10px; text-decoration:none;">
-               <img src="{{asset('assets/img/work1.jfif')}}" height="50" width="50" style="border-radius: 2vh;">
+               <img src="{{asset('assets/img/work1.jfif')}}" height="50" width="50" style="border-radius: 12px;">
                 <div style="line-height:1.15;">
-                    <div style="font-family: Arial, sans-serif; font-size: 21px; font-weight: 700; color:#111827; white-space:nowrap;">
-                        Work<span style="color:#4F46E5;">io</span>
+                    <div style="font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif; font-size: 21px; font-weight: 700; color:var(--text); white-space:nowrap;">
+                        Work<span style="color:var(--accent-text);">io</span>
                     </div>
-                    <div class="hdr-tagline" style="font-family: Arial, sans-serif; font-size: 11.5px; color:#6B7280;">
+                    <div class="hdr-tagline" style="font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; color:var(--text-muted);">
                         {{ __('работа без лишних шагов') }}
                     </div>
                 </div>
@@ -166,6 +165,7 @@
             <a href="{{ route('public.vacancies.index') }}">{{ __('Вакансии') }}</a>
             <a href="{{ route('public.companies.index') }}">{{ __('Компании') }}</a>
             <a href="{{ route('public.resumes.index') }}">{{ __('Соискатели') }}</a>
+            <a href="{{ route('public.stats') }}">{{ __('Статистика') }}</a>
             @auth
                 <a href="{{ route('public.responses.index') }}">{{ __('Отклики') }}</a>
                 <a href="{{ route('public.interviews.index') }}">{{ __('Собеседования') }}</a>
@@ -229,6 +229,7 @@
                 <a href="{{ route('public.vacancies.index') }}">{{ __('Вакансии') }}</a>
                 <a href="{{ route('public.companies.index') }}">{{ __('Компании') }}</a>
                 <a href="{{ route('public.resumes.index') }}">{{ __('Соискатели') }}</a>
+                <a href="{{ route('public.stats') }}">{{ __('Статистика') }}</a>
                 @auth
                     <a href="{{ route('public.responses.index') }}">{{ __('Отклики') }}</a>
                     <a href="{{ route('public.interviews.index') }}">{{ __('Собеседования') }}</a>

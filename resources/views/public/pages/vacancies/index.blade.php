@@ -2,7 +2,7 @@
 @section('content')
 
     <style>
-        :root[data-theme="light"]{
+        :root{
             --bg:#F7F8FB;
             --surface:#FFFFFF;
             --surface-alt:#F1F3F8;
@@ -15,6 +15,13 @@
             --warn:#FF8A3D;
             --good:#1FAE6E;
             --shadow: 0 16px 40px -16px rgba(23,27,44,.16);
+            --accent-text:#2A3FCC;
+            /* освещение и скругление: на светлой теме подсветка почти незаметна */
+            --glow-a:rgba(61,90,254,.10);
+            --glow-b:rgba(0,200,255,.07);
+            --art-radius:26px;
+            --art-dim:0;
+            --art-glow:0 30px 70px -40px rgba(23,27,44,.35);
         }
         :root[data-theme="dark"]{
             --bg:#0E1120;
@@ -28,8 +35,44 @@
             --accent-soft:#202750;
             --warn:#FFA15C;
             --good:#36CC8E;
-            --shadow: 0 16px 40px -16px rgba(0,0,0,.55);
+            --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px -16px rgba(0,0,0,.7);
+            --accent-text:#8C9CFF;
+            /* на тёмной теме подсветка работает в полную силу */
+            --glow-a:rgba(110,132,255,.22);
+            --glow-b:rgba(0,200,255,.13);
+            --art-radius:26px;
+            /* затемнение картинки: без него она светится пятном на тёмном фоне */
+            --art-dim:.42;
+            --art-glow:0 40px 90px -50px rgba(110,132,255,.5);
         }
+        /* «системная» тема: атрибута нет, решает настройка устройства.
+           :not([data-theme="light"]) нужен, чтобы явно выбранная светлая
+           тема побеждала тёмную систему. */
+        @media (prefers-color-scheme: dark){
+            :root:not([data-theme="light"]){
+            --bg:#0E1120;
+            --surface:#161A2C;
+            --surface-alt:#1D2238;
+            --border:#272C45;
+            --text:#F2F3F9;
+            --text-muted:#8A8FA8;
+            --accent:#6E84FF;
+            --accent-ink:#8C9CFF;
+            --accent-soft:#202750;
+            --warn:#FFA15C;
+            --good:#36CC8E;
+            --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px -16px rgba(0,0,0,.7);
+            --accent-text:#8C9CFF;
+            /* на тёмной теме подсветка работает в полную силу */
+            --glow-a:rgba(110,132,255,.22);
+            --glow-b:rgba(0,200,255,.13);
+            --art-radius:26px;
+            /* затемнение картинки: без него она светится пятном на тёмном фоне */
+            --art-dim:.42;
+            --art-glow:0 40px 90px -50px rgba(110,132,255,.5);
+            }
+        }
+
         *{box-sizing:border-box; margin:0; padding:0;}
         body{
             font-family:'Inter', sans-serif;
@@ -103,11 +146,10 @@
         .hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center;}
         .eyebrow{
             display:inline-flex; align-items:center; gap:8px;
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             font-size:12.5px; font-weight:700; padding:7px 13px; border-radius:99px;
             margin-bottom:22px;
         }
-        :root[data-theme="dark"] .eyebrow{color:var(--accent);}
         .eyebrow .dot{width:6px; height:6px; border-radius:50%; background:var(--good);}
         h1.hero-title{
             font-size:46px; line-height:1.1; font-weight:800; letter-spacing:-1.1px;
@@ -164,9 +206,8 @@
             width:38px; height:38px; border-radius:50%; flex-shrink:0;
             background:linear-gradient(135deg, var(--accent-soft), var(--surface-alt));
             display:flex; align-items:center; justify-content:center;
-            font-weight:800; font-size:13px; color:var(--accent-ink);
+            font-weight:800; font-size:13px; color:var(--accent-text);
         }
-        :root[data-theme="dark"] .cand-avatar{color:var(--accent);}
         .cand-name{font-weight:600; font-size:13.5px;}
         .cand-role{color:var(--text-muted); font-size:12px;}
         .cand-match{
@@ -183,9 +224,8 @@
         .float-stat .lbl{font-size:11.5px; color:var(--text-muted); font-weight:600;}
         .float-icn{
             width:38px; height:38px; border-radius:10px; background:var(--accent-soft);
-            display:flex; align-items:center; justify-content:center; color:var(--accent-ink); flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; color:var(--accent-text); flex-shrink:0;
         }
-        :root[data-theme="dark"] .float-icn{color:var(--accent);}
 
         /* ===== LOGO STRIP ===== */
         .logo-strip{padding:36px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border);}
@@ -201,10 +241,9 @@
             background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:24px;
         }
         .stat-icon{
-            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-ink);
+            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; margin-bottom:14px; font-size:15px;
         }
-        :root[data-theme="dark"] .stat-icon{color:var(--accent);}
         .stat-num{font-size:30px; font-weight:800; margin-bottom:4px;}
         .stat-lbl{font-size:13px; color:var(--text-muted); font-weight:500;}
 
@@ -221,10 +260,9 @@
             position:relative;
         }
         .step-card .step-num{
-            width:100px; height:30px; border-radius:9px; background:var(--accent-soft); color:var(--accent-ink);
+            width:100px; height:30px; border-radius:9px; background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px;
         }
-        :root[data-theme="dark"] .step-card .step-num{color:var(--accent);}
         .step-card h3{font-size:15.5px; font-weight:700; margin-bottom:8px;}
         .step-card p{font-size:13px; color:var(--text-muted); line-height:1.55;}
 
@@ -234,8 +272,7 @@
             background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:30px 26px;
         }
         .price-card.pop{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
-        .price-kicker{font-size:12px; font-weight:700; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;}
-        :root[data-theme="dark"] .price-kicker{color:var(--accent);}
+        .price-kicker{font-size:12px; font-weight:700; color:var(--accent-text); text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;}
         .price-name{font-size:19px; font-weight:800; margin-bottom:6px;}
         .price-desc{font-size:13px; color:var(--text-muted); margin-bottom:18px; line-height:1.5;}
         .price-amount{font-size:32px; font-weight:800; margin-bottom:2px;}
@@ -253,10 +290,9 @@
         }
         .cat-card:hover{border-color:var(--accent); transform:translateY(-2px);}
         .cat-icn{
-            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-ink);
+            width:36px; height:36px; border-radius:9px; background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; margin-bottom:14px;
         }
-        :root[data-theme="dark"] .cat-icn{color:var(--accent);}
         .cat-name{font-weight:700; font-size:14.5px; margin-bottom:3px;}
         .cat-count{font-size:12.5px; color:var(--text-muted);}
 
@@ -270,7 +306,7 @@
         .cta-band p{opacity:.9; font-size:14.5px; max-width:420px;}
         .cta-actions{display:flex; gap:12px;}
         .btn-white{
-            background:#fff; color:var(--accent-ink); padding:12px 22px; border-radius:10px;
+            background:#fff; color:var(--accent-text); padding:12px 22px; border-radius:10px;
             font-weight:700; font-size:14.5px; border:none; cursor:pointer;
         }
         .btn-outline-white{
@@ -330,10 +366,9 @@
         .vac-top{display:flex; align-items:flex-start; gap:12px;}
         .vac-logo{
             width:44px; height:44px; border-radius:12px; flex-shrink:0;
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-weight:800; font-size:17px;
         }
-        :root[data-theme="dark"] .vac-logo{color:var(--accent);}
         .vac-title{font-size:16.5px; font-weight:800; letter-spacing:-.2px; line-height:1.3;}
         .vac-co{font-size:13px; color:var(--text-muted); margin-top:2px;}
         .vac-meta{display:flex; flex-wrap:wrap; gap:8px;}
@@ -341,8 +376,7 @@
             margin-top:auto; padding-top:14px; border-top:1px solid var(--border);
             display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
         }
-        .vac-salary{font-weight:800; font-size:15.5px; color:var(--accent-ink); white-space:nowrap;}
-        :root[data-theme="dark"] .vac-salary{color:var(--accent);}
+        .vac-salary{font-weight:800; font-size:15.5px; color:var(--accent-text); white-space:nowrap;}
         .vac-btn{
             font-size:13.5px; font-weight:700; padding:9px 18px; border-radius:11px;
             background:var(--accent); color:#fff;
@@ -450,7 +484,7 @@
 
                         <div class="vac-meta">
                             @if($vacancy->city)
-                                <span class="tag-chip">📍 {{ $vacancy->city->country }}, {{ $vacancy->city->region }}</span>
+                                <span class="tag-chip">📍 {{ __($vacancy->city->country) }}, {{ __($vacancy->city->region) }}</span>
                             @endif
                             <span class="tag-chip">🕒 {{ $employmentTypeLabels[$vacancy->employment_type] ?? $vacancy->employment_type }}</span>
                             <span class="tag-chip">💻 {{ $workScheduleLabels[$vacancy->work_schedule] ?? $vacancy->work_schedule }}</span>

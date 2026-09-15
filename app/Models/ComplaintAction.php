@@ -39,6 +39,6 @@ class ComplaintAction extends Model
 
     public function label(): string
     {
-        return self::LABELS[$this->action] ?? $this->action;
+        return __(self::LABELS[$this->action] ?? $this->action);
     }
 }

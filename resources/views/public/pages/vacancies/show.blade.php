@@ -29,6 +29,11 @@
             ->map(fn($s) => trim($s))
             ->filter();
 
+        // языки требуются не всегда: пустое поле значит «не важно»
+        $languages = collect(explode(',', (string) $vacancy->languages))
+            ->map(fn($s) => trim($s))
+            ->filter();
+
         $authUser = auth()->user();
         $myApplicant = $authUser?->applicant;
         $myEmployer = $authUser?->employer;
@@ -46,10 +51,10 @@
             : [];
 
         $statusLabels = [
-            'new' => 'Новый',
-            'viewed' => 'Просмотрен',
-            'accepted' => 'Принят',
-            'rejected' => 'Отклонён',
+            'new' => __('Новый'),
+            'viewed' => __('Просмотрен'),
+            'accepted' => __('Принят'),
+            'rejected' => __('Отклонён'),
         ];
     @endphp
 
@@ -108,7 +113,7 @@
                                     <div>
                                         <div class="vacancy-company-name">Компания : {{ $vacancy->employer->company_name ?? 'Компания' }}</div>
                                         @if($vacancy->city)
-                                            <div class="vacancy-company-loc">📍 {{ $vacancy->city->country }} , {{ $vacancy->city->region }}</div>
+                                            <div class="vacancy-company-loc">📍 {{ __($vacancy->city->country) }} , {{ __($vacancy->city->region) }}</div>
                                         @endif
                                     </div>
                                 </div>
@@ -156,7 +161,7 @@
                                 @php $respApplicant = $response->applicant; @endphp
                                 <div style="display:flex; gap:14px; padding:16px 0; border-bottom:1px solid var(--border);">
                                     <div style="width:44px; height:44px; border-radius:50%; flex-shrink:0; overflow:hidden;
-                                                background:var(--accent-soft); color:var(--accent-ink);
+                                                background:var(--accent-soft); color:var(--accent-text);
                                                 display:flex; align-items:center; justify-content:center; font-weight:800;">
                                         @if($respApplicant?->user?->hasAvatar())
                                             <img src="{{ asset($respApplicant->user->avatar) }}" alt=""
@@ -208,6 +213,17 @@
                             <div class="hero-tags">
                                 @foreach($skills as $skill)
                                     <span class="tag-chip">{{ $skill }}</span>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
+                    @if($languages->isNotEmpty())
+                        <div class="vacancy-card">
+                            <h2 class="vacancy-block-title">{{ __('Требуемые языки') }}</h2>
+                            <div class="hero-tags">
+                                @foreach($languages as $language)
+                                    <span class="tag-chip">{{ $language }}</span>
                                 @endforeach
                             </div>
                         </div>
@@ -311,7 +327,7 @@
                             <div>
                                 <div class="vacancy-company-name">{{ $vacancy->employer->company_name ?? 'Компания' }}</div>
                                 @if($vacancy->city)
-                                    <div class="stat-lbl">{{ $vacancy->city->country }} , {{ $vacancy->city->region }}</div>
+                                    <div class="stat-lbl">{{ __($vacancy->city->country) }} , {{ __($vacancy->city->region) }}</div>
                                 @endif
                             </div>
                         </div>
@@ -336,7 +352,7 @@
             display:flex; align-items:center; gap:8px;
             font-size:13px; color:var(--text-muted); margin-bottom:24px;
         }
-        .vacancy-breadcrumb a:hover{ color:var(--accent-ink); }
+        .vacancy-breadcrumb a:hover{ color:var(--accent-text); }
 
         .vacancy-layout{
             display:grid;

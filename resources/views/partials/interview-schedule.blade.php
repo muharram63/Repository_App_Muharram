@@ -10,7 +10,7 @@
 @auth
     @if(auth()->user()->role === 'employer' && !empty($applicantId))
         <details style="margin-top:12px;">
-            <summary style="cursor:pointer; font-size:13px; font-weight:700; color:#4F46E5; list-style:none;">
+            <summary style="cursor:pointer; font-size:13px; font-weight:700; color:var(--accent-text, var(--indigo-600, #4F46E5)); list-style:none;">
                 {{ __('🎥 Назначить онлайн-собеседование') }}
             </summary>
 
@@ -58,7 +58,7 @@
 
                 <button type="submit"
                         style="padding:10px 18px; border:none; border-radius:10px; cursor:pointer;
-                               font-family:inherit; font-size:13.5px; font-weight:700; background:#4F46E5; color:#fff;">
+                               font-family:inherit; font-size:13.5px; font-weight:700; background:var(--accent, var(--indigo-600, #4F46E5)); color:#fff;">
                     {{ __('Назначить') }}
                 </button>
             </form>

@@ -36,10 +36,9 @@
 
         .chat-ava, .chat-ava-img{width:42px; height:42px; border-radius:50%; flex-shrink:0; object-fit:cover;}
         .chat-ava{
-            background:var(--accent-soft); color:var(--accent-ink);
+            background:var(--accent-soft); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px;
         }
-        :root[data-theme="dark"] .chat-ava{color:var(--accent);}
         .chat-ava.sm, .chat-ava-img.sm{width:38px; height:38px; font-size:14px;}
 
         .chat-feed{
@@ -94,8 +93,7 @@
             font-family:inherit; font-size:12.5px; line-height:1.4; color:var(--text-muted);
             max-width:100%; box-sizing:border-box; overflow:hidden;
         }
-        .msg-quote b{display:block; color:var(--accent-ink); font-size:12px; margin-bottom:2px;}
-        :root[data-theme="dark"] .msg-quote b{color:var(--accent);}
+        .msg-quote b{display:block; color:var(--accent-text); font-size:12px; margin-bottom:2px;}
         .msg.mine .msg-quote{
             border-left-color:rgba(255,255,255,.6);
             background:rgba(255,255,255,.14); color:rgba(255,255,255,.85);
@@ -139,7 +137,7 @@
             flex-shrink:0; padding:8px 14px; border-radius:10px;
             background:var(--accent); color:#fff; font-size:13px; font-weight:700; white-space:nowrap;
         }
-        .msg.mine .msg-call .join{background:#fff; color:var(--accent-ink);}
+        .msg.mine .msg-call .join{background:#fff; color:var(--accent-text);}
         .msg-call.missed{
             background:color-mix(in srgb, #EF4444 10%, transparent);
             border-color:color-mix(in srgb, #EF4444 35%, transparent);
@@ -149,10 +147,10 @@
         .msg-call .again{
             flex-shrink:0; padding:8px 14px; border-radius:10px; white-space:nowrap;
             border:1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-            background:none; color:var(--accent-ink);
+            background:none; color:var(--accent-text);
             font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
         }
-        .msg.mine .msg-call .again{background:#fff; border-color:#fff; color:var(--accent-ink);}
+        .msg.mine .msg-call .again{background:#fff; border-color:#fff; color:var(--accent-text);}
 
         /* вложения */
         .msg-img{
@@ -169,7 +167,7 @@
         .msg.mine .msg-file{background:rgba(255,255,255,.16); color:#fff;}
         .msg-file .ico{
             width:28px; height:28px; border-radius:9px; flex-shrink:0;
-            background:var(--surface); color:var(--accent-ink);
+            background:var(--surface); color:var(--accent-text);
             display:flex; align-items:center; justify-content:center;
         }
         .msg.mine .msg-file .ico{background:rgba(255,255,255,.24); color:#fff;}
@@ -515,6 +513,9 @@
     </section>
 
     <script>
+        // подпись рисует скрипт, поэтому переводим её здесь, а не в разметке
+        const READ_LABEL = @json(__('Прочитано'));
+
         (function () {
             const feed = document.getElementById('chat-feed');
             if (!feed) {
@@ -638,7 +639,7 @@
                 if (message.mine) {
                     const check = document.createElement('span');
                     check.className = 'msg-check' + (message.read ? ' read' : '');
-                    check.innerHTML = message.read ? '✓✓<span class="lbl">Прочитано</span>' : '✓';
+                    check.innerHTML = message.read ? '✓✓<span class="lbl">' + READ_LABEL + '</span>' : '✓';
                     info.append(' · ', check);
                 }
 
@@ -773,7 +774,7 @@
                     if (!check || check.classList.contains('read')) { return; }
 
                     check.classList.add('read');
-                    check.innerHTML = '✓✓<span class="lbl">Прочитано</span>';
+                    check.innerHTML = '✓✓<span class="lbl">' + READ_LABEL + '</span>';
                     check.title = 'Прочитано';
                 });
             }

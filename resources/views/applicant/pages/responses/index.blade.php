@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -75,10 +75,10 @@
 
             @php
                 $statusLabels = [
-                    'new' => 'Новый',
-                    'viewed' => 'Просмотрен',
-                    'accepted' => 'Принят',
-                    'rejected' => 'Отклонён',
+                    'new' => __('Новый'),
+                    'viewed' => __('Просмотрен'),
+                    'accepted' => __('Принят'),
+                    'rejected' => __('Отклонён'),
                 ];
                 $companiesCount = $responses->pluck('employer_id')->unique()->count();
                 $newCount = $responses->where('status', 'new')->count();
@@ -135,16 +135,16 @@
                                     <a href="{{ route('public.companies.show', $employer) }}"
                                        style="color:inherit; text-decoration:none;">{{ $employer->company_name }}</a>
                                 @else
-                                    Компания удалена
+                                    {{ __('Компания удалена') }}
                                 @endif
                             </div>
 
                             <div class="company-meta">
                                 @if($employer?->industry)
-                                    {{ $employer->industry->name }} ·
+                                    {{ __($employer->industry->name) }} ·
                                 @endif
                                 @if($employer?->city)
-                                    📍 {{ $employer->city->country }}, {{ $employer->city->region }} ·
+                                    📍 {{ __($employer->city->country) }}, {{ __($employer->city->region) }} ·
                                 @endif
                                 откликнулись {{ $response->created_at->format('d.m.Y H:i') }}
                             </div>

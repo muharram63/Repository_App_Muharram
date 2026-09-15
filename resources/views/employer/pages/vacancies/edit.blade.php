@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" @include('partials.theme')>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -395,8 +395,8 @@
                                         <label>{{ __('Страна,Регион') }}</label>
                                         <select name="city_id" style="width: 70vh;">
                                             @foreach($cities as $city)
-                                                <option value="{{$city->id}}">{{$city->country}}
-                                                    ,{{$city->region}}</option>
+                                                <option value="{{$city->id}}">{{ __($city->country) }}
+                                                    ,{{ __($city->region) }}</option>
                                             @endforeach
                                         </select>
                                     </div>
@@ -456,6 +456,12 @@
                                     <label>{{ __('Навыки') }} <span class="opt">{{ __('(через запятую)') }}</span></label>
                                     <input type="text" placeholder="PHP, Laravel, MySQL, Docker" name="skill"
                                            value="{{old('skill',$vacancy->skill)}}">
+                                </div>
+
+                                <div class="field-group">
+                                    <label>{{ __('Языки') }} <span class="opt">{{ __('(через запятую / необязательно)') }}</span></label>
+                                    <input type="text" placeholder="{{ __('Таджикский, русский, английский B2') }}" name="languages"
+                                           value="{{old('languages',$vacancy->languages)}}">
                                 </div>
 
                                 <div class="divider-line"></div>
