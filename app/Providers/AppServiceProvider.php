@@ -42,6 +42,12 @@ class AppServiceProvider extends ServiceProvider
          */
         $this->app->singleton(\App\Services\Ai\AiJournal::class);
 
+        // Критерии оценки: модель предлагает, работодатель подтверждает.
+        $this->app->bind(
+            \App\Services\Ai\CriteriaAdvisor::class,
+            \App\Services\Ai\GeminiCriteriaAdvisor::class,
+        );
+
         // Озвучка вопросов на ИИ-собеседовании. Настройки передаём явно:
         // синтез умеет выключаться отдельно от остального Gemini, и знать
         // об этом должна реализация, а не вызывающий код.

@@ -435,10 +435,52 @@ test('выключенное собеседование не считается 
 });
 
 test('режим advisory оставляет решение человеку', function () {
+    // Режим влияет только на то, кто объявляет исход, — на пригодность
+    // настроек он не влияет вовсе, поэтому веса и пороги остаются верными.
     $config = AiInterviewConfig::factory()->advisory()->make();
 
     expect($config->decidesItself())->toBeFalse()
-        ->and($config->isUsable())->toBeTrue();
+        ->and($config->weightsAreValid())->toBeTrue()
+        ->and($config->thresholdsAreValid())->toBeTrue();
+});
+
+test('без подтверждённого обязательного критерия настройки не считаются рабочими', function () {
+    /*
+     * Ворота решения держатся на обязательных требованиях. Без них отказать
+     * можно только по баллу, и вакансия «нужен электрик» пропускала бы повара
+     * с красивыми ответами. Поэтому одних верных весов и порогов мало.
+     */
+    [$vacancy, $config] = makeAiVacancy([]);
+
+    expect($config->weightsAreValid())->toBeTrue()
+        ->and($config->thresholdsAreValid())->toBeTrue()
+        ->and($config->confirmedMustCount())->toBe(0)
+        ->and($config->isUsable())->toBeFalse()
+        ->and($config->problems())->toHaveCount(1);
+
+    // подтверждённый обязательный критерий снимает препятствие
+    AiInterviewCriterion::factory()->create([
+        'vacancy_id' => $vacancy->id, 'key' => 'php', 'kind' => 'must',
+    ]);
+
+    expect($config->fresh()->confirmedMustCount())->toBe(1)
+        ->and($config->fresh()->isUsable())->toBeTrue()
+        ->and($config->fresh()->problems())->toBe([]);
+});
+
+test('неподтверждённый и желательный критерии ворот не открывают', function () {
+    [$vacancy, $config] = makeAiVacancy([]);
+
+    // черновик от модели и подтверждённый, но желательный
+    AiInterviewCriterion::factory()->pending()->create([
+        'vacancy_id' => $vacancy->id, 'key' => 'draft', 'kind' => 'must',
+    ]);
+    AiInterviewCriterion::factory()->nice()->create([
+        'vacancy_id' => $vacancy->id, 'key' => 'docker',
+    ]);
+
+    expect($config->fresh()->confirmedMustCount())->toBe(0)
+        ->and($config->fresh()->isUsable())->toBeFalse();
 });
 
 test('прогресс растёт по стадиям от нуля до сотни', function () {

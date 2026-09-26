@@ -31,6 +31,12 @@
       </span>
         <a href="{{route('employer.vacancies.index')}}"> {{ __('Мои вакансии') }} </a>
      </div>
+    <div class="nav-item" data-section="ai-screening">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4z"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg>
+      </span>
+        <a href="{{route('employer.ai.index')}}"> {{ __('ИИ-собеседование') }} </a>
+    </div>
     <div class="nav-item" data-section="my-responses">
       <span class="icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18v14H3z"/><path d="M3 7l9 6 9-6"/></svg>

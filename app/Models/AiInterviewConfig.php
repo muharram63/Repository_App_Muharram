@@ -122,7 +122,58 @@ class AiInterviewConfig extends Model
      */
     public function isUsable(): bool
     {
-        return $this->enabled && $this->weightsAreValid() && $this->thresholdsAreValid();
+        return $this->enabled && $this->problems() === [];
+    }
+
+    /**
+     * Что мешает запустить собеседование — человеческим языком.
+     *
+     * Список в одном месте, потому что его спрашивают трое: страница настроек
+     * рисует предупреждения, сохранение не даёт включить собеседование вслепую,
+     * а отклик кандидата решает, вести его к ИИ или к обычному ожиданию. Если бы
+     * условия жили в трёх местах, они разошлись бы на первой же правке.
+     *
+     * @return array<int,string>
+     */
+    public function problems(): array
+    {
+        $problems = [];
+
+        if (! $this->weightsAreValid()) {
+            $problems[] = 'Веса документов, собеседования и задания должны в сумме давать 100 '
+                .'(сейчас '.$this->weightsSum().').';
+        }
+
+        if (! $this->thresholdsAreValid()) {
+            $problems[] = 'Порог приёма должен быть выше порога отказа, и оба — от 0 до 100.';
+        }
+
+        /*
+         * Хотя бы одно подтверждённое обязательное требование.
+         *
+         * Без обязательных критериев ворота решения не работают вовсе: отказать
+         * можно только по баллу, и вакансия «нужен электрик» пропускала бы
+         * повара с красивыми ответами.
+         */
+        if ($this->confirmedMustCount() === 0) {
+            $problems[] = 'Нужен хотя бы один подтверждённый обязательный критерий: '
+                .'иначе отказывать придётся только по баллу.';
+        }
+
+        return $problems;
+    }
+
+    /**
+     * Сколько обязательных критериев работодатель подтвердил.
+     */
+    public function confirmedMustCount(): int
+    {
+        if (! $this->vacancy_id) {
+            return 0;
+        }
+
+        return AiInterviewCriterion::where('vacancy_id', $this->vacancy_id)
+            ->confirmed()->must()->count();
     }
 
     public function levelLabel(): string

@@ -8,6 +8,27 @@ Route::post('/profile',[\App\Http\Controllers\Employer\ProfileController::class,
 
 Route::resource('vacancies' , \App\Http\Controllers\Employer\VacancyController::class);
 
+// ИИ-собеседование: включение у вакансии и критерии оценки
+Route::prefix('ai-screening')->name('ai.')->group(function () {
+    $screening = \App\Http\Controllers\Employer\AiScreeningController::class;
+
+    Route::get('/', [$screening, 'index'])->name('index');
+    Route::get('{vacancy}', [$screening, 'show'])->whereNumber('vacancy')->name('show');
+    Route::patch('{vacancy}/config', [$screening, 'updateConfig'])->whereNumber('vacancy')->name('config');
+
+    // предложение критериев идёт через модель — ограничиваем частоту, чтобы
+    // десять раз нажатая кнопка не сожгла дневную квоту бесплатного ключа
+    Route::post('{vacancy}/criteria/suggest', [$screening, 'suggestCriteria'])
+        ->whereNumber('vacancy')->middleware('throttle:10,1')->name('criteria.suggest');
+
+    Route::patch('{vacancy}/criteria', [$screening, 'saveCriteria'])
+        ->whereNumber('vacancy')->name('criteria.save');
+    Route::post('{vacancy}/criteria', [$screening, 'addCriterion'])
+        ->whereNumber('vacancy')->name('criteria.add');
+    Route::delete('{vacancy}/criteria/{criterion}', [$screening, 'destroyCriterion'])
+        ->whereNumber('vacancy')->whereNumber('criterion')->name('criteria.destroy');
+});
+
 // сюда же позже добавите отклики:
 Route::get('responses', [\App\Http\Controllers\Employer\ResponseController::class, 'index'])->name('responses.index');
 
