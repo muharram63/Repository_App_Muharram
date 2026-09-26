@@ -34,6 +34,17 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Ai\SkillExaminer::class,
             \App\Services\Ai\GeminiSkillExaminer::class,
         );
+
+        // Озвучка вопросов на ИИ-собеседовании. Настройки передаём явно:
+        // синтез умеет выключаться отдельно от остального Gemini, и знать
+        // об этом должна реализация, а не вызывающий код.
+        $this->app->bind(
+            \App\Services\Ai\SpeechSynthesizer::class,
+            fn ($app) => new \App\Services\Ai\GeminiSpeech(
+                $app->make(\App\Services\Ai\GeminiClient::class),
+                config('services.gemini', []),
+            ),
+        );
     }
 
     /**

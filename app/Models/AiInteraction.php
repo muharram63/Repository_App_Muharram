@@ -53,6 +53,7 @@ class AiInteraction extends Model
         'task_compose' => 'Составление задания',
         'task_grade' => 'Проверка задания',
         'decision_summary' => 'Текст решения кандидату',
+        'speech_synthesis' => 'Озвучка вопроса',
     ];
 
     /**

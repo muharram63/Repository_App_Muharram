@@ -28,6 +28,27 @@ Route::prefix('resume/assistant')->name('resume.assistant')->group(function () {
     Route::delete('{draft}', [$controller, 'destroy'])->whereNumber('draft')->name('.destroy');
 });
 
+// ИИ-собеседование: пока только голос аватара. Страница диалога появится
+// вместе с остальными этапами модуля, компонент встанет в неё готовым.
+Route::prefix('ai-interview')->name('ai.')->group(function () {
+    $speech = \App\Http\Controllers\Applicant\AiSpeechController::class;
+
+    Route::get('avatar', [$speech, 'page'])->name('avatar');
+
+    // Озвучка произвольного текста — только для страницы проверки. Частота
+    // ограничена жёстче остального: иначе маршрут превратился бы в
+    // бесплатный синтезатор речи за счёт нашей квоты.
+    Route::post('speech/preview', [$speech, 'preview'])
+        ->middleware('throttle:10,1')->name('speech.preview');
+
+    // Готовая озвучка реплики и её состояние. Права проверяет контроллер:
+    // чужую озвучку не получить, даже зная адрес.
+    Route::get('turns/{turn}/speech', [$speech, 'turn'])
+        ->whereNumber('turn')->name('speech.turn');
+    Route::get('turns/{turn}/speech/status', [$speech, 'status'])
+        ->whereNumber('turn')->name('speech.status');
+});
+
 // Проверка навыков делом: справочник, прохождение задания и разбор
 Route::prefix('skills')->name('skills')->group(function () {
     $skills = \App\Http\Controllers\Applicant\SkillCheckController::class;

@@ -7,16 +7,24 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Тонкая обёртка над Interactions API Gemini — единственное место в проекте,
- * которое ходит в сеть за ответом модели.
+ * Тонкая обёртка над Gemini — единственное место в проекте, которое ходит
+ * в сеть за ответом модели.
  *
  * Наружу отдаёт только расшифрованный массив либо AiUnavailableException
  * с готовым текстом для пользователя: контроллерам не нужно знать ни про
  * HTTP-коды Google, ни про форму его ответа.
+ *
+ * Эндпоинтов два, и это не небрежность: текстовые ответы идут через
+ * Interactions API, а синтез речи там не делается вовсе — он живёт на
+ * /v1beta/models/{model}:generateContent. Оба запроса собраны здесь, чтобы
+ * точка выхода в сеть осталась одна.
  */
 class GeminiClient
 {
     private const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+
+    /** Синтез речи: {model} подставляется перед запросом. */
+    private const SPEECH_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent';
 
     public function __construct(private readonly array $config)
     {
@@ -83,6 +91,68 @@ class GeminiClient
     }
 
     /**
+     * Озвучить текст. Возвращает готовый WAV и его тип.
+     *
+     * Ответ Google приходит одним куском в base64, поэтому результат — байты,
+     * а не поток: резать нечего, а класть промежуточный файл на диск здесь
+     * рано, этим занимается вызывающий код.
+     *
+     * @return array{bytes:string,mime:string,tokens:int}
+     *
+     * @throws AiUnavailableException
+     */
+    public function speech(string $text, string $voice, ?string $model = null): array
+    {
+        $model ??= $this->config['tts_model'] ?? '';
+
+        if (blank($model)) {
+            throw new AiUnavailableException('Модель синтеза речи не настроена.');
+        }
+
+        $json = $this->send(
+            [
+                'contents' => [['parts' => [['text' => $text]]]],
+                'generationConfig' => [
+                    'responseModalities' => ['AUDIO'],
+                    'speechConfig' => [
+                        'voiceConfig' => ['prebuiltVoiceConfig' => ['voiceName' => $voice]],
+                    ],
+                ],
+            ],
+            sprintf(self::SPEECH_ENDPOINT, $model),
+            // синтез длиннее текстового ответа, поэтому свой таймаут
+            (int) ($this->config['tts_timeout'] ?? $this->config['timeout'] ?? 90),
+        );
+
+        $inline = $json['candidates'][0]['content']['parts'][0]['inlineData'] ?? null;
+        $encoded = $inline['data'] ?? null;
+
+        if (! is_string($encoded) || $encoded === '') {
+            Log::warning('Gemini не вернул аудио', [
+                'finish' => $json['candidates'][0]['finishReason'] ?? null,
+            ]);
+
+            throw new AiUnavailableException('Не удалось озвучить вопрос. Попробуйте ещё раз.');
+        }
+
+        $bytes = base64_decode($encoded, true);
+
+        if ($bytes === false || $bytes === '') {
+            throw new AiUnavailableException('Озвучка пришла повреждённой. Попробуйте ещё раз.');
+        }
+
+        return [
+            'bytes' => $bytes,
+            // на проверке приходил audio/wav с заголовком RIFF, но полагаться
+            // на это не станем: тип берём из ответа, а разбирается с ним
+            // вызывающий код
+            'mime' => (string) ($inline['mimeType'] ?? 'audio/wav'),
+            // аудио-токены считаются отдельно от текстовых — по ним виден расход
+            'tokens' => (int) ($json['usageMetadata']['candidatesTokenCount'] ?? 0),
+        ];
+    }
+
+    /**
      * Настройки транспорта.
      *
      * Только IPv4: DNS отдаёт для этого хоста AAAA-записи, но маршрута к ним
@@ -122,9 +192,12 @@ class GeminiClient
     }
 
     /**
+     * Эндпоинт и таймаут — параметры, а не константы: синтезу речи нужен и
+     * другой адрес, и запас по времени.
+     *
      * @throws AiUnavailableException
      */
-    private function send(array $payload): array
+    private function send(array $payload, ?string $endpoint = null, ?int $timeout = null): array
     {
         if (! $this->configured()) {
             throw new AiUnavailableException('Помощник выключен: в .env не задан GEMINI_API_KEY.');
@@ -139,14 +212,14 @@ class GeminiClient
                 // соединение либо устанавливается быстро, либо не установится вовсе:
                 // незачем ждать общего таймаута, чтобы сообщить об обрыве связи
                 ->connectTimeout($this->config['connect_timeout'])
-                ->timeout($this->config['timeout'])
+                ->timeout($timeout ?? $this->config['timeout'])
                 // Повторяем только неудачу дозвона: не нашёлся адрес или не
                 // открылось соединение. Истёкший таймаут ответа повторять
                 // нельзя: пользователь ждал бы два таймаута подряд вместо
                 // одного. На исчерпанный лимит повтор тоже бессмыслен.
                 ->retry(3, 500, fn ($e) => $e instanceof ConnectionException
                     && self::unreachable($e), throw: false)
-                ->post(self::ENDPOINT, $payload);
+                ->post($endpoint ?? self::ENDPOINT, $payload);
         } catch (ConnectionException $e) {
             Log::warning('Gemini недоступен', ['error' => $e->getMessage()]);
 

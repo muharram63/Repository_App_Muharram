@@ -64,6 +64,28 @@ return [
         // поэтому общий таймаут щедрый, а на установку связи — короткий
         'timeout' => (int) env('GEMINI_TIMEOUT', 60),
         'connect_timeout' => (int) env('GEMINI_CONNECT_TIMEOUT', 10),
+
+        /*
+         * Озвучка вопросов на ИИ-собеседовании.
+         *
+         * Модель речи живёт на другом эндпоинте, чем диалоговая: не
+         * /v1beta/interactions, а /v1beta/models/{model}:generateContent с
+         * responseModalities: ["AUDIO"]. Отдаёт готовый WAV с заголовком RIFF,
+         * его можно играть в браузере как есть — собирать контейнер не нужно.
+         *
+         * flash-lite-tts выбран из четырёх доступных моделей речи: озвучка
+         * одного вопроса занимает около четырёх секунд, а для разговора в
+         * реальном времени скорость важнее оттенков интонации.
+         *
+         * Выключенная озвучка — не поломка: страница переходит на голос
+         * браузера, и собеседование идёт дальше.
+         */
+        'tts_enabled' => filter_var(env('GEMINI_TTS_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'tts_model' => env('GEMINI_TTS_MODEL', 'gemini-3.8-flash-lite-tts'),
+        'tts_voice' => env('GEMINI_TTS_VOICE', 'Kore'),
+        // синтез длиннее обычного ответа: длинный вопрос упирался бы
+        // в прежние 60 секунд
+        'tts_timeout' => (int) env('GEMINI_TTS_TIMEOUT', 90),
     ],
 
 ];
