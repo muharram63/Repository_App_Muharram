@@ -65,7 +65,42 @@ class ApplicantResponseController extends Controller
             read: true,
         );
 
+        /*
+         * У вакансии включено ИИ-собеседование — ведём кандидата туда сразу.
+         *
+         * Оставлять его ждать работодателя было бы нечестно: по такой вакансии
+         * ответ даёт ИИ, и чем раньше человек это узнает, тем лучше.
+         * Уведомление всё равно отправляем — вкладку закроют, а вернуться нужно.
+         */
+        if ($this->aiInterviewAwaits($vacancy)) {
+            UserNotification::deliver(
+                $user->id,
+                'interview',
+                'По этой вакансии собеседование проводит ИИ',
+                '«'.$vacancy->title.'» — нужно дать согласие и загрузить документы',
+                route('applicant.ai.start', $vacancy),
+                read: true,
+            );
+
+            return redirect()->route('applicant.ai.start', $vacancy)
+                ->with('status', 'Отклик отправлен. По этой вакансии собеседование проводит ИИ.');
+        }
+
         return back()->with('status', 'Отклик отправлен.');
+    }
+
+    /**
+     * У вакансии настроено и включено ИИ-собеседование.
+     *
+     * Спрашиваем isUsable(), а не просто enabled: включённое собеседование с
+     * противоречивыми настройками никого собеседовать не сможет, и вести туда
+     * кандидата — значит завести его в тупик.
+     */
+    private function aiInterviewAwaits(Vacancy $vacancy): bool
+    {
+        $config = \App\Models\AiInterviewConfig::where('vacancy_id', $vacancy->id)->first();
+
+        return $config !== null && $config->isUsable();
     }
 
     /**

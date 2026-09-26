@@ -33,7 +33,31 @@ Route::prefix('resume/assistant')->name('resume.assistant')->group(function () {
 Route::prefix('ai-interview')->name('ai.')->group(function () {
     $speech = \App\Http\Controllers\Applicant\AiSpeechController::class;
 
+    $interview = \App\Http\Controllers\Applicant\AiInterviewController::class;
+
     Route::get('avatar', [$speech, 'page'])->name('avatar');
+
+    // Мои собеседования: кандидат закрывает вкладку и возвращается, прогресс
+    // лежит в базе — к нему нужен путь.
+    Route::get('/', [$interview, 'index'])->name('index');
+
+    // вход с вакансии: заводит собеседование или продолжает прежнее
+    Route::get('start/{vacancy}', [$interview, 'start'])->whereNumber('vacancy')->name('start');
+
+    Route::get('{interview}', [$interview, 'show'])->whereNumber('interview')->name('interview');
+    Route::post('{interview}/consent', [$interview, 'consent'])->whereNumber('interview')->name('consent');
+    Route::delete('{interview}', [$interview, 'decline'])->whereNumber('interview')->name('decline');
+
+    Route::get('{interview}/documents', [$interview, 'documents'])
+        ->whereNumber('interview')->name('documents');
+    Route::post('{interview}/documents', [$interview, 'upload'])
+        ->whereNumber('interview')->name('documents.upload');
+    Route::get('{interview}/documents/{document}', [$interview, 'file'])
+        ->whereNumber('interview')->whereNumber('document')->name('documents.file');
+    Route::delete('{interview}/documents/{document}', [$interview, 'destroyDocument'])
+        ->whereNumber('interview')->whereNumber('document')->name('documents.destroy');
+    Route::post('{interview}/proceed', [$interview, 'proceed'])
+        ->whereNumber('interview')->name('proceed');
 
     // Озвучка произвольного текста — только для страницы проверки. Частота
     // ограничена жёстче остального: иначе маршрут превратился бы в
