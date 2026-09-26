@@ -46,14 +46,44 @@ class GeminiClient
      * @param  array<int,array{role:string,text:string}>  $turns  история: role = user|model
      * @param  array  $schema  схема ожидаемого ответа
      * @param  int  $maxTokens  потолок длины ответа
+     * @param  array{model?:string,temperature?:float,thinking_level?:string}  $options  чем отвечать и насколько ровно
      * @return array расшифрованный ответ модели
      *
      * @throws AiUnavailableException
      */
-    public function structured(string $system, array $turns, array $schema, int $maxTokens = 2000): array
-    {
-        $answer = $this->extractText($this->send([
-            'model' => $this->config['model'],
+    public function structured(
+        string $system,
+        array $turns,
+        array $schema,
+        int $maxTokens = 2000,
+        array $options = [],
+    ): array {
+        return $this->structuredDetailed($system, $turns, $schema, $maxTokens, $options)['data'];
+    }
+
+    /**
+     * То же, но с расходом токенов и названием модели.
+     *
+     * Нужно аудиту: по этим числам видно, сколько стоило решение по кандидату.
+     * structured() остаётся тонкой обёрткой, чтобы прежние вызовы помощника по
+     * резюме и разбора совпадения ничего не заметили.
+     *
+     * @param  array{model?:string,temperature?:float,thinking_level?:string}  $options
+     * @return array{data:array,usage:array{input:int,output:int,total:int,thought:int},model:string}
+     *
+     * @throws AiUnavailableException
+     */
+    public function structuredDetailed(
+        string $system,
+        array $turns,
+        array $schema,
+        int $maxTokens = 2000,
+        array $options = [],
+    ): array {
+        $model = $options['model'] ?? $this->config['model'];
+
+        $json = $this->send([
+            'model' => $model,
             'system_instruction' => $system,
             'input' => array_map(fn (array $turn) => [
                 // в Interactions API реплики размечены типом шага, а не полем role
@@ -70,24 +100,55 @@ class GeminiClient
                 // повтор одной фразы и писала её, пока не упёрлась в свой предел:
                 // черновик наполнился мусором, а запрос не уложился в таймаут.
                 'max_output_tokens' => $maxTokens,
-                // разговор должен быть предсказуемым, а не изобретательным
-                'temperature' => 0.4,
-                // ответ нужен быстро, глубокие размышления тут ничего не добавляют
-                'thinking_level' => 'low',
+                // Разговор должен быть предсказуемым, а не изобретательным.
+                // Оценки просят ещё ровнее — им передают 0.1: один и тот же
+                // ответ кандидата не должен получать разный балл от настроения.
+                'temperature' => $options['temperature'] ?? 0.4,
+                // реплике в чате размышления ничего не добавляют, а оценке и
+                // разбору документов — добавляют, поэтому уровень задаётся извне
+                'thinking_level' => $options['thinking_level'] ?? 'low',
             ],
-        ]));
+        ]);
 
+        $answer = $this->extractText($json);
         $data = json_decode($answer, true);
 
         if (! is_array($data)) {
             Log::warning('Gemini вернул не JSON', ['answer' => mb_substr($answer, 0, 500)]);
 
-            throw new AiUnavailableException(
+            // Отдельный класс, а не общая недоступность: журнал собеседования
+            // повторяет такой ответ, а остальные сервисы ловят родителя и
+            // ведут себя как раньше. Текст сообщения тот же.
+            throw new AiUnreadableAnswerException(
                 'Помощник ответил неразборчиво. Отправьте сообщение ещё раз.'
             );
         }
 
-        return $data;
+        return [
+            'data' => $data,
+            'usage' => $this->usage($json),
+            'model' => (string) ($json['model'] ?? $model),
+        ];
+    }
+
+    /**
+     * Расход токенов. Interactions API отдаёт его в поле usage, и имена там
+     * свои — не такие, как у generateContent с его usageMetadata.
+     *
+     * @return array{input:int,output:int,total:int,thought:int}
+     */
+    private function usage(array $json): array
+    {
+        $usage = $json['usage'] ?? [];
+
+        return [
+            'input' => (int) ($usage['total_input_tokens'] ?? 0),
+            'output' => (int) ($usage['total_output_tokens'] ?? 0),
+            'total' => (int) ($usage['total_tokens'] ?? 0),
+            // размышления считаются отдельно от ответа: по ним видно, сколько
+            // стоил поднятый thinking_level
+            'thought' => (int) ($usage['total_thought_tokens'] ?? 0),
+        ];
     }
 
     /**
