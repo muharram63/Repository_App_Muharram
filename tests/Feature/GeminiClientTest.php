@@ -167,3 +167,49 @@ test('without a key the client reports itself as switched off and sends nothing'
 
     Http::assertNothingSent();
 });
+
+test('a dns failure names the network, not the model', function () {
+    // так помощник «не работал» на домашней сети: адрес сервера не нашёлся,
+    // а человек читал «не успел ответить» и жал «повторить» без толку
+    Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException(
+        'cURL error 6: Could not resolve host: generativelanguage.googleapis.com'
+    ));
+
+    expect(fn () => gemini()->structured('s', [['role' => 'user', 'text' => 'привет']], []))
+        ->toThrow(AiUnavailableException::class, 'DNS');
+});
+
+test('a short dns hiccup is retried and the answer still arrives', function () {
+    $attempt = 0;
+
+    // первые два дозвона срываются, третий проходит — пользователь ничего не замечает
+    Http::fake(function () use (&$attempt) {
+        if (++$attempt < 3) {
+            throw new \Illuminate\Http\Client\ConnectionException(
+                'cURL error 6: Could not resolve host: generativelanguage.googleapis.com'
+            );
+        }
+
+        return Http::response(geminiAnswer(['reply' => 'ок']));
+    });
+
+    expect(gemini()->structured('s', [['role' => 'user', 'text' => 'привет']], []))
+        ->toBe(['reply' => 'ок'])
+        ->and($attempt)->toBe(3);
+});
+
+test('a slow answer is not retried: the user would wait two timeouts', function () {
+    $attempt = 0;
+
+    Http::fake(function () use (&$attempt) {
+        $attempt++;
+
+        throw new \Illuminate\Http\Client\ConnectionException(
+            'cURL error 28: Operation timed out after 60000 milliseconds'
+        );
+    });
+
+    expect(fn () => gemini()->structured('s', [['role' => 'user', 'text' => 'привет']], []))
+        ->toThrow(AiUnavailableException::class, 'не успел ответить')
+        ->and($attempt)->toBe(1);
+});

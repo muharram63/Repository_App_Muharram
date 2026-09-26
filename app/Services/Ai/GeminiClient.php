@@ -97,6 +97,31 @@ class GeminiClient
     }
 
     /**
+     * Адрес сервера не нашёлся (cURL error 6). Так выглядит пропавший
+     * интернет, сбой резолвера или VPN, который не пропускает DNS, — и это
+     * самый частый способ «сломать» помощника на домашней сети.
+     */
+    public static function unresolved(ConnectionException $e): bool
+    {
+        return str_contains($e->getMessage(), 'Could not resolve host');
+    }
+
+    /**
+     * До сервера не дозвонились: адрес не нашёлся или соединение не
+     * открылось за отведённое время. Такой сбой обычно короткий, и повтор
+     * через полсекунды часто спасает запрос. Не путать с таймаутом ответа:
+     * там соединение есть, просто модель думает дольше отведённого.
+     */
+    public static function unreachable(ConnectionException $e): bool
+    {
+        $message = $e->getMessage();
+
+        return self::unresolved($e)
+            || str_contains($message, 'Connection timeout')
+            || str_contains($message, 'Failed to connect');
+    }
+
+    /**
      * @throws AiUnavailableException
      */
     private function send(array $payload): array
@@ -115,22 +140,25 @@ class GeminiClient
                 // незачем ждать общего таймаута, чтобы сообщить об обрыве связи
                 ->connectTimeout($this->config['connect_timeout'])
                 ->timeout($this->config['timeout'])
-                // Повторяем только неудачу дозвона. Истёкший таймаут ответа
-                // повторять нельзя: пользователь ждал бы два таймаута подряд
-                // вместо одного. На исчерпанный лимит повтор тоже бессмыслен.
-                ->retry(2, 400, fn ($e) => $e instanceof ConnectionException
-                    && str_contains($e->getMessage(), 'Connection timeout'), throw: false)
+                // Повторяем только неудачу дозвона: не нашёлся адрес или не
+                // открылось соединение. Истёкший таймаут ответа повторять
+                // нельзя: пользователь ждал бы два таймаута подряд вместо
+                // одного. На исчерпанный лимит повтор тоже бессмыслен.
+                ->retry(3, 500, fn ($e) => $e instanceof ConnectionException
+                    && self::unreachable($e), throw: false)
                 ->post(self::ENDPOINT, $payload);
         } catch (ConnectionException $e) {
             Log::warning('Gemini недоступен', ['error' => $e->getMessage()]);
 
-            // «не смогли дозвониться» и «ответ не пришёл вовремя» — разные беды,
-            // и советы пользователю у них тоже разные
-            throw new AiUnavailableException(
-                str_contains($e->getMessage(), 'Connection timeout')
-                    ? 'Не удалось соединиться с Gemini. Проверьте интернет и попробуйте ещё раз — диалог сохранён.'
-                    : 'Помощник не успел ответить. Попробуйте ещё раз — диалог сохранён.'
-            );
+            // «не нашли адрес», «не смогли дозвониться» и «ответ не пришёл
+            // вовремя» — разные беды, и советы пользователю у них тоже разные.
+            // Раньше сбой DNS показывался как «не успел ответить», и человек
+            // жал «повторить» вместо того, чтобы проверить сеть или VPN.
+            throw new AiUnavailableException(match (true) {
+                self::unresolved($e) => 'Не удалось найти сервер Gemini: нет доступа в интернет или сбоит DNS. Проверьте сеть или VPN и попробуйте ещё раз — диалог сохранён.',
+                self::unreachable($e) => 'Не удалось соединиться с Gemini. Проверьте интернет и попробуйте ещё раз — диалог сохранён.',
+                default => 'Помощник не успел ответить. Попробуйте ещё раз — диалог сохранён.',
+            });
         }
 
         if ($response->failed()) {
