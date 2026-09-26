@@ -48,6 +48,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Ai\GeminiCriteriaAdvisor::class,
         );
 
+        // Разбор документов кандидата: резюме в структурированный вид,
+        // проверка дипломов и сверка требований вакансии.
+        $this->app->bind(
+            \App\Services\Ai\DocumentAuditor::class,
+            \App\Services\Ai\GeminiDocumentAuditor::class,
+        );
+
         // Озвучка вопросов на ИИ-собеседовании. Настройки передаём явно:
         // синтез умеет выключаться отдельно от остального Gemini, и знать
         // об этом должна реализация, а не вызывающий код.

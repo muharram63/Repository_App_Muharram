@@ -278,6 +278,15 @@ class AiJournal
 
         foreach ($turns as $turn) {
             $role = ($turn['role'] ?? 'user') === 'model' ? 'модель' : 'вход';
+
+            // Вложение отмечаем, но само содержимое в лог не пишем: база
+            // распухла бы от base64 документов, а для объяснения решения
+            // достаточно знать, что файл был и какого он типа.
+            foreach ($turn['files'] ?? [] as $file) {
+                $lines[] = '[файл] '.($file['mime'] ?? '?').', '
+                    .round(strlen((string) ($file['data'] ?? '')) * 3 / 4 / 1024).' КБ';
+            }
+
             $lines[] = '['.$role.'] '.($turn['text'] ?? '');
         }
 

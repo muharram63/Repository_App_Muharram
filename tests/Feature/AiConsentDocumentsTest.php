@@ -421,12 +421,19 @@ test('страница документов говорит, что резюме 
 });
 
 test('дипломов может не быть вовсе, и дальше пройти можно', function () {
+    Illuminate\Support\Facades\Bus::fake();
     [$interview, $user] = consented();
 
     $this->actingAs($user)->post(route('applicant.ai.proceed', $interview))
         ->assertRedirect()->assertSessionHas('status');
 
-    expect($interview->fresh()->stage)->toBe('interview')
+    /*
+     * Стадия остаётся на документах, пока разбор не закончен: вопросы для
+     * разговора рождаются из разбора, и до его готовности собеседованию не о
+     * чем спрашивать. Стадию двигает задача BuildRequirementMatrix.
+     */
+    expect($interview->fresh()->stage)->toBe('documents')
+        ->and($interview->fresh()->analysis_status)->toBe('pending')
         ->and(AiCandidateDocument::count())->toBe(0);
 });
 

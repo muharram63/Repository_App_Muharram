@@ -23,6 +23,9 @@ class AiInterview extends Model
         'stage',
         'consent_at',
         'consent_ip',
+        'analysis',
+        'analysis_status',
+        'analysed_at',
         'documents_score',
         'interview_score',
         'test_score',
@@ -38,6 +41,9 @@ class AiInterview extends Model
         'decided_at' => 'datetime',
         // адрес — персональные данные, наружу не отдаётся и в базе шифруется
         'consent_ip' => 'encrypted',
+        // разбор содержит цитаты из резюме и документов — шифруется
+        'analysis' => 'encrypted:array',
+        'analysed_at' => 'datetime',
         'documents_score' => 'integer',
         'interview_score' => 'integer',
         'test_score' => 'integer',

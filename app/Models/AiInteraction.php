@@ -48,6 +48,7 @@ class AiInteraction extends Model
         'criteria_advice' => 'Предложение критериев',
         'resume_parse' => 'Разбор резюме',
         'document_audit' => 'Проверка документа',
+        'requirement_matrix' => 'Сверка требований',
         'interview_question' => 'Вопрос собеседования',
         'answer_score' => 'Оценка ответа',
         'task_compose' => 'Составление задания',

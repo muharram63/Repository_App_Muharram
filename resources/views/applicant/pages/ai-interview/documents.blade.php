@@ -191,22 +191,66 @@
                 </div>
             @endif
 
-            <form class="dc-panel" method="POST" action="{{ route('applicant.ai.proceed', $interview) }}">
-                @csrf
-                <h2>{{ __('Готовы продолжить?') }}</h2>
-                <p class="dc-hint">
-                    {{ __('Дальше ИИ разберёт документы и начнёт собеседование. Вернуться и добавить документ можно будет и позже.') }}
-                </p>
-                <div class="dc-row">
-                    <button type="submit" class="dc-btn">{{ __('Перейти к собеседованию') }}</button>
-                    <a class="dc-btn dc-btn-ghost" href="{{ route('applicant.ai.index') }}">
-                        {{ __('Продолжу потом') }}
-                    </a>
+            @if($interview->analysis_status === 'pending')
+                {{-- Разбор в очереди. Страница обновляется сама: три модельных
+                     вызова занимают до минуты, и следить за ними вручную
+                     кандидату незачем. --}}
+                <div class="dc-panel" id="dcWaiting">
+                    <h2>{{ __('ИИ разбирает документы') }}</h2>
+                    <p class="dc-hint">
+                        {{ __('Он сверяет ваш опыт с требованиями вакансии и готовит вопросы. Это занимает до минуты — страница обновится сама. Можно закрыть её и вернуться позже.') }}
+                    </p>
+                    <div class="dc-row">
+                        <a class="dc-btn dc-btn-ghost" href="{{ route('applicant.ai.index') }}">
+                            {{ __('Продолжу потом') }}
+                        </a>
+                    </div>
                 </div>
-            </form>
+            @elseif($interview->analysis_status === 'failed')
+                <div class="dc-panel">
+                    <h2>{{ __('Разбор не удался') }}</h2>
+                    <p class="dc-hint">
+                        {{ __('Ваши документы не удалось разобрать автоматически. Это не отказ: работодателю отправлено уведомление, и вашу кандидатуру рассмотрит человек. Ответ придёт в обещанный срок.') }}
+                    </p>
+                </div>
+            @elseif($interview->analysis_status === 'ready')
+                <div class="dc-panel">
+                    <h2>{{ __('Документы разобраны') }}</h2>
+                    <p class="dc-hint">
+                        {{ __('ИИ сверил ваш опыт с требованиями вакансии. Можно переходить к собеседованию.') }}
+                    </p>
+                    <div class="dc-row">
+                        <a class="dc-btn" href="{{ route('applicant.ai.interview', $interview) }}">
+                            {{ __('К собеседованию') }}
+                        </a>
+                    </div>
+                </div>
+            @else
+                <form class="dc-panel" method="POST" action="{{ route('applicant.ai.proceed', $interview) }}">
+                    @csrf
+                    <h2>{{ __('Готовы продолжить?') }}</h2>
+                    <p class="dc-hint">
+                        {{ __('Дальше ИИ разберёт документы и начнёт собеседование. Вернуться и добавить документ можно будет и позже.') }}
+                    </p>
+                    <div class="dc-row">
+                        <button type="submit" class="dc-btn">{{ __('Перейти к собеседованию') }}</button>
+                        <a class="dc-btn dc-btn-ghost" href="{{ route('applicant.ai.index') }}">
+                            {{ __('Продолжу потом') }}
+                        </a>
+                    </div>
+                </form>
+            @endif
         </div>
     </main>
 </div>
+
+@if($interview->analysis_status === 'pending')
+    <script>
+        // Пока разбор идёт, страница переспрашивает сервер. Раз в пять секунд:
+        // разбор занимает около минуты, и чаще дёргать незачем.
+        setTimeout(function () { window.location.reload(); }, 5000);
+    </script>
+@endif
 
 @include('applicant.partials.js')
 @include('applicant.partials.script')

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Applicant;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\AnalyzeCandidateDocument;
+use App\Jobs\BuildRequirementMatrix;
 use App\Models\AiCandidateDocument;
 use App\Models\AiInterview;
 use App\Models\AiInterviewConfig;
@@ -12,6 +14,7 @@ use App\Models\VacancyResponse;
 use App\Services\Documents\TextExtractor;
 use App\Services\Privacy\PiiRedactor;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -272,13 +275,31 @@ class AiInterviewController extends Controller
 
         abort_unless($interview->consented(), 403);
 
-        if ($interview->stage === 'documents') {
-            $interview->update(['stage' => 'interview']);
+        // повторное нажатие не должно ставить разбор в очередь второй раз
+        if ($interview->analysis_status === 'pending') {
+            return redirect()->route('applicant.ai.documents', $interview)
+                ->with('status', 'Разбор документов уже идёт — это занимает до минуты.');
         }
 
+        $interview->update(['analysis_status' => 'pending']);
+
+        /*
+         * Цепочкой, а не пачкой независимых задач: сверка требований опирается
+         * на вердикты по документам, и запустить её раньше — значит сверять с
+         * пустотой. Bus::chain выполняет их по очереди и обрывает цепочку, если
+         * звено упало окончательно.
+         */
+        $chain = $interview->documents()
+            ->whereIn('status', ['pending', 'failed'])
+            ->pluck('id')
+            ->map(fn (int $id) => new AnalyzeCandidateDocument($id))
+            ->push(new BuildRequirementMatrix($interview->id))
+            ->all();
+
+        Bus::chain($chain)->dispatch();
+
         return redirect()->route('applicant.ai.documents', $interview)
-            ->with('status', 'Документы приняты. Собеседование откроется здесь же — '
-                .'эта часть ещё готовится.');
+            ->with('status', 'Документы приняты. ИИ разбирает их — это занимает до минуты.');
     }
 
     /**

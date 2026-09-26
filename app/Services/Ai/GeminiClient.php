@@ -87,8 +87,8 @@ class GeminiClient
             'system_instruction' => $system,
             'input' => array_map(fn (array $turn) => [
                 // в Interactions API реплики размечены типом шага, а не полем role
-                'type' => $turn['role'] === 'model' ? 'model_output' : 'user_input',
-                'content' => [['type' => 'text', 'text' => $turn['text']]],
+                'type' => ($turn['role'] ?? 'user') === 'model' ? 'model_output' : 'user_input',
+                'content' => $this->content($turn),
             ], $turns),
             'response_format' => [
                 'type' => 'text',
@@ -129,6 +129,42 @@ class GeminiClient
             'usage' => $this->usage($json),
             'model' => (string) ($json['model'] ?? $model),
         ];
+    }
+
+    /**
+     * Содержимое реплики: приложенные файлы и текст.
+     *
+     * Файл передаётся блоком типа document — это выяснено перебором, а не из
+     * документации: input_image, input_file и image отвергаются с 400, а
+     * document принимается, и модель читает и текстовый PDF, и фотографию
+     * документа. Файлы идут перед текстом: так модель сначала видит документ, а
+     * потом указание, что с ним делать.
+     *
+     * @param  array{role?:string,text?:string,files?:array<int,array{mime:string,data:string}>}  $turn
+     */
+    private function content(array $turn): array
+    {
+        $blocks = [];
+
+        foreach ($turn['files'] ?? [] as $file) {
+            if (blank($file['data'] ?? null) || blank($file['mime'] ?? null)) {
+                continue;
+            }
+
+            $blocks[] = [
+                'type' => 'document',
+                'mime_type' => $file['mime'],
+                'data' => $file['data'],
+            ];
+        }
+
+        // Пустой текст всё равно отправляем, когда файлов нет: реплика без
+        // содержимого — это ошибка формата, а не «нечего сказать».
+        if (filled($turn['text'] ?? null) || $blocks === []) {
+            $blocks[] = ['type' => 'text', 'text' => (string) ($turn['text'] ?? '')];
+        }
+
+        return $blocks;
     }
 
     /**
