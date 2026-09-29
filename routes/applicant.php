@@ -66,6 +66,14 @@ Route::prefix('ai-interview')->name('ai.')->group(function () {
     Route::get('{interview}/chat', [$chat, 'show'])->whereNumber('interview')->name('chat');
     Route::get('{interview}/chat/state', [$chat, 'state'])->whereNumber('interview')->name('chat.state');
 
+    // Тестовое задание: составление и проверка идут через модель
+    $task = \App\Http\Controllers\Applicant\AiTaskController::class;
+
+    Route::get('{interview}/task', [$task, 'show'])->whereNumber('interview')->name('task');
+    Route::get('{interview}/task/state', [$task, 'state'])->whereNumber('interview')->name('task.state');
+    Route::post('{interview}/task', [$task, 'submit'])
+        ->whereNumber('interview')->middleware('throttle:10,1')->name('task.submit');
+
     Route::middleware('throttle:40,1')->group(function () use ($chat) {
         Route::post('{interview}/chat/begin', [$chat, 'begin'])
             ->whereNumber('interview')->name('chat.begin');

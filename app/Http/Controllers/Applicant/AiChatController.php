@@ -324,10 +324,13 @@ class AiChatController extends Controller
             return redirect()->route('applicant.ai.documents', $interview);
         }
 
-        // разговор закончен: тестовое задание и решение — следующие этапы
-        if (! in_array($interview->stage, ['interview'], true)) {
-            return redirect()->route('applicant.ai.documents', $interview)
-                ->with('status', 'Собеседование пройдено. Следующий этап ещё готовится.');
+        // разговор пройден — дальше тестовое задание
+        if (in_array($interview->stage, ['test', 'decision', 'done'], true)) {
+            return redirect()->route('applicant.ai.task', $interview);
+        }
+
+        if ($interview->stage !== 'interview') {
+            return redirect()->route('applicant.ai.documents', $interview);
         }
 
         return null;

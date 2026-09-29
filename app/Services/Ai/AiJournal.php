@@ -67,6 +67,31 @@ class AiJournal
         array $options = [],
         int $maxTokens = 2000,
     ): array {
+        return $this->askDetailed(...func_get_args())['data'];
+    }
+
+    /**
+     * То же, но вместе с фактом исполнения кода.
+     *
+     * Нужно проверке тестового задания: там важно не только что ответила
+     * модель, но и что на самом деле вывела запущенная программа. При
+     * расхождении верить надо выводу.
+     *
+     * @return array{data:array,execution:array<int,array>}
+     *
+     * @throws AiUnavailableException
+     * @throws AiInvalidAnswerException
+     */
+    public function askDetailed(
+        string $purpose,
+        string $system,
+        array $turns,
+        array $schema,
+        array $rules = [],
+        ?AiInterview $interview = null,
+        array $options = [],
+        int $maxTokens = 2000,
+    ): array {
         $attempt = 0;
         $lastErrors = [];
 
@@ -113,7 +138,10 @@ class AiJournal
                     $purpose, $interview, $system, $turns, $answer, $startedAt, 'ok', null, $options,
                 );
 
-                return $validated['data'];
+                return [
+                    'data' => $validated['data'],
+                    'execution' => $answer['execution'] ?? [],
+                ];
             }
 
             $lastErrors = $validated['errors'];

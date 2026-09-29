@@ -82,8 +82,16 @@ class GeminiClient
     ): array {
         $model = $options['model'] ?? $this->config['model'];
 
-        $json = $this->send([
+        $json = $this->send(array_filter([
             'model' => $model,
+            /*
+             * Инструменты модели. Нужен ровно один — исполнение кода: без него
+             * проверка решения кандидата остаётся мнением, а с ним появляется
+             * факт. Проверено, что исполнение и строгий JSON-ответ уживаются в
+             * одном вызове: модель сначала запускает код, потом отвечает по
+             * схеме.
+             */
+            'tools' => $options['tools'] ?? null,
             'system_instruction' => $system,
             'input' => array_map(fn (array $turn) => [
                 // в Interactions API реплики размечены типом шага, а не полем role
@@ -108,7 +116,7 @@ class GeminiClient
                 // разбору документов — добавляют, поэтому уровень задаётся извне
                 'thinking_level' => $options['thinking_level'] ?? 'low',
             ],
-        ]);
+        ], fn ($value) => $value !== null));
 
         $answer = $this->extractText($json);
         $data = json_decode($answer, true);
@@ -128,7 +136,61 @@ class GeminiClient
             'data' => $data,
             'usage' => $this->usage($json),
             'model' => (string) ($json['model'] ?? $model),
+            'execution' => $this->execution($json),
         ];
+    }
+
+    /**
+     * Что модель на самом деле запускала и что получила.
+     *
+     * Это факт, а не мнение: код исполнялся в песочнице провайдера, и вывод
+     * пришёл оттуда. Храним отдельно от оценки, потому что при расхождении
+     * между «вывод программы» и «модель считает, что решение хорошее» верить
+     * надо выводу.
+     *
+     * Форма шагов выяснена живым вызовом: у code_execution_call аргументы
+     * лежат в arguments, у code_execution_result вывод — в result.
+     *
+     * @return array<int,array{language:string,code:string,result:string,is_error:bool}>
+     */
+    private function execution(array $json): array
+    {
+        $calls = [];
+        $runs = [];
+
+        foreach ($json['steps'] ?? [] as $step) {
+            $type = $step['type'] ?? null;
+
+            if ($type === 'code_execution_call') {
+                $calls[$step['id'] ?? count($calls)] = [
+                    'language' => (string) ($step['arguments']['language'] ?? ''),
+                    'code' => (string) ($step['arguments']['code'] ?? ''),
+                ];
+            }
+
+            if ($type === 'code_execution_result') {
+                $runs[] = [
+                    'call' => $step['call_id'] ?? null,
+                    'result' => (string) ($step['result'] ?? ''),
+                    'is_error' => (bool) ($step['is_error'] ?? false),
+                ];
+            }
+        }
+
+        $execution = [];
+
+        foreach ($runs as $run) {
+            $call = $calls[$run['call']] ?? ['language' => '', 'code' => ''];
+
+            $execution[] = [
+                'language' => $call['language'],
+                'code' => $call['code'],
+                'result' => $run['result'],
+                'is_error' => $run['is_error'],
+            ];
+        }
+
+        return $execution;
     }
 
     /**

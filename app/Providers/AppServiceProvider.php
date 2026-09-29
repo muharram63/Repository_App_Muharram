@@ -61,6 +61,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Ai\GeminiInterviewer::class,
         );
 
+        // Тестовое задание: составление и проверка. Для кода модель
+        // запускает решение в песочнице провайдера.
+        $this->app->bind(
+            \App\Services\Ai\TaskExaminer::class,
+            \App\Services\Ai\GeminiTaskExaminer::class,
+        );
+
         // Озвучка вопросов на ИИ-собеседовании. Настройки передаём явно:
         // синтез умеет выключаться отдельно от остального Gemini, и знать
         // об этом должна реализация, а не вызывающий код.
