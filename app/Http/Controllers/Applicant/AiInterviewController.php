@@ -119,6 +119,11 @@ class AiInterviewController extends Controller
             ]);
         }
 
+        // решение объявлено — показываем его, а не отправляем по кругу
+        if ($interview->isDecided() && $interview->latestDecision) {
+            return redirect()->route('applicant.ai.result', $interview);
+        }
+
         // Ведём туда, где кандидат нужен сейчас. Разбор мог закончиться, пока
         // он ходил по другим страницам, — возвращать его к документам значило
         // бы заставлять искать продолжение самому.
@@ -133,6 +138,33 @@ class AiInterviewController extends Controller
         }
 
         return redirect()->route('applicant.ai.documents', $interview);
+    }
+
+    /**
+     * Результат собеседования.
+     *
+     * Кандидат видит текст решения и ничего сверх него: ни баллов, ни разбора
+     * по критериям, ни оценок своих ответов. Внутренние цифры адресованы
+     * работодателю, а человеку нужен понятный ответ.
+     */
+    public function result(AiInterview $interview)
+    {
+        $this->mine($interview);
+
+        $decision = $interview->latestDecision;
+
+        // решения ещё нет — возвращаем туда, где кандидат нужен
+        if (! $decision) {
+            return redirect()->route('applicant.ai.interview', $interview);
+        }
+
+        return view('applicant.pages.ai-interview.result', [
+            'user' => auth()->user(),
+            'applicant' => $interview->applicant,
+            'interview' => $interview,
+            'vacancy' => $interview->vacancy,
+            'decision' => $decision,
+        ]);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\AiTestSubmission;
+use App\Jobs\MakeHiringDecision;
 use App\Services\Ai\AiInvalidAnswerException;
 use App\Services\Ai\AiUnavailableException;
 use App\Services\Ai\TaskExaminer;
@@ -82,6 +83,11 @@ class GradeTestSubmission implements ShouldQueue
             // разговор и задание позади — дальше решение
             ...($interview->stage === 'test' ? ['stage' => 'decision'] : []),
         ]);
+
+        // все части собраны — можно решать
+        if ($interview) {
+            MakeHiringDecision::dispatch($interview->id);
+        }
 
         /*
          * Расхождение факта и мнения стоит отметить в журнале.

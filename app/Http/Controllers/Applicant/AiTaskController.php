@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Applicant;
 use App\Http\Controllers\Controller;
 use App\Jobs\ComposeTestTask;
 use App\Jobs\GradeTestSubmission;
+use App\Jobs\MakeHiringDecision;
 use App\Models\AiInterview;
 use App\Models\AiTestSubmission;
 use App\Models\AiTestTask;
@@ -181,6 +182,9 @@ class AiTaskController extends Controller
             'test_score' => 0,
             ...($interview->stage === 'test' ? ['stage' => 'decision'] : []),
         ]);
+
+        // части собраны: задание не сдано, и это тоже результат
+        MakeHiringDecision::dispatch($interview->id);
     }
 
     private function guardStage(AiInterview $interview)

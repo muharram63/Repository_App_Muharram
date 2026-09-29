@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Applicant;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\MakeHiringDecision;
 use App\Jobs\ScoreInterviewAnswer;
 use App\Jobs\SynthesizeTurnSpeech;
 use App\Models\AiInterview;
@@ -59,7 +60,7 @@ class AiChatController extends Controller
             'turns' => $turns,
             'config' => $interview->config,
             'asked' => $turns->where('role', AiInterviewTurn::ROLE_AI)->count(),
-            'target' => (int) ($interview->config->questions_count ?? 8),
+            'target' => $interview->questionTarget(),
             'assistantName' => GeminiInterviewer::NAME,
             'assistantRole' => GeminiInterviewer::ROLE,
             'voiceEnabled' => $this->speech->available(),
@@ -198,7 +199,7 @@ class AiChatController extends Controller
         return response()->json([
             'stage' => $interview->stage,
             'asked' => $turns->where('role', AiInterviewTurn::ROLE_AI)->count(),
-            'target' => (int) ($interview->config->questions_count ?? 8),
+            'target' => $interview->questionTarget(),
             'progress' => $interview->progress(),
             'speech' => $last ? [
                 'turn' => $last->id,
@@ -260,7 +261,7 @@ class AiChatController extends Controller
         $done = $this->conversationOver($interview, $asked + 1, (bool) $next['done']);
 
         if ($done) {
-            $interview->update(['stage' => 'test']);
+            $this->afterConversation($interview);
         }
 
         return response()->json([
@@ -273,7 +274,7 @@ class AiChatController extends Controller
                 'speech_state_url' => route('applicant.ai.speech.status', $turn),
             ],
             'asked' => $asked + 1,
-            'target' => (int) ($interview->config->questions_count ?? 8),
+            'target' => $interview->questionTarget(),
             'done' => $done,
         ]);
     }
@@ -293,13 +294,38 @@ class AiChatController extends Controller
      */
     private function conversationOver(AiInterview $interview, int $asked, bool $modelSaysDone): bool
     {
-        $target = (int) ($interview->config->questions_count ?? 8);
+        // цель растёт после пограничного дораунда: иначе разговор
+        // заканчивался бы ровно там же, где и в прошлый раз
+        $target = $interview->questionTarget();
 
         if ($asked >= $target) {
             return true;
         }
 
         return $modelSaysDone && $asked >= (int) ceil($target / 2);
+    }
+
+    /**
+     * Разговор окончен — куда дальше.
+     *
+     * После первого прохода впереди тестовое задание. После пограничного
+     * дораунда задание уже сдано и проверено, и ждать нечего: пересчитываем
+     * решение с новыми ответами.
+     */
+    private function afterConversation(AiInterview $interview): void
+    {
+        $graded = $interview->testTasks()
+            ->whereHas('submissions', fn ($q) => $q->whereNotNull('graded_at'))
+            ->exists();
+
+        if ($graded) {
+            $interview->update(['stage' => 'decision']);
+            MakeHiringDecision::dispatch($interview->id);
+
+            return;
+        }
+
+        $interview->update(['stage' => 'test']);
     }
 
     /**

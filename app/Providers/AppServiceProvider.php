@@ -68,6 +68,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Ai\GeminiTaskExaminer::class,
         );
 
+        // Формулировка решения. Исход считает DecisionEngine без всякой
+        // модели, здесь модель лишь подбирает слова.
+        $this->app->bind(
+            \App\Services\Ai\DecisionWriter::class,
+            \App\Services\Ai\GeminiDecisionWriter::class,
+        );
+
         // Озвучка вопросов на ИИ-собеседовании. Настройки передаём явно:
         // синтез умеет выключаться отдельно от остального Gemini, и знать
         // об этом должна реализация, а не вызывающий код.

@@ -208,4 +208,18 @@ class AiInterview extends Model
     {
         return $this->follow_up_round < self::MAX_FOLLOW_UP_ROUNDS;
     }
+
+    /**
+     * Сколько вопросов должно прозвучать всего.
+     *
+     * Пограничный дораунд добавляет несколько сверх заказанного работодателем:
+     * иначе разговор заканчивался бы ровно там же, где и в прошлый раз, и
+     * уточнять было бы негде.
+     */
+    public function questionTarget(): int
+    {
+        $base = (int) ($this->config->questions_count ?? 8);
+
+        return $base + $this->follow_up_round * \App\Jobs\MakeHiringDecision::FOLLOW_UP_QUESTIONS;
+    }
 }

@@ -48,6 +48,9 @@ Route::prefix('ai-interview')->name('ai.')->group(function () {
     Route::post('{interview}/consent', [$interview, 'consent'])->whereNumber('interview')->name('consent');
     Route::delete('{interview}', [$interview, 'decline'])->whereNumber('interview')->name('decline');
 
+    Route::get('{interview}/result', [$interview, 'result'])
+        ->whereNumber('interview')->name('result');
+
     Route::get('{interview}/documents', [$interview, 'documents'])
         ->whereNumber('interview')->name('documents');
     Route::post('{interview}/documents', [$interview, 'upload'])

@@ -94,7 +94,9 @@
 
                         <div>
                             @if($interview->isDecided())
-                                <span class="iv-meta">{{ $interview->decided_at?->format('d.m.Y') }}</span>
+                                <a class="iv-btn" href="{{ route('applicant.ai.result', $interview) }}">
+                                    {{ __('Смотреть результат') }}
+                                </a>
                             @else
                                 <a class="iv-btn" href="{{ route('applicant.ai.interview', $interview) }}">
                                     {{ $interview->consented() ? __('Продолжить') : __('Начать') }}
