@@ -263,9 +263,7 @@ class MakeHiringDecision implements ShouldQueue
             'interview',
             $manual ? 'Кандидат ждёт вашего решения' : 'ИИ принял решение по кандидату',
             $name.' · «'.($interview->vacancy?->title ?? '—').'» · '.$decision->outcomeLabel(),
-            // Подробный отчёт по кандидату появится на следующем этапе;
-            // пока ведём на страницу вакансии.
-            route('employer.ai.show', $interview->vacancy_id),
+            route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]),
         );
     }
 

@@ -27,6 +27,21 @@ Route::prefix('ai-screening')->name('ai.')->group(function () {
         ->whereNumber('vacancy')->name('criteria.add');
     Route::delete('{vacancy}/criteria/{criterion}', [$screening, 'destroyCriterion'])
         ->whereNumber('vacancy')->whereNumber('criterion')->name('criteria.destroy');
+
+    // Отчёты по кандидатам: решение ИИ должно быть проверяемым, а не
+    // принимаемым на веру.
+    $report = \App\Http\Controllers\Employer\AiReportController::class;
+
+    Route::get('{vacancy}/candidates', [$report, 'candidates'])
+        ->whereNumber('vacancy')->name('candidates');
+    Route::get('{vacancy}/candidates/{interview}', [$report, 'candidate'])
+        ->whereNumber('vacancy')->whereNumber('interview')->name('candidate');
+    Route::get('{vacancy}/candidates/{interview}/export', [$report, 'export'])
+        ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.export');
+    Route::post('{vacancy}/candidates/{interview}/override', [$report, 'override'])
+        ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.override');
+    Route::delete('{vacancy}/candidates/{interview}', [$report, 'purge'])
+        ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.purge');
 });
 
 // сюда же позже добавите отклики:

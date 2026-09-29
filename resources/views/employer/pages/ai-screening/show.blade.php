@@ -80,7 +80,12 @@
 
     <main class="main">
         <div class="sc-wrap">
-            <a class="sc-back" href="{{ route('employer.ai.index') }}">← {{ __('Ко всем вакансиям') }}</a>
+            <div class="sc-row" style="justify-content:space-between">
+                <a class="sc-back" href="{{ route('employer.ai.index') }}">← {{ __('Ко всем вакансиям') }}</a>
+                <a class="sc-btn" href="{{ route('employer.ai.candidates', $vacancy) }}">
+                    {{ __('Кандидаты и отчёты') }}
+                </a>
+            </div>
 
             <div>
                 <h1 style="margin:0 0 4px; font-size:20px;">{{ $vacancy->title }}</h1>

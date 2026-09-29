@@ -80,7 +80,6 @@
                     @elseif($outcome === 'manual_review')
                         <div>{{ __('Система не стала решать сама — вашу кандидатуру рассматривает человек.') }}</div>
                     @endif
-                    <div>{{ __('Вы можете попросить удалить ваши данные по этому собеседованию.') }}</div>
                 </div>
 
                 <div class="rs-row">
@@ -90,7 +89,19 @@
                     <a class="rs-btn rs-btn-ghost" href="{{ route('applicant.ai.index') }}">
                         {{ __('К моим собеседованиям') }}
                     </a>
+                    {{-- Право на удаление принадлежит кандидату: просить об этом
+                         через того, кто отказал, — странная процедура. --}}
+                    <button type="submit" form="purge" class="rs-btn rs-btn-ghost"
+                            style="cursor:pointer; font:inherit; font-size:14px; font-weight:600;"
+                            onclick="return confirm('{{ __('Удалить ваши ответы, документы и оценки по этому собеседованию? Отменить будет нельзя.') }}')">
+                        {{ __('Удалить мои данные') }}
+                    </button>
                 </div>
+
+                <form id="purge" method="POST" action="{{ route('applicant.ai.purge', $interview) }}" hidden>
+                    @csrf
+                    @method('DELETE')
+                </form>
             </div>
         </div>
     </main>

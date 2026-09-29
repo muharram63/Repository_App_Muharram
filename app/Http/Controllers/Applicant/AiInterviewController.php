@@ -168,6 +168,27 @@ class AiInterviewController extends Controller
     }
 
     /**
+     * Кандидат удаляет свои данные по этому собеседованию.
+     *
+     * Право принадлежит ему, а не работодателю, поэтому кнопка есть и здесь, не
+     * только в панели: просить об удалении через того, кто тебе отказал, —
+     * странная процедура.
+     *
+     * Удаляется всё, включая аудит обращений к модели: в промптах лежат ответы
+     * человека и содержимое его документов. Отклик остаётся — он принадлежит
+     * воронке найма, а не собеседованию.
+     */
+    public function purge(AiInterview $interview)
+    {
+        $this->mine($interview);
+
+        \App\Http\Controllers\Employer\AiReportController::erase($interview);
+
+        return redirect()->route('applicant.ai.index')
+            ->with('status', 'Ваши данные по этому собеседованию удалены.');
+    }
+
+    /**
      * Согласие получено.
      */
     public function consent(Request $request, AiInterview $interview)

@@ -42,6 +42,7 @@
             background: var(--indigo-600); color: #fff; border: 1px solid transparent;
         }
         .sc-btn:hover { filter: brightness(1.06); }
+        .sc-btn-ghost { background: transparent; color: var(--gray-500); border-color: var(--gray-200); }
 
         .sc-empty {
             background: var(--white); border: 1px dashed var(--gray-300);
@@ -119,9 +120,17 @@
                                 </div>
                             </div>
 
-                            <a class="sc-btn" href="{{ route('employer.ai.show', $vacancy) }}">
-                                {{ $config && $config->enabled ? __('Настроить') : __('Настроить и включить') }}
-                            </a>
+                            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                                @if($candidates > 0)
+                                    <a class="sc-btn" href="{{ route('employer.ai.candidates', $vacancy) }}">
+                                        {{ __('Кандидаты') }}
+                                    </a>
+                                @endif
+                                <a class="sc-btn {{ $candidates > 0 ? 'sc-btn-ghost' : '' }}"
+                                   href="{{ route('employer.ai.show', $vacancy) }}">
+                                    {{ $config && $config->enabled ? __('Настроить') : __('Настроить и включить') }}
+                                </a>
+                            </div>
                         </div>
                     @endforeach
                 </div>

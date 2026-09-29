@@ -51,6 +51,10 @@ Route::prefix('ai-interview')->name('ai.')->group(function () {
     Route::get('{interview}/result', [$interview, 'result'])
         ->whereNumber('interview')->name('result');
 
+    // право на удаление принадлежит кандидату, а не работодателю
+    Route::delete('{interview}/purge', [$interview, 'purge'])
+        ->whereNumber('interview')->name('purge');
+
     Route::get('{interview}/documents', [$interview, 'documents'])
         ->whereNumber('interview')->name('documents');
     Route::post('{interview}/documents', [$interview, 'upload'])
