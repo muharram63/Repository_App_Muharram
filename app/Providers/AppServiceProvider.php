@@ -55,6 +55,12 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Ai\GeminiDocumentAuditor::class,
         );
 
+        // Собеседующий: вопросы ведёт быстрая модель, оценку ставит сильная.
+        $this->app->bind(
+            \App\Services\Ai\Interviewer::class,
+            \App\Services\Ai\GeminiInterviewer::class,
+        );
+
         // Озвучка вопросов на ИИ-собеседовании. Настройки передаём явно:
         // синтез умеет выключаться отдельно от остального Gemini, и знать
         // об этом должна реализация, а не вызывающий код.

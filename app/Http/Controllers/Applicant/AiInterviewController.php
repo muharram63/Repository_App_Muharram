@@ -119,6 +119,11 @@ class AiInterviewController extends Controller
             ]);
         }
 
+        // разбор закончен и разговор не пройден — кандидату место в чате
+        if ($interview->analysis_status === 'ready' && $interview->stage === 'interview') {
+            return redirect()->route('applicant.ai.chat', $interview);
+        }
+
         return redirect()->route('applicant.ai.documents', $interview);
     }
 

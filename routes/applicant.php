@@ -59,6 +59,20 @@ Route::prefix('ai-interview')->name('ai.')->group(function () {
     Route::post('{interview}/proceed', [$interview, 'proceed'])
         ->whereNumber('interview')->name('proceed');
 
+    // Разговор с ИИ. Реплики идут через модель, поэтому частота ограничена:
+    // одна вкладка не должна сжечь дневную квоту бесплатного ключа.
+    $chat = \App\Http\Controllers\Applicant\AiChatController::class;
+
+    Route::get('{interview}/chat', [$chat, 'show'])->whereNumber('interview')->name('chat');
+    Route::get('{interview}/chat/state', [$chat, 'state'])->whereNumber('interview')->name('chat.state');
+
+    Route::middleware('throttle:40,1')->group(function () use ($chat) {
+        Route::post('{interview}/chat/begin', [$chat, 'begin'])
+            ->whereNumber('interview')->name('chat.begin');
+        Route::post('{interview}/chat/answer', [$chat, 'answer'])
+            ->whereNumber('interview')->name('chat.answer');
+    });
+
     // Озвучка произвольного текста — только для страницы проверки. Частота
     // ограничена жёстче остального: иначе маршрут превратился бы в
     // бесплатный синтезатор речи за счёт нашей квоты.
