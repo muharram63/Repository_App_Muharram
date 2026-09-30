@@ -86,16 +86,41 @@ class ComposeTestTask implements ShouldQueue
 
     private function giveUp(AiInterview $interview, string $reason): void
     {
-        $interview->update(['requires_review' => true]);
+        $interview->update([
+            'requires_review' => true,
+            // стадия решения: ждать больше нечего, задания не будет
+            ...($interview->stage === 'test' ? ['stage' => 'decision'] : []),
+        ]);
 
         Log::warning('Тестовое задание не составлено', [
             'interview' => $interview->id,
             'reason' => $reason,
         ]);
+
+        /*
+         * Дальше — решение, а не тишина.
+         *
+         * Одной пометки requires_review было мало: собеседование оставалось на
+         * стадии задания, которого не будет, решение никто не запускал, и
+         * кандидат до конца дней смотрел на «задание готовится», а страница
+         * перезагружалась каждые пять секунд. Ни он, ни работодатель не узнавали,
+         * что случилось.
+         *
+         * Своих уведомлений здесь нет намеренно: пометка requires_review
+         * заставит движок объявить ручную проверку, и тот же код, что обычно,
+         * напишет кандидату про обещанный срок ответа и позовёт работодателя.
+         */
+        MakeHiringDecision::dispatch($interview->id);
     }
 
     public function failed(?\Throwable $e): void
     {
-        AiInterview::whereKey($this->interviewId)->update(['requires_review' => true]);
+        $interview = AiInterview::find($this->interviewId);
+
+        // тем же путём, что и при негодном ответе: иначе кандидат остаётся
+        // ждать задания, которого не будет, и никто об этом не узнаёт
+        if ($interview) {
+            $this->giveUp($interview, 'Задание не составлено после нескольких попыток.');
+        }
     }
 }

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\AiDecision;
 use App\Models\AiInterview;
 use App\Models\AiInterviewCriterion;
+use App\Models\AiTestTask;
 use App\Models\UserNotification;
 use App\Services\Ai\AiInvalidAnswerException;
 use App\Services\Ai\AiUnavailableException;
@@ -118,7 +119,7 @@ class MakeHiringDecision implements ShouldQueue
         }
 
         // задание выдано, но ещё не проверено
-        $task = $interview->testTasks()->latest('id')->first();
+        $task = $this->mainTask($interview);
 
         return $task !== null
             && $task->submission()->first() !== null
@@ -273,7 +274,7 @@ class MakeHiringDecision implements ShouldQueue
      */
     private function testScore(AiInterview $interview): ?int
     {
-        $task = $interview->testTasks()->latest('id')->first();
+        $task = $this->mainTask($interview);
 
         if (! $task) {
             // Задания нет вовсе. Возможно, работодатель дал ему нулевой вес —
@@ -284,6 +285,22 @@ class MakeHiringDecision implements ShouldQueue
         $submission = $task->submission()->first();
 
         return $submission?->isGraded() ? (int) $submission->score : null;
+    }
+
+    /**
+     * Основное задание собеседования.
+     *
+     * Именно основное, а не последнее по номеру: у задания есть вид, и все
+     * остальные места модуля спрашивают main. Здесь фильтра не было, и стоило
+     * появиться заданию другого вида, как решение брало бы балл не оттуда,
+     * откуда его брала страница кандидата.
+     */
+    private function mainTask(AiInterview $interview): ?AiTestTask
+    {
+        return $interview->testTasks()
+            ->where('kind', AiTestTask::KIND_MAIN)
+            ->latest('id')
+            ->first();
     }
 
     public function failed(?\Throwable $e): void

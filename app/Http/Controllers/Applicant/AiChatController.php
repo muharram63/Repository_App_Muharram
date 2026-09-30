@@ -79,6 +79,23 @@ class AiChatController extends Controller
     {
         $this->mine($interview);
 
+        /*
+         * Стадию проверяем и здесь, а не только на странице.
+         *
+         * Страницу без согласия и без разбора документов guardStage() не
+         * отдаёт, но этот адрес вызывается через fetch и достижим сам по себе.
+         * Без проверки первый вопрос задавался бы человеку, который согласия не
+         * давал: модель спрошена, реплика в базе, стадия всё ещё «согласие».
+         * Обещание «без согласия ничего не происходит» нарушалось бы ровно
+         * одним POST-запросом.
+         */
+        if ($error = $this->notReadyToTalk($interview)) {
+            return response()->json([
+                'error' => $error,
+                'reload' => true,
+            ], 422);
+        }
+
         if ($interview->turns()->exists()) {
             return response()->json(['already' => true]);
         }
@@ -112,8 +129,8 @@ class AiChatController extends Controller
 
         $validated = $validator->validated();
 
-        if ($interview->stage !== 'interview') {
-            return response()->json(['error' => 'Собеседование уже завершено.'], 422);
+        if ($error = $this->notReadyToTalk($interview)) {
+            return response()->json(['error' => $error, 'reload' => true], 422);
         }
 
         /*
@@ -335,6 +352,30 @@ class AiChatController extends Controller
     private function nextPosition(AiInterview $interview): int
     {
         return (int) $interview->turns()->max('position') + 1;
+    }
+
+    /**
+     * Почему разговор сейчас невозможен — или null, если возможен.
+     *
+     * Одно место для двух адресов: и «начать», и «ответить» приходят через
+     * fetch, и оба должны отвечать одинаково, иначе одна из дверей однажды
+     * окажется открытой.
+     */
+    private function notReadyToTalk(AiInterview $interview): ?string
+    {
+        if (! $interview->consented()) {
+            return 'Сначала нужно дать согласие на ИИ-собеседование.';
+        }
+
+        if ($interview->analysis_status !== 'ready') {
+            return 'Документы ещё не разобраны — разговор начнётся после этого.';
+        }
+
+        if ($interview->stage !== 'interview') {
+            return 'Собеседование уже завершено.';
+        }
+
+        return null;
     }
 
     /**

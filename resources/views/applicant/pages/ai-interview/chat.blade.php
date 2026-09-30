@@ -301,7 +301,16 @@
             scroll();
         }
 
-        function ask(url, payload) {
+        /**
+         * Запрос к серверу.
+         *
+         * onFail возвращает страницу в то состояние, в котором она была до
+         * отправки. Без этого ответ кандидата оставался в переписке, будто
+         * ушёл, а из поля исчезал: человек видел свои четыре тысячи знаков на
+         * экране, надпись «попробуйте ещё раз» и пустое поле — и набирал всё
+         * заново.
+         */
+        function ask(url, payload, onFail) {
             hideError();
             waiting(true);
 
@@ -327,7 +336,25 @@
 
                         // Разговор передан человеку — продолжать нечего, но
                         // ответы сохранены, и об этом сказано прямо.
-                        if (result.data.handover) { form.hidden = true; }
+                        if (result.data.handover) {
+                            form.hidden = true;
+
+                            return;
+                        }
+
+                        /*
+                         * Стадия сменилась на сервере: разговор уже закончен
+                         * или ещё не начат. Страница об этом не знает, и
+                         * держать её на месте бессмысленно — перезагрузка
+                         * отправит кандидата туда, где он нужен.
+                         */
+                        if (result.data.reload) {
+                            window.location.reload();
+
+                            return;
+                        }
+
+                        if (onFail) { onFail(); }
 
                         return;
                     }
@@ -347,6 +374,8 @@
                 .catch(function () {
                     waiting(false);
                     showError(@json(__('Связь прервалась. Ответы сохранены — попробуйте ещё раз.')));
+
+                    if (onFail) { onFail(); }
                 });
         }
 
@@ -357,7 +386,7 @@
 
             if (!value || busy) { return; }
 
-            bubble('me', value, null);
+            const mine = bubble('me', value, null);
             text.value = '';
             paintLeft();
             scroll();
@@ -365,7 +394,12 @@
             // кандидат ответил — аватар слушает, пока идёт обработка
             if (window.AiAvatar) { window.AiAvatar.setState('listening'); }
 
-            ask(urls.answer, {text: value, question_id: questionId});
+            ask(urls.answer, {text: value, question_id: questionId}, function () {
+                // ответ не ушёл — возвращаем его в поле и убираем из переписки
+                mine.remove();
+                text.value = value;
+                paintLeft();
+            });
         });
 
         // Ctrl+Enter отправляет: привычно тем, кто печатает много

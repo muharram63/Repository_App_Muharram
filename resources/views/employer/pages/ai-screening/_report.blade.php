@@ -129,7 +129,11 @@
         @if($decision)
             <div class="rp-line">
                 <span class="rp-chip">{{ __('Основание:') }} {{ $decision->gateLabel() ?? '—' }}</span>
-                <span class="rp-chip">{{ __('Пороги:') }}
+                {{-- Настройки вакансии правятся когда угодно, а решение уже
+                     объявлено человеку. Поэтому подпись говорит «сейчас»: иначе
+                     работодатель, поднявший порог после отбора, читал бы отчёт
+                     как «балл 62 при пороге 80» и считал бы это ошибкой. --}}
+                <span class="rp-chip">{{ __('Пороги вакансии сейчас:') }}
                     {{ $interview->config?->threshold_reject }}–{{ $interview->config?->threshold_accept }}</span>
                 @if($interview->follow_up_round > 0)
                     <span class="rp-chip">{{ __('Были уточняющие вопросы') }}</span>

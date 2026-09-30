@@ -262,9 +262,41 @@ class AiJournal
      * можно было показать, на каком основании принято решение. Без этого
      * «так решил ИИ» остаётся утверждением, которое нечем проверить.
      *
+     * Сбой самой записи проглатывается, и это не небрежность. Аудит —
+     * побочная запись, а вокруг него стоят пути, которые существуют ровно для
+     * того, чтобы не падать: «модель недоступна, попробуйте позже», «оставим
+     * шаблонный текст». Если бы запись в аудит могла бросить исключение, она
+     * ломала бы именно эти пути — кандидат получал бы пятисотую вместо
+     * понятного сообщения. Причина попадёт в лог, и это правильное место.
+     *
      * @param  array{data:array,usage:array,model:string}|null  $answer
      */
     private function record(
+        string $purpose,
+        ?AiInterview $interview,
+        string $system,
+        array $turns,
+        ?array $answer,
+        float $startedAt,
+        string $status,
+        ?string $error,
+        array $options,
+    ): void {
+        try {
+            $this->write($purpose, $interview, $system, $turns, $answer, $startedAt, $status, $error, $options);
+        } catch (\Throwable $e) {
+            Log::error('Не удалось записать обращение к модели в аудит', [
+                'purpose' => $purpose,
+                'interview' => $interview?->id,
+                'reason' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Собственно вставка. Отдельным методом, чтобы поймать её целиком.
+     */
+    private function write(
         string $purpose,
         ?AiInterview $interview,
         string $system,
@@ -288,11 +320,12 @@ class AiJournal
             // размышления входят в выход по деньгам, поэтому складываем:
             // иначе отчёт о расходе занижал бы стоимость оценок
             'tokens_out' => $answer
-                ? $answer['usage']['output'] + $answer['usage']['thought']
+                ? (int) ($answer['usage']['output'] ?? 0) + (int) ($answer['usage']['thought'] ?? 0)
                 : null,
             'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             'status' => $status,
-            'error' => $error,
+            // колонка на 255 символов, а сюда приходит и текст исключения
+            'error' => $error === null ? null : mb_substr($error, 0, 250),
         ]);
     }
 

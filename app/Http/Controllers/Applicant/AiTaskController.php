@@ -73,6 +73,22 @@ class AiTaskController extends Controller
     {
         $this->mine($interview);
 
+        /*
+         * Решение принимается только на своей стадии.
+         *
+         * Страницу вне стадии guardStage() не отдаёт, а отправка проверки не
+         * имела: задание составляется в конце разговора, и по сохранившемуся
+         * адресу решение уходило ещё до того, как прозвучал последний вопрос.
+         * Дописывать его к уже объявленному решению тоже нельзя — итог от этого
+         * не изменится, а в отчёте появится ответ, которого при решении не было.
+         */
+        if (! in_array($interview->stage, ['test', 'decision'], true)) {
+            return redirect()->route('applicant.ai.interview', $interview)
+                ->with('error', $interview->isDecided()
+                    ? 'Решение уже принято — задание больше не принимается.'
+                    : 'Задание откроется после собеседования.');
+        }
+
         $task = $interview->testTasks()->where('kind', AiTestTask::KIND_MAIN)->latest('id')->first();
 
         if (! $task) {
@@ -150,7 +166,7 @@ class AiTaskController extends Controller
     private function requestTask(AiInterview $interview): void
     {
         // задача уже в очереди с прошлого захода
-        if ($interview->testTasks()->exists()) {
+        if ($interview->testTasks()->where('kind', AiTestTask::KIND_MAIN)->exists()) {
             return;
         }
 

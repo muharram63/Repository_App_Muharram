@@ -10,11 +10,9 @@ use App\Models\AiInterviewCriterion;
 use App\Models\Employer;
 use App\Models\UserNotification;
 use App\Models\Vacancy;
-use App\Services\Documents\TextExtractor;
 use App\Services\Scoring\DecisionEngine;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -166,28 +164,10 @@ class AiReportController extends Controller
         $this->authorizeVacancy($vacancy);
         $this->authorizeInterview($vacancy, $interview);
 
-        self::erase($interview);
+        $interview->eraseCompletely();
 
         return redirect()->route('employer.ai.candidates', $vacancy)
             ->with('status', 'Данные кандидата по этому собеседованию удалены.');
-    }
-
-    /**
-     * Стереть собеседование вместе с файлами.
-     *
-     * Публичный и статический, потому что то же самое делает кандидат из
-     * своего кабинета: право на удаление принадлежит ему, а работодатель лишь
-     * исполняет просьбу.
-     */
-    public static function erase(AiInterview $interview): void
-    {
-        foreach ($interview->documents as $document) {
-            Storage::disk(TextExtractor::DISK)->delete($document->path);
-        }
-
-        // озвучки реплик лежат в общей фонотеке по отпечатку текста и могут
-        // быть заняты другим собеседованием — их не трогаем
-        $interview->delete();
     }
 
     /**

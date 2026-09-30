@@ -28,9 +28,13 @@ beforeEach(function () {
 /**
  * Вакансия с рабочим ИИ-собеседованием и откликнувшийся кандидат с резюме.
  *
+ * Отклик создаётся здесь же: собеседование растёт из него, и без отклика вход
+ * закрыт. Кому нужно пройти этот путь через сам запрос — передаёт
+ * responded: false.
+ *
  * @return array{0:App\Models\Vacancy,1:User,2:App\Models\Applicant}
  */
-function readyToConsent(array $config = []): array
+function readyToConsent(array $config = [], bool $responded = true): array
 {
     [$vacancy] = makeAiVacancy(null, $config);
 
@@ -39,6 +43,13 @@ function readyToConsent(array $config = []): array
     $applicantUser = User::factory()->applicant()->create();
     $applicant = makeApplicant($applicantUser);
     makeResume($applicant);
+
+    if ($responded) {
+        VacancyResponse::create([
+            'applicant_id' => $applicant->id,
+            'vacancy_id' => $vacancy->id,
+        ]);
+    }
 
     return [$vacancy, $applicantUser, $applicant];
 }
@@ -64,7 +75,8 @@ function docxFile(string $text): UploadedFile
 // ==================== вход и согласие ====================
 
 test('отклик на вакансию с ИИ ведёт кандидата к согласию', function () {
-    [$vacancy, $applicantUser] = readyToConsent();
+    // отклик этот тест отправляет сам — он и проверяется
+    [$vacancy, $applicantUser] = readyToConsent(responded: false);
 
     $this->actingAs($applicantUser)
         ->post(route('public.vacancies.respond', $vacancy))

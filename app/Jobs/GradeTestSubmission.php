@@ -53,17 +53,12 @@ class GradeTestSubmission implements ShouldQueue
              * весом, который задал работодатель. Непроверенное задание — повод
              * позвать человека, а не занижать результат.
              */
-            $interview?->update(['requires_review' => true]);
-
-            Log::warning('Задание не проверено', [
-                'submission' => $submission->id,
-                'reason' => $e->summary(),
-            ]);
+            $this->handOver($interview, 'Модель дважды ответила негодно: '.$e->summary());
 
             return;
         } catch (AiUnavailableException $e) {
             if ($this->attempts() >= $this->tries) {
-                $interview?->update(['requires_review' => true]);
+                $this->handOver($interview, $e->getMessage());
 
                 return;
             }
@@ -125,9 +120,36 @@ class GradeTestSubmission implements ShouldQueue
         return true;
     }
 
+    /**
+     * Проверить не удалось — дальше решает человек.
+     *
+     * Пометки requires_review было мало: она никого не извещала. Решение
+     * никто не запускал, и собеседование застывало навсегда — кандидат ждал
+     * ответа, которого никто не собирался давать, а работодатель не знал, что
+     * кандидат ждёт. Решение мы здесь не выдумываем: та же пометка заставит
+     * движок объявить ручную проверку и написать обеим сторонам.
+     */
+    private function handOver(?\App\Models\AiInterview $interview, string $reason): void
+    {
+        if (! $interview) {
+            return;
+        }
+
+        $interview->update(['requires_review' => true]);
+
+        Log::warning('Задание не проверено', [
+            'interview' => $interview->id,
+            'reason' => $reason,
+        ]);
+
+        MakeHiringDecision::dispatch($interview->id);
+    }
+
     public function failed(?\Throwable $e): void
     {
-        AiTestSubmission::with('task.interview')->find($this->submissionId)
-            ?->task?->interview?->update(['requires_review' => true]);
+        $interview = AiTestSubmission::with('task.interview')
+            ->find($this->submissionId)?->task?->interview;
+
+        $this->handOver($interview, 'Проверка не удалась после нескольких попыток.');
     }
 }
