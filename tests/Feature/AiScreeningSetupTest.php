@@ -629,3 +629,124 @@ test('модель не должна предлагать критериев п�
         // и про «корочку» вместо умения
         ->toContain('диплом');
 });
+
+// ==================== с чего начинает новая вакансия ====================
+
+test('новая вакансия открывается с рабочими значениями, а не с нулями', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    /*
+     * Первый заход, не второй.
+     *
+     * Настройки заводятся через firstOrCreate(): строка в базе получала
+     * значения колонок, а объект в памяти оставался пустым — и работодатель
+     * видел нули во всех полях, сумму весов 0 и три красных пункта. После
+     * перезагрузки страницы всё «само чинилось», поэтому ошибку легко было
+     * не заметить.
+     */
+    $response = $this->actingAs($user)->get(route('employer.ai.show', $vacancy))->assertOk();
+
+    $config = AiInterviewConfig::sole();
+
+    expect($config->weight_documents)->toBe(40)
+        ->and($config->weight_interview)->toBe(40)
+        ->and($config->weight_test)->toBe(20)
+        ->and($config->weightsSum())->toBe(100)
+        ->and($config->threshold_reject)->toBe(40)
+        ->and($config->threshold_accept)->toBe(70)
+        ->and($config->questions_count)->toBe(5)
+        ->and($config->test_time_limit_minutes)->toBe(30);
+
+    // и это видно в полях формы, а не только в базе
+    $response->assertSee('value="40"', false)
+        ->assertSee('value="20"', false)
+        ->assertSee('value="70"', false);
+});
+
+test('у новой вакансии остаётся одно невыполненное условие — критерий', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $this->actingAs($user)->get(route('employer.ai.show', $vacancy));
+
+    $config = AiInterviewConfig::sole();
+
+    // веса и пороги в порядке сразу; подтвердить критерий — единственное,
+    // что за работодателя решить нельзя
+    expect($config->problems())->toHaveCount(1)
+        ->and($config->problems()[0])->toContain('обязательный критерий');
+
+    $checklist = collect($config->checklist())->keyBy('key');
+
+    expect($checklist['weights']['met'])->toBeTrue()
+        ->and($checklist['thresholds']['met'])->toBeTrue()
+        ->and($checklist['criteria']['met'])->toBeFalse();
+});
+
+test('чеклист показывает все три условия и текущую сумму весов', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $this->actingAs($user)->get(route('employer.ai.show', $vacancy))
+        ->assertOk()
+        // все три пункта видны всегда, а не только невыполненные
+        ->assertSee('Сумма весов документов, собеседования и задания равна 100', false)
+        ->assertSee('Порог приёма выше порога отказа', false)
+        ->assertSee('Подтверждён хотя бы один обязательный критерий', false)
+        // сумма выводится числом и обновляется на лету
+        ->assertSee('data-sum', false)
+        ->assertSee('Пока собеседование включить нельзя', false);
+});
+
+test('когда условия выполнены, чеклист зеленеет целиком', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'php', 'label' => 'PHP',
+        'kind' => 'must', 'weight' => 100, 'source' => 'employer',
+        'confirmed_at' => now(), 'position' => 0,
+    ]);
+
+    $this->actingAs($user)->get(route('employer.ai.show', $vacancy))
+        ->assertOk()
+        ->assertSee('Все условия выполнены', false)
+        // блок стал зелёным целиком
+        ->assertSee('sc-note sc-good', false)
+        ->assertDontSee('sc-note sc-warn', false);
+
+    /*
+     * На отсутствие слов «включить нельзя» здесь не проверяем: они остаются в
+     * data-атрибуте — оттуда их берёт скрипт, когда работодатель правит веса и
+     * условие снова перестаёт выполняться.
+     */
+    expect(AiInterviewConfig::sole()->problems())->toBe([]);
+});
+
+test('чеклист и серверная проверка не расходятся', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $config = AiInterviewConfig::create(['vacancy_id' => $vacancy->id, 'weight_test' => 30]);
+
+    /*
+     * Оба списка выводятся из одного набора условий. Держать их врозь значило
+     * бы однажды получить страницу с зелёной галочкой там, где сохранение
+     * отказывает.
+     */
+    $unmet = collect($config->checklist())->reject(fn ($item) => $item['met']);
+
+    expect($config->problems())->toBe($unmet->pluck('problem')->values()->all())
+        ->and($config->problems())->not->toBe([]);
+});
+
+test('дефолты не открывают дорогу мимо серверной проверки', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    // веса и пороги хороши по умолчанию, но критерия нет — включить нельзя
+    $this->actingAs($user)->patch(route('employer.ai.config', $vacancy), [
+        'level' => 'middle', 'language' => 'ru', 'questions_count' => 5,
+        'weight_documents' => 40, 'weight_interview' => 40, 'weight_test' => 20,
+        'threshold_reject' => 40, 'threshold_accept' => 70,
+        'test_time_limit_minutes' => 30, 'response_sla' => 'в течение 3 дней',
+        'decision_mode' => 'auto', 'enabled' => '1',
+    ])->assertSessionHas('error');
+
+    expect(AiInterviewConfig::sole()->enabled)->toBeFalse();
+});

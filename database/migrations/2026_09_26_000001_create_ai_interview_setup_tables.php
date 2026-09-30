@@ -23,24 +23,30 @@ return new class extends Migration
             // иначе модуль начал бы собеседовать кандидатов на старых вакансиях
             $table->boolean('enabled')->default(false);
 
+            /*
+             * Значения по умолчанию продублированы в AiInterviewConfig::$attributes,
+             * и подставляет их модель, а не база: настройки заводятся через
+             * Eloquent, и колонка до своего умолчания не доходит. Здесь они
+             * держатся одинаковыми, чтобы схема не рассказывала другую историю.
+             */
             $table->string('level', 20)->default('middle');
             // язык разговора — из тех, что уже поддерживает интерфейс
             $table->string('language', 5)->default('ru');
-            $table->unsignedTinyInteger('questions_count')->default(8);
+            $table->unsignedTinyInteger('questions_count')->default(5);
 
             // Веса в процентах, сумма = 100. Проверку суммы делает приложение:
             // в базе такое условие пришлось бы описывать дважды — тесты идут
             // на sqlite, а боевая база MySQL.
-            $table->unsignedTinyInteger('weight_documents')->default(30);
-            $table->unsignedTinyInteger('weight_interview')->default(45);
-            $table->unsignedTinyInteger('weight_test')->default(25);
+            $table->unsignedTinyInteger('weight_documents')->default(40);
+            $table->unsignedTinyInteger('weight_interview')->default(40);
+            $table->unsignedTinyInteger('weight_test')->default(20);
 
             // Два порога, между ними — пограничная зона, где решение не
             // принимается сразу, а задаются дополнительные вопросы.
-            $table->unsignedTinyInteger('threshold_reject')->default(45);
+            $table->unsignedTinyInteger('threshold_reject')->default(40);
             $table->unsignedTinyInteger('threshold_accept')->default(70);
 
-            $table->unsignedSmallInteger('test_time_limit_minutes')->default(60);
+            $table->unsignedSmallInteger('test_time_limit_minutes')->default(30);
 
             // Срок ответа кандидату — словами, как его сформулировал
             // работодатель: «в течение 3 дней», «в течение нескольких часов».

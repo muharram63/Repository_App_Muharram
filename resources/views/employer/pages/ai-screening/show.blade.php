@@ -34,6 +34,23 @@
         }
 
         .sc-note { font-size: 13px; padding: 10px 12px; border-radius: 10px; }
+
+        /* Чеклист готовности: три условия, каждое со своей отметкой. */
+        .sc-check { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+        .sc-check li { display: flex; align-items: flex-start; gap: 8px; }
+        .sc-check .sc-mark {
+            flex: 0 0 auto; width: 16px; height: 16px; margin-top: 1px;
+            border: 1.5px solid currentColor; border-radius: 50%; opacity: .45;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 11px; line-height: 1;
+        }
+        .sc-check li.is-met { color: var(--ink-good); }
+        .sc-check li.is-met .sc-mark {
+            opacity: 1; border-color: var(--ink-good);
+            background: var(--ink-good); color: var(--white);
+        }
+        .sc-check li.is-met .sc-mark::before { content: '✓'; }
+        .sc-check b { font-variant-numeric: tabular-nums; }
         .sc-good { background: var(--wash-good); color: var(--ink-good); }
         .sc-bad  { background: var(--wash-danger); color: var(--danger); }
         .sc-warn { background: var(--wash-warn); color: var(--ink-warn); }
@@ -102,16 +119,33 @@
                 <div class="sc-note sc-bad">{{ $errors->first() }}</div>
             @endif
 
-            @if($problems)
-                <div class="sc-note sc-warn">
-                    <b>{{ __('Пока собеседование включить нельзя:') }}</b>
-                    <ul style="margin:6px 0 0; padding-left:18px">
-                        @foreach($problems as $problem)
-                            <li>{{ $problem }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
+            @php
+                $checklist = $config->checklist();
+                $ready = collect($checklist)->every(fn (array $item) => $item['met']);
+            @endphp
+
+            {{-- Чеклист виден всегда, а не только пока что-то не так.
+                 Условия пересчитываются прямо во время правки полей, и блоку,
+                 который появляется и исчезает, пересчитывать было бы нечего:
+                 работодатель, исправивший веса, не увидел бы, что исправил. --}}
+            <div id="scReady" class="sc-note {{ $ready ? 'sc-good' : 'sc-warn' }}"
+                 data-title-ready="{{ __('Все условия выполнены — собеседование можно включить.') }}"
+                 data-title-blocked="{{ __('Пока собеседование включить нельзя:') }}">
+                <b data-ready-title>
+                    {{ $ready ? __('Все условия выполнены — собеседование можно включить.')
+                              : __('Пока собеседование включить нельзя:') }}
+                </b>
+
+                <ul class="sc-check">
+                    @foreach($checklist as $item)
+                        <li data-check="{{ $item['key'] }}" class="{{ $item['met'] ? 'is-met' : '' }}">
+                            <span class="sc-mark" aria-hidden="true"></span>
+                            <span>{{ __($item['text']) }}@if($item['key'] === 'weights') ({{ __('сейчас') }}
+                                <b data-sum>{{ $config->weightsSum() }}</b>)@endif</span>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
 
             {{-- ==================== критерии ==================== --}}
             <div class="sc-panel">
@@ -376,22 +410,82 @@
 
 <script>
     (function () {
-        // Сумма весов считается на глазах: иначе про требование «вместе 100»
-        // узнаёшь только после отправки формы.
-        const inputs = document.querySelectorAll('[data-weight]');
+        /*
+         * Условия пересчитываются на глазах.
+         *
+         * Про требование «веса вместе дают 100» и «приём выше отказа» раньше
+         * узнавали только после отправки формы: правишь поля вслепую, жмёшь
+         * «сохранить», получаешь тот же жёлтый список. Здесь те же правила
+         * применяются к тому, что набрано прямо сейчас.
+         *
+         * Считать разрешение это не даёт: галочки — подсказка, а решает
+         * по-прежнему сервер. Условие про подтверждённый критерий тут и не
+         * проверяется — оно меняется не в этой форме, и строка остаётся такой,
+         * какой её нарисовал сервер.
+         */
+        const weights = document.querySelectorAll('[data-weight]');
         const out = document.getElementById('weightSum');
+        const box = document.getElementById('scReady');
+        const reject = document.getElementById('threshold_reject');
+        const accept = document.getElementById('threshold_accept');
 
-        if (!out || !inputs.length) { return; }
+        if (!weights.length) { return; }
+
+        const row = function (key) {
+            return box ? box.querySelector('[data-check="' + key + '"]') : null;
+        };
+
+        const rows = {weights: row('weights'), thresholds: row('thresholds'), criteria: row('criteria')};
+        const sumOut = box ? box.querySelector('[data-sum]') : null;
+        const title = box ? box.querySelector('[data-ready-title]') : null;
+
+        function number(input) {
+            return input ? parseInt(input.value, 10) || 0 : 0;
+        }
+
+        function mark(node, met) {
+            if (node) { node.classList.toggle('is-met', met); }
+        }
 
         function paint() {
             let sum = 0;
-            inputs.forEach(function (input) { sum += parseInt(input.value, 10) || 0; });
+            weights.forEach(function (input) { sum += number(input); });
 
-            out.innerHTML = '<b>' + sum + '%</b>';
-            out.style.color = sum === 100 ? 'var(--ink-good)' : 'var(--danger)';
+            if (out) {
+                out.innerHTML = '<b>' + sum + '%</b>';
+                out.style.color = sum === 100 ? 'var(--ink-good)' : 'var(--danger)';
+            }
+
+            if (sumOut) { sumOut.textContent = sum; }
+
+            const okWeights = sum === 100;
+            const low = number(reject);
+            const high = number(accept);
+            const okThresholds = low < high && low >= 0 && high <= 100;
+
+            mark(rows.weights, okWeights);
+            mark(rows.thresholds, okThresholds);
+
+            if (!box) { return; }
+
+            // третье условие правит не эта форма — берём его таким, как отдал сервер
+            const okCriteria = !rows.criteria || rows.criteria.classList.contains('is-met');
+            const ready = okWeights && okThresholds && okCriteria;
+
+            box.classList.toggle('sc-good', ready);
+            box.classList.toggle('sc-warn', !ready);
+
+            if (title) {
+                title.textContent = ready
+                    ? box.dataset.titleReady
+                    : box.dataset.titleBlocked;
+            }
         }
 
-        inputs.forEach(function (input) { input.addEventListener('input', paint); });
+        [].concat([].slice.call(weights), [reject, accept]).forEach(function (input) {
+            if (input) { input.addEventListener('input', paint); }
+        });
+
         paint();
     })();
 </script>
