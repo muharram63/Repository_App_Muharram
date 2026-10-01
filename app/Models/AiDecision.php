@@ -64,6 +64,7 @@ class AiDecision extends Model
      */
     public const GATES = [
         'missing_must_have' => 'Не выполнено обязательное требование',
+        'unconfirmed_must_have' => 'Обязательное требование подтверждено лишь частично',
         'below_reject_threshold' => 'Балл ниже порога отказа',
         'above_accept_threshold' => 'Балл выше порога приёма',
         'borderline' => 'Пограничный балл',

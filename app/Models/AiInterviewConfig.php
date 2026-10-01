@@ -131,14 +131,51 @@ class AiInterviewConfig extends Model
     }
 
     /**
+     * Наименьший зазор между порогами.
+     *
+     * Зазор — это пограничная зона, ради которой существует дораунд: балл в ней
+     * означает «неясно», и ИИ задаёт ещё вопросов, прежде чем решать. Зазора в
+     * один-два балла не бывает: в него никто не попадёт, уточнять система не
+     * станет никогда, и решение сведётся к одной черте.
+     *
+     * Десять — не вкусовая величина. Итог считается как взвешенное среднее трёх
+     * частей по шкале 0–100, и одна часть с весом 20 % меняет его шагами по два
+     * балла; зона уже десяти не вмещает и одного такого шага.
+     */
+    public const MIN_THRESHOLD_GAP = 10;
+
+    /**
+     * Ниже какого порога приёма «прошёл» перестаёт что-либо значить.
+     *
+     * Не блокирует сохранение — это дело работодателя, — но на странице об этом
+     * говорится вслух. Поводом стал живой случай: пороги 3 и 5 на шкале 0–100.
+     * Формально это зазор, по смыслу — «пропускай всех»: кандидат, у которого
+     * одна строка требований закрыта наполовину, уже набирает больше пяти.
+     */
+    public const WEAK_ACCEPT = 30;
+
+    /**
      * Пороги осмысленны, только если между ними есть зазор: при равных
      * значениях пограничной зоны нет вовсе, и дораунд никогда не случится.
      */
     public function thresholdsAreValid(): bool
     {
-        return $this->threshold_reject < $this->threshold_accept
-            && $this->threshold_reject >= 0
-            && $this->threshold_accept <= 100;
+        return $this->threshold_reject >= 0
+            && $this->threshold_accept <= 100
+            && $this->thresholdGap() >= self::MIN_THRESHOLD_GAP;
+    }
+
+    public function thresholdGap(): int
+    {
+        return (int) $this->threshold_accept - (int) $this->threshold_reject;
+    }
+
+    /**
+     * Порог приёма так низок, что отбор почти никого не отсеет.
+     */
+    public function acceptIsWeak(): bool
+    {
+        return (int) $this->threshold_accept < self::WEAK_ACCEPT;
     }
 
     public function decidesItself(): bool
@@ -204,8 +241,11 @@ class AiInterviewConfig extends Model
             [
                 'key' => 'thresholds',
                 'met' => $this->thresholdsAreValid(),
-                'text' => 'Порог приёма выше порога отказа',
-                'problem' => 'Порог приёма должен быть выше порога отказа, и оба — от 0 до 100.',
+                'text' => 'Между порогами есть пограничная зона — не меньше '
+                    .self::MIN_THRESHOLD_GAP.' баллов',
+                'problem' => 'Порог приёма должен быть выше порога отказа не меньше чем на '
+                    .self::MIN_THRESHOLD_GAP.' баллов (сейчас разница '.$this->thresholdGap()
+                    .'), и оба — от 0 до 100.',
             ],
             [
                 /*

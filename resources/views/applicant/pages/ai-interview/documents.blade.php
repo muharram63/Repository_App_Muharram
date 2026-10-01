@@ -191,7 +191,26 @@
                 </div>
             @endif
 
-            @if($interview->analysis_status === 'pending')
+            @if($interview->analysisStalled())
+                {{-- Разбор помечен идущим, но не двигается. Молчать нельзя:
+                     страница иначе перезагружалась бы вечно и повторяла
+                     «занимает до минуты». --}}
+                <div class="dc-panel">
+                    <h2>{{ __('Разбор затянулся') }}</h2>
+                    <p class="dc-hint">
+                        {{ __('Документы приняты, но разбор не продвинулся. Ваши данные сохранены — можно попробовать ещё раз или вернуться позже.') }}
+                    </p>
+                    <div class="dc-row">
+                        <form method="POST" action="{{ route('applicant.ai.proceed', $interview) }}">
+                            @csrf
+                            <button type="submit" class="dc-btn">{{ __('Попробовать снова') }}</button>
+                        </form>
+                        <a class="dc-btn dc-btn-ghost" href="{{ route('applicant.ai.index') }}">
+                            {{ __('Продолжу потом') }}
+                        </a>
+                    </div>
+                </div>
+            @elseif($interview->analysis_status === 'pending')
                 {{-- Разбор в очереди. Страница обновляется сама: три модельных
                      вызова занимают до минуты, и следить за ними вручную
                      кандидату незачем. --}}
@@ -244,10 +263,11 @@
     </main>
 </div>
 
-@if($interview->analysis_status === 'pending')
+@if($interview->analysis_status === 'pending' && ! $interview->analysisStalled())
     <script>
         // Пока разбор идёт, страница переспрашивает сервер. Раз в пять секунд:
-        // разбор занимает около минуты, и чаще дёргать незачем.
+        // разбор занимает около минуты, и чаще дёргать незачем. Зависший разбор
+        // не переспрашиваем — там ждать нечего, и об этом сказано на экране.
         setTimeout(function () { window.location.reload(); }, 5000);
     </script>
 @endif

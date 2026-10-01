@@ -387,8 +387,14 @@ class AiInterviewController extends Controller
 
         abort_unless($interview->consented(), 403);
 
-        // повторное нажатие не должно ставить разбор в очередь второй раз
-        if ($interview->analysis_status === 'pending') {
+        /*
+         * Повторное нажатие не должно ставить разбор в очередь второй раз —
+         * но и запирать человека навсегда нельзя. Если разбор помечен идущим
+         * слишком давно, значит он не идёт: задача стоит в очереди, а
+         * обработчика нет. Тогда попытка снова — единственный выход, и повтор
+         * безвреден: разбор документа проверяет, не сделан ли он уже.
+         */
+        if ($interview->analysis_status === 'pending' && ! $interview->analysisStalled()) {
             return redirect()->route('applicant.ai.documents', $interview)
                 ->with('status', 'Разбор документов уже идёт — это занимает до минуты.');
         }

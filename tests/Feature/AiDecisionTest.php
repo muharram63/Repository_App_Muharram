@@ -209,13 +209,45 @@ test('невыполненное обязательное требование �
         ->and($verdict['unmet'])->toBe(['PHP']);
 });
 
-test('частично закрытое обязательное требование ворот не открывает', function () {
+test('частично закрытое обязательное требование ворот не открывает, но и не отказ', function () {
     [$interview, , $criteria] = decisionReady();
 
     AiRequirementCheck::where('ai_interview_id', $interview->id)
         ->where('kind', 'must')->update(['status' => 'partial']);
 
-    expect(decide($interview, $criteria)['outcome'])->toBe(DecisionEngine::REJECTED);
+    $verdict = decide($interview, $criteria);
+
+    /*
+     * «Нашлось наполовину» — не «не нашлось».
+     *
+     * Partial означает неполное доказательство, и отказывать по нему нечестно:
+     * ровно эту неясность собеседование и существует разрешать. Если и разговор
+     * не поднял требование до подтверждённого, правильный исход — «решает
+     * человек», как и всюду, где системе не хватает данных.
+     *
+     * Живой прогон показал цену прежнего поведения: кандидат с резюме
+     * «PHP-разработчик, 4 года, Laravel, MySQL» получал автоматический отказ,
+     * потому что модель поставила php и sql статус partial.
+     */
+    expect($verdict['outcome'])->toBe(DecisionEngine::MANUAL)
+        ->and($verdict['gate_reason'])->toBe('unconfirmed_must_have')
+        ->and($verdict['requires_manual_review'])->toBeTrue()
+        // пропускать его тоже нельзя — ворота закрыты
+        ->and($verdict['outcome'])->not->toBe(DecisionEngine::PASSED)
+        ->and($verdict['unmet'])->toBe(['PHP']);
+});
+
+test('ничего не найденное обязательное требование — отказ, а частичное рядом не спасает', function () {
+    [$interview, , $criteria] = decisionReady(answerScore: 5, testScore: 100);
+
+    // одно требование не подтверждено вовсе — этого достаточно для отказа
+    AiRequirementCheck::where('ai_interview_id', $interview->id)
+        ->where('kind', 'must')->update(['status' => 'missing']);
+
+    $verdict = decide($interview, $criteria, 100);
+
+    expect($verdict['outcome'])->toBe(DecisionEngine::REJECTED)
+        ->and($verdict['gate_reason'])->toBe('missing_must_have');
 });
 
 test('подтверждённое на собеседовании требование ворота открывает', function () {

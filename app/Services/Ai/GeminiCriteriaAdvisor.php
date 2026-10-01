@@ -17,6 +17,15 @@ use Illuminate\Support\Str;
 class GeminiCriteriaAdvisor implements CriteriaAdvisor
 {
     /** Сколько критериев просим. Больше десятка человек уже не проверяет глазами. */
+    /**
+     * Сколько критериев модель может пометить обязательными.
+     *
+     * Четыре: обязательное требование работает воротами — не закрыто, значит
+     * отказ при любом балле. Когда обязательно всё, отбор перестаёт быть
+     * отбором.
+     */
+    public const MAX_MUST = 4;
+
     public const MAX_CRITERIA = 8;
 
     /** Сколько знаков описания вакансии отдаём: дальше растёт только цена. */
@@ -108,7 +117,41 @@ class GeminiCriteriaAdvisor implements CriteriaAdvisor
             ];
         }
 
-        return $clean;
+        return $this->capMustHaves($clean);
+    }
+
+    /**
+     * Не больше MAX_MUST обязательных среди предложенного.
+     *
+     * Промпт об этом просит, но просьба — не гарантия: живой вызов вернул все
+     * пять критериев обязательными, и получалась не вакансия, а лотерея — любой
+     * незакрытый пункт даёт отказ мимо всей арифметики. Правило, от которого
+     * зависит исход, должно исполняться кодом.
+     *
+     * Лишние понижаются до желательных, начиная с наименее важных: вес модель
+     * ставит сама, и он — её же представление о том, что здесь главное. Работодатель
+     * при этом ничего не теряет: поднять критерий обратно до обязательного он
+     * может в один щелчок, и подтверждать всё равно ему.
+     *
+     * @param  array<int,array{kind:string,weight:int}>  $rows
+     * @return array<int,array>
+     */
+    private function capMustHaves(array $rows): array
+    {
+        $mustKeys = collect($rows)
+            ->filter(fn (array $row) => $row['kind'] === 'must')
+            ->sortByDesc('weight')
+            ->keys();
+
+        if ($mustKeys->count() <= self::MAX_MUST) {
+            return $rows;
+        }
+
+        foreach ($mustKeys->slice(self::MAX_MUST) as $index) {
+            $rows[$index]['kind'] = 'nice';
+        }
+
+        return $rows;
     }
 
     /**

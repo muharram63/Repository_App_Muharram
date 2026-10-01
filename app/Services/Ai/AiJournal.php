@@ -5,6 +5,7 @@ namespace App\Services\Ai;
 use App\Models\AiInteraction;
 use App\Models\AiInterview;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -34,6 +35,19 @@ class AiJournal
      * один повтор.
      */
     public const ATTEMPTS = 2;
+
+    /**
+     * Сколько раз пережидаем перегруженную модель.
+     *
+     * Перегрузка — не отказ, а «занято»: замер на бесплатном ключе дал для
+     * тяжёлого запроса примерно одну удачу из двух, причём удачной оказывалась
+     * именно вторая попытка того же запроса. Раньше 503 улетал наверх сразу, и
+     * собеседование обрывалось на первой же занятой минуте.
+     */
+    public const OVERLOAD_RETRIES = 2;
+
+    /** Пауза перед повтором, в секундах. Короткая: человек ждёт у экрана. */
+    public const OVERLOAD_PAUSE = 3;
 
     public function __construct(private readonly GeminiClient $client)
     {
@@ -93,6 +107,7 @@ class AiJournal
         int $maxTokens = 2000,
     ): array {
         $attempt = 0;
+        $overloadRetry = 0;
         $lastErrors = [];
 
         while ($attempt < self::ATTEMPTS) {
@@ -123,12 +138,54 @@ class AiJournal
 
                 continue;
             } catch (AiUnavailableException $e) {
-                // сбой связи или лимита — это не негодный ответ, и решать за
-                // него ручной проверкой неправильно: пусть выше решают, ждать
-                // ли и сколько
                 $this->record($purpose, $interview, $system, $turns, null, $startedAt, 'failed', $e->getMessage(), $options);
 
-                throw $e;
+                /*
+                 * Перегрузку пережидаем, остальное отдаём наверх.
+                 *
+                 * Исчерпанный лимит, непринятый ключ и негодный запрос повторять
+                 * бессмысленно — пусть вызывающий решает, ждать ли и сколько.
+                 * А «модель занята» — это именно то, что лечится повтором, и
+                 * раньше обрывало собеседование на первой же занятой минуте.
+                 */
+                if (! $e->overloaded || $overloadRetry >= self::OVERLOAD_RETRIES) {
+                    throw $e;
+                }
+
+                $overloadRetry++;
+
+                /*
+                 * Вторая попытка — на запасной модели, если она назначена.
+                 *
+                 * Замер показал: когда занята flash, flash-lite отвечает, и
+                 * отдать кандидату чуть менее глубокую оценку честнее, чем не
+                 * провести собеседование вовсе. Какая модель отвечала, видно в
+                 * журнале обращений — отчёт не соврёт о том, кто ставил балл.
+                 */
+                if ($overloadRetry === self::OVERLOAD_RETRIES && filled($options['fallback'] ?? null)) {
+                    Log::info('Перегрузка: переходим на запасную модель', [
+                        'purpose' => $purpose,
+                        'from' => $options['model'] ?? null,
+                        'to' => $options['fallback'],
+                    ]);
+
+                    $options['model'] = $options['fallback'];
+                }
+
+                Log::info('Модель занята, пробуем снова', [
+                    'purpose' => $purpose,
+                    'attempt' => $overloadRetry,
+                    'model' => $options['model'] ?? null,
+                ]);
+
+                // через Sleep, а не sleep(): в тестах пауза подменяется,
+                // и набор не простаивает по три секунды на каждый повтор
+                Sleep::for(self::OVERLOAD_PAUSE)->seconds();
+
+                // попытка по негодному ответу не израсходована: отказа не было
+                $attempt--;
+
+                continue;
             }
 
             $validated = $this->check($answer['data'], $rules);
@@ -172,14 +229,23 @@ class AiJournal
      *
      * Оценкам достаётся низкая температура: один и тот же ответ кандидата не
      * должен получать разный балл при повторном разборе.
+     *
+     * fallback — модель на случай, когда основная занята. Нужна потому, что
+     * старшие flash на бесплатном ключе отдают 503 примерно в половине тяжёлых
+     * запросов, а flash-lite отвечает всегда и за три секунды. Собеседование из
+     * пятнадцати вызовов при таком раскладе не доходило до конца ни разу.
      */
     public static function options(string $kind): array
     {
+        $light = config('services.gemini.model_fallback');
+
         return match ($kind) {
             'chat' => [
                 'model' => config('services.gemini.model'),
                 'temperature' => 0.4,
                 'thinking_level' => 'low',
+                // для реплики запасная не нужна: модель диалога и есть lite
+                'fallback' => null,
             ],
             'scoring' => [
                 'model' => config('services.gemini.model_scoring'),
@@ -187,11 +253,13 @@ class AiJournal
                 // оценка стоит размышления: поверхностный разбор ответа
                 // кандидата — это и есть та самая ошибка, которой мы боимся
                 'thinking_level' => 'medium',
+                'fallback' => $light,
             ],
             'vision' => [
                 'model' => config('services.gemini.model_vision'),
                 'temperature' => 0.1,
                 'thinking_level' => 'medium',
+                'fallback' => $light,
             ],
             default => [],
         };

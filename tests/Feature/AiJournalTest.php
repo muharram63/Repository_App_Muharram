@@ -435,3 +435,105 @@ test('прежний structured продолжает отдавать тольк
 
     expect($client->structured('s', [['role' => 'user', 'text' => 'x']], []))->toBe(['a' => 1]);
 });
+
+// ==================== перегруженная модель ====================
+
+test('занятую модель пережидаем, а не бросаем собеседование', function () {
+    Illuminate\Support\Sleep::fake();
+
+    // первый раз модель занята, второй — отвечает
+    Http::fake(['*' => Http::sequence()
+        ->push(['error' => ['message' => 'The model is overloaded']], 503)
+        ->push(journalAnswer(['score' => 4, 'why' => 'по делу'])),
+    ]);
+
+    /*
+     * Раньше 503 улетал наверх сразу, и разговор обрывался на первой же занятой
+     * минуте. Замер на бесплатном ключе: тот же запрос проходит со второй
+     * попытки примерно в половине случаев, так что отказываться после первой —
+     * значит ломать собеседование там, где достаточно подождать три секунды.
+     */
+    $answer = journal()->ask(
+        purpose: 'answer_score',
+        system: 'Оцени ответ.',
+        turns: [['role' => 'user', 'text' => 'ответ']],
+        schema: ['type' => 'object'],
+        rules: scoreRules(),
+        options: ['model' => 'gemini-3.8-flash'],
+    );
+
+    expect($answer['score'])->toBe(4);
+
+    Http::assertSentCount(2);
+});
+
+test('когда занятость не проходит, подхватывает запасная модель', function () {
+    Illuminate\Support\Sleep::fake();
+
+    Http::fake(['*' => Http::sequence()
+        ->push(['error' => ['message' => 'overloaded']], 503)
+        ->push(['error' => ['message' => 'overloaded']], 503)
+        ->push(journalAnswer(['score' => 3, 'why' => 'сойдёт'])),
+    ]);
+
+    $answer = journal()->ask(
+        purpose: 'answer_score',
+        system: 'Оцени.',
+        turns: [['role' => 'user', 'text' => 'ответ']],
+        schema: ['type' => 'object'],
+        rules: scoreRules(),
+        options: ['model' => 'gemini-3.8-flash', 'fallback' => 'gemini-3.5-flash-lite'],
+    );
+
+    expect($answer['score'])->toBe(3);
+
+    // последний запрос ушёл на запасную: отдать оценку чуть попроще честнее,
+    // чем не провести собеседование вовсе
+    $sent = Http::recorded();
+
+    expect($sent)->toHaveCount(3)
+        ->and($sent[2][0]->data()['model'])->toBe('gemini-3.5-flash-lite');
+});
+
+test('исчерпанный лимит не повторяем', function () {
+    Illuminate\Support\Sleep::fake();
+
+    Http::fake(['*' => Http::response(
+        ['error' => ['message' => 'Quota exceeded. Please retry in 20s']], 429
+    )]);
+
+    // повтор только ускорит упор в ту же стену: пусть выше решают, ждать ли
+    expect(fn () => journal()->ask(
+        purpose: 'answer_score',
+        system: 'Оцени.',
+        turns: [['role' => 'user', 'text' => 'ответ']],
+        schema: ['type' => 'object'],
+        rules: scoreRules(),
+        options: ['model' => 'gemini-3.8-flash', 'fallback' => 'gemini-3.5-flash-lite'],
+    ))->toThrow(AiUnavailableException::class);
+
+    Http::assertSentCount(1);
+});
+
+test('каждая попытка попадает в журнал обращений', function () {
+    Illuminate\Support\Sleep::fake();
+
+    Http::fake(['*' => Http::sequence()
+        ->push(['error' => ['message' => 'overloaded']], 503)
+        ->push(journalAnswer(['score' => 5, 'why' => 'отлично'])),
+    ]);
+
+    journal()->ask(
+        purpose: 'answer_score',
+        system: 'Оцени.',
+        turns: [['role' => 'user', 'text' => 'ответ']],
+        schema: ['type' => 'object'],
+        rules: scoreRules(),
+        options: ['model' => 'gemini-3.8-flash'],
+    );
+
+    // работодатель должен видеть, что модель была занята и сколько это стоило
+    expect(AiInteraction::count())->toBe(2)
+        ->and(AiInteraction::where('status', 'failed')->count())->toBe(1)
+        ->and(AiInteraction::where('status', 'ok')->count())->toBe(1);
+});

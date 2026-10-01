@@ -69,29 +69,57 @@ class DecisionEngine
 
         // ===== 2. ворота: обязательные требования =====
 
-        $unmet = collect($checks)
-            ->filter(fn (AiRequirementCheck $c) => $c->isMust() && ! $c->isSatisfied())
+        $unsatisfied = collect($checks)
+            ->filter(fn (AiRequirementCheck $c) => $c->isMust() && ! $c->isSatisfied());
+
+        $unmet = $unsatisfied->map(fn (AiRequirementCheck $c) => $c->requirement)->values()->all();
+
+        $total = self::total($parts, $config);
+
+        /*
+         * «Ничего не нашлось» и «нашлось наполовину» — разные вещи.
+         *
+         * Требование со статусом missing означает, что подтверждения нет вовсе:
+         * это отказ, сколько бы ни набралось в остальном, иначе вакансия «нужен
+         * электрик» пропускала бы повара с красивыми ответами.
+         *
+         * А partial — это «что-то есть, но доказательство неполное», и отказывать
+         * по нему нечестно: ровно эту неясность собеседование и существует
+         * разрешать. Если и разговор не поднял требование до подтверждённого,
+         * правильный исход не «нет», а «решает человек» — тот же, что система
+         * выбирает всюду, где данных не хватает.
+         *
+         * Поводом стал живой прогон: у кандидата с резюме «PHP-разработчик,
+         * 4 года, Laravel, MySQL» модель поставила php и sql статус partial, и
+         * крепкий средний получал автоматический отказ при итоге 20.
+         */
+        $missing = $unsatisfied
+            ->filter(fn (AiRequirementCheck $c) => $c->status !== 'partial')
             ->map(fn (AiRequirementCheck $c) => $c->requirement)
             ->values()
             ->all();
 
-        $total = self::total($parts, $config);
-
-        if ($unmet !== []) {
-            /*
-             * Невыполненное обязательное требование — отказ, сколько бы ни
-             * набралось в остальном. Иначе вакансия «нужен электрик»
-             * пропускала бы повара с красивыми ответами: по разговору и
-             * заданию он может набрать много, а работать не сможет.
-             */
+        if ($missing !== []) {
             return [
                 'outcome' => self::REJECTED,
                 'total' => $total,
                 'gate_reason' => 'missing_must_have',
                 'parts' => $parts,
-                'reasons' => $unmet,
+                'reasons' => $missing,
                 'unmet' => $unmet,
                 'requires_manual_review' => false,
+            ];
+        }
+
+        if ($unmet !== []) {
+            return [
+                'outcome' => self::MANUAL,
+                'total' => $total,
+                'gate_reason' => 'unconfirmed_must_have',
+                'parts' => $parts,
+                'reasons' => $unmet,
+                'unmet' => $unmet,
+                'requires_manual_review' => true,
             ];
         }
 

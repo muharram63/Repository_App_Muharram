@@ -73,6 +73,7 @@
             display: flex; flex-direction: column; gap: 10px; min-width: 0;
         }
         .sc-crit[data-pending="1"] { border-style: dashed; background: var(--gray-100); }
+        .sc-chip-pending { background: var(--wash-warn); color: var(--ink-warn); }
         .sc-crit-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
         .sc-crit-head input[type="text"] { flex: 1 1 240px; min-width: 0; }
         .sc-chip {
@@ -171,7 +172,22 @@
                         {{ __('Критериев пока нет. Попросите ИИ предложить их по описанию вакансии или добавьте свой ниже.') }}
                     </div>
                 @else
-                    @php($confirmedWeight = $criteria->whereNotNull('confirmed_at')->sum('weight'))
+                    @php
+                        $confirmedWeight = $criteria->whereNotNull('confirmed_at')->sum('weight');
+                        $pending = $criteria->whereNull('confirmed_at');
+                    @endphp
+
+                    @if($pending->isNotEmpty())
+                        {{-- Предложенное моделью приходит неподтверждённым, и это легко
+                             пропустить: критерии выглядят готовыми, а в оценке не участвуют.
+                             Живой случай: из пяти критериев подтверждён был один, и отбор
+                             проверял только его. --}}
+                        <div class="sc-note sc-warn">
+                            <b>{{ __('Ждут подтверждения:') }} {{ $pending->count() }}</b>
+                            {{ __('из') }} {{ $criteria->count() }}.
+                            {{ __('Пока критерий не отмечен галочкой «Подтверждаю», он в оценке не участвует: по нему не спрашивают и его вес не считают.') }}
+                        </div>
+                    @endif
 
                     <form method="POST" action="{{ route('employer.ai.criteria.save', $vacancy) }}"
                           style="display:flex; flex-direction:column; gap:10px;">
@@ -211,6 +227,10 @@
                                     <span class="sc-chip {{ $criterion->source === 'ai' ? 'sc-chip-ai' : '' }}">
                                         {{ __(\App\Models\AiInterviewCriterion::SOURCES[$criterion->source] ?? $criterion->source) }}
                                     </span>
+
+                                    @unless($criterion->isConfirmed())
+                                        <span class="sc-chip sc-chip-pending">{{ __('не подтверждён') }}</span>
+                                    @endunless
                                 </div>
 
                                 <textarea name="criteria[{{ $criterion->id }}][description]" rows="2"
@@ -365,14 +385,20 @@
                     {{ __('Ниже порога отказа — вежливый отказ. Выше порога приёма — кандидат прошёл. Между ними ИИ задаст дополнительные вопросы, а если и после них неясно, передаст вам на ручную проверку.') }}
                 </p>
 
+                @if($config->acceptIsWeak())
+                    <div class="sc-note sc-warn">
+                        {{ __('Порог приёма очень низкий — отбор почти никого не отсеет. Итог считается по шкале от 0 до 100, а не из пяти или десяти баллов.') }}
+                    </div>
+                @endif
+
                 <div class="sc-grid">
                     <div class="sc-field">
-                        <label for="threshold_reject">{{ __('Порог отказа') }}</label>
+                        <label for="threshold_reject">{{ __('Порог отказа, из 100') }}</label>
                         <input id="threshold_reject" type="number" name="threshold_reject" min="0" max="100"
                                value="{{ old('threshold_reject', $config->threshold_reject) }}">
                     </div>
                     <div class="sc-field">
-                        <label for="threshold_accept">{{ __('Порог приёма') }}</label>
+                        <label for="threshold_accept">{{ __('Порог приёма, из 100') }}</label>
                         <input id="threshold_accept" type="number" name="threshold_accept" min="0" max="100"
                                value="{{ old('threshold_accept', $config->threshold_accept) }}">
                     </div>

@@ -41,6 +41,21 @@
             cursor:pointer; font-family:inherit;
         }
         .resp-actions button:hover{border-color:var(--accent); color:var(--accent);}
+
+        /* Приглашение на ИИ-собеседование: заметнее, чем «отозвать отклик»,
+           потому что это следующий шаг, а не служебное действие. */
+        .resp-ai{
+            margin-top:10px; padding:10px 12px; border-radius:10px;
+            background:var(--surface-alt); border:1px solid var(--border);
+            display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+        }
+        .resp-ai-note{font-size:13px; color:var(--text-muted);}
+        .resp-ai-btn{
+            display:inline-flex; align-items:center; padding:7px 14px; border-radius:999px;
+            font-size:13px; font-weight:700; text-decoration:none;
+            background:var(--accent); color:#fff;
+        }
+        .resp-ai-btn:hover{filter:brightness(1.06);}
     </style>
 
     @php
@@ -105,6 +120,40 @@
                                 @if($response->message)
                                     <div class="resp-msg">{{ $response->message }}</div>
                                 @endif
+                                @php $ai = $vacancy ? ($aiInterviews[$vacancy->id] ?? null) : null; @endphp
+
+                                @if($ai)
+                                    {{-- По этой вакансии отвечает ИИ. Ссылка нужна здесь, а не
+                                         только в момент отклика: откликнувшийся до того, как
+                                         работодатель включил собеседование, иначе не попадёт
+                                         внутрь никак — отклик лежит, и ничего не происходит. --}}
+                                    <div class="resp-ai">
+                                        @if($ai['state'] === 'invited')
+                                            <span class="resp-ai-note">
+                                                {{ __('По этой вакансии собеседование проводит ИИ.') }}
+                                            </span>
+                                            <a class="resp-ai-btn" href="{{ route('applicant.ai.start', $vacancy) }}">
+                                                {{ __('Пройти ИИ-собеседование') }}
+                                            </a>
+                                        @elseif($ai['state'] === 'running')
+                                            <span class="resp-ai-note">
+                                                {{ __('Собеседование начато:') }}
+                                                {{ $ai['interview']->stageLabel() }}
+                                            </span>
+                                            <a class="resp-ai-btn" href="{{ route('applicant.ai.interview', $ai['interview']) }}">
+                                                {{ __('Продолжить собеседование') }}
+                                            </a>
+                                        @else
+                                            <span class="resp-ai-note">
+                                                {{ __('Собеседование пройдено.') }}
+                                            </span>
+                                            <a class="resp-ai-btn" href="{{ route('applicant.ai.result', $ai['interview']) }}">
+                                                {{ __('Смотреть результат') }}
+                                            </a>
+                                        @endif
+                                    </div>
+                                @endif
+
                                 @if($vacancy)
                                     <div class="resp-actions">
                                         <form action="{{ route('public.vacancies.respond.destroy', $vacancy) }}" method="post">

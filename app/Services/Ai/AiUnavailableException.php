@@ -11,11 +11,20 @@ use RuntimeException;
  * $retryAfter заполняется, когда провайдер сам сказал, через сколько секунд
  * повторять — на бесплатном ключе это обычное дело, и интерфейс превращает
  * такую паузу в обратный отсчёт вместо тупиковой ошибки.
+ *
+ * $overloaded отличает «модель занята» от всего остального, и различие это не
+ * косметическое. Перегрузку стоит переждать и повторить: замер на бесплатном
+ * ключе показал, что тот же самый запрос проходит со второй попытки примерно в
+ * половине случаев. А вот исчерпанный лимит, непринятый ключ и негодный запрос
+ * повторять бессмысленно — повтор только ускорит упор в ту же стену.
  */
 class AiUnavailableException extends RuntimeException
 {
-    public function __construct(string $message, public readonly ?int $retryAfter = null)
-    {
+    public function __construct(
+        string $message,
+        public readonly ?int $retryAfter = null,
+        public readonly bool $overloaded = false,
+    ) {
         parent::__construct($message);
     }
 }
