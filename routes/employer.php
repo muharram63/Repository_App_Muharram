@@ -25,8 +25,6 @@ Route::prefix('ai-screening')->name('ai.')->group(function () {
         ->whereNumber('vacancy')->name('criteria.save');
     Route::post('{vacancy}/criteria', [$screening, 'addCriterion'])
         ->whereNumber('vacancy')->name('criteria.add');
-    Route::delete('{vacancy}/criteria/{criterion}', [$screening, 'destroyCriterion'])
-        ->whereNumber('vacancy')->whereNumber('criterion')->name('criteria.destroy');
 
     // Отчёты по кандидатам: решение ИИ должно быть проверяемым, а не
     // принимаемым на веру.

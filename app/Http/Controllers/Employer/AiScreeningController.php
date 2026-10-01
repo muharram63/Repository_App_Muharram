@@ -290,18 +290,6 @@ class AiScreeningController extends Controller
         return back()->with('status', 'Критерий добавлен.');
     }
 
-    /**
-     * Удалить критерий. Уже проставленные по нему оценки кандидатов остаются:
-     * ссылка обнуляется, а не уносит проверку за собой.
-     */
-    public function destroyCriterion(Vacancy $vacancy, AiInterviewCriterion $criterion)
-    {
-        $this->authorizeVacancy($vacancy);
-
-        abort_if($criterion->vacancy_id !== $vacancy->id, 403);
-
-        return $this->removeCriterion($vacancy, $criterion->id);
-    }
 
     /**
      * Удаление критерия — одно на оба входа.

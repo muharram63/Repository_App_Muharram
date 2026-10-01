@@ -493,7 +493,7 @@ test('критерий удаляется, а проверки кандидат�
     ]);
 
     $this->actingAs($user)
-        ->delete(route('employer.ai.criteria.destroy', [$vacancy, $criterion]))
+        ->patch(route('employer.ai.criteria.save', $vacancy), ['remove' => $criterion->id])
         ->assertRedirect()->assertSessionHas('status');
 
     expect(AiInterviewCriterion::whereKey($criterion->id)->exists())->toBeFalse()
@@ -510,9 +510,13 @@ test('критерий чужой вакансии не удалить', functio
         'vacancy_id' => $otherVacancy->id, 'key' => 'alien', 'label' => 'Чужой', 'weight' => 10,
     ]);
 
+    /*
+     * Критерий чужой вакансии не удаляется и не выдаёт себя ошибкой: метод
+     * ищет его среди критериев своей вакансии и просто не находит.
+     */
     $this->actingAs($user)
-        ->delete(route('employer.ai.criteria.destroy', [$vacancy, $alien]))
-        ->assertForbidden();
+        ->patch(route('employer.ai.criteria.save', $vacancy), ['remove' => $alien->id])
+        ->assertRedirect();
 
     expect($alien->fresh())->not->toBeNull();
 });

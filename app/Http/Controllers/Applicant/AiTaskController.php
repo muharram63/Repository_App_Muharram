@@ -11,7 +11,6 @@ use App\Models\AiTestSubmission;
 use App\Models\AiTestTask;
 use App\Services\Ai\GeminiTaskExaminer;
 use App\Services\Security\InjectionGuard;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -140,25 +139,6 @@ class AiTaskController extends Controller
             ->with('status', 'Решение отправлено. ИИ проверяет его — это занимает до минуты.');
     }
 
-    /**
-     * Состояние: готово ли задание, проверено ли решение, сколько осталось.
-     */
-    public function state(AiInterview $interview): JsonResponse
-    {
-        $this->mine($interview);
-
-        $task = $interview->testTasks()->where('kind', AiTestTask::KIND_MAIN)->latest('id')->first();
-        $submission = $task?->submission()->first();
-
-        return response()->json([
-            'ready' => $task !== null,
-            'seconds_left' => $task?->secondsLeft() ?? 0,
-            'expired' => (bool) $task?->expired(),
-            'submitted' => $submission?->submitted_at !== null,
-            'graded' => (bool) $submission?->isGraded(),
-            'stage' => $interview->stage,
-        ]);
-    }
 
     /**
      * Поставить составление в очередь, не плодя задач.

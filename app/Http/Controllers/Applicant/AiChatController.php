@@ -202,33 +202,6 @@ class AiChatController extends Controller
     }
 
     /**
-     * Состояние: сколько задано, сколько осталось, готова ли озвучка.
-     *
-     * Страница спрашивает его, пока ждёт реплику или звук.
-     */
-    public function state(AiInterview $interview): JsonResponse
-    {
-        $this->mine($interview);
-
-        $turns = $interview->turns()->get();
-        $last = $turns->where('role', AiInterviewTurn::ROLE_AI)->last();
-
-        return response()->json([
-            'stage' => $interview->stage,
-            'asked' => $turns->where('role', AiInterviewTurn::ROLE_AI)->count(),
-            'target' => $interview->questionTarget(),
-            'progress' => $interview->progress(),
-            'speech' => $last ? [
-                'turn' => $last->id,
-                'status' => $last->speech_status,
-                'url' => $last->speechReady()
-                    ? route('applicant.ai.speech.turn', $last)
-                    : null,
-            ] : null,
-        ]);
-    }
-
-    /**
      * Спросить модель о следующей реплике и сохранить её.
      */
     private function askNext(AiInterview $interview): JsonResponse

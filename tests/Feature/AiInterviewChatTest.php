@@ -317,17 +317,6 @@ test('прогресс сохраняется: вернувшийся канди
         ->assertSee('Вопрос номер 1', false);
 });
 
-test('состояние разговора отдаётся для опроса страницей', function () {
-    [$interview, $user] = chatReady();
-    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview));
-
-    $this->actingAs($user)->getJson(route('applicant.ai.chat.state', $interview))
-        ->assertOk()
-        ->assertJsonPath('stage', 'interview')
-        ->assertJsonPath('asked', 1)
-        ->assertJsonPath('target', 3);
-});
-
 // ==================== сбои ====================
 
 test('недоступность модели не теряет ответ кандидата', function () {
