@@ -750,3 +750,97 @@ test('дефолты не открывают дорогу мимо сервер�
 
     expect(AiInterviewConfig::sole()->enabled)->toBeFalse();
 });
+
+// ==================== удаление критерия кнопкой в форме ====================
+
+test('кнопка «Удалить» в форме критериев удаляет критерий', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $keep = AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'php', 'label' => 'PHP',
+        'kind' => 'must', 'weight' => 50, 'source' => 'ai', 'position' => 0,
+    ]);
+    $drop = AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'sql', 'label' => 'SQL',
+        'kind' => 'nice', 'weight' => 50, 'source' => 'ai', 'position' => 1,
+    ]);
+
+    /*
+     * Кнопка принадлежит форме критериев и шлёт её же адрес. Раньше у неё был
+     * атрибут form с указанием на отдельную спрятанную форму: вложить форму в
+     * форму нельзя, а кнопка стоит внутри карточки. Привязка через чужой
+     * идентификатор — лишнее звено, которое ломается молча.
+     */
+    $this->actingAs($user)->patch(route('employer.ai.criteria.save', $vacancy), [
+        'remove' => $drop->id,
+    ])->assertSessionHas('status');
+
+    expect(AiInterviewCriterion::pluck('key')->all())->toBe(['php'])
+        ->and($keep->fresh())->not->toBeNull();
+});
+
+test('удаление проходит, даже когда соседний критерий заполнен негодно', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $drop = AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'sql', 'label' => 'SQL',
+        'kind' => 'nice', 'weight' => 50, 'source' => 'ai', 'position' => 0,
+    ]);
+
+    // у соседа стёрли название: форма целиком негодна, но удалять это не мешает
+    $this->actingAs($user)->patch(route('employer.ai.criteria.save', $vacancy), [
+        'remove' => $drop->id,
+        'criteria' => [$drop->id => ['label' => '', 'kind' => 'nice', 'weight' => 50]],
+    ])->assertSessionHas('status');
+
+    expect(AiInterviewCriterion::count())->toBe(0);
+});
+
+test('чужой критерий кнопкой не удалить', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    [, $other] = screeningSetup();
+    $alien = AiInterviewCriterion::create([
+        'vacancy_id' => $other->id, 'key' => 'php', 'label' => 'PHP',
+        'kind' => 'must', 'weight' => 50, 'source' => 'ai', 'position' => 0,
+    ]);
+
+    $this->actingAs($user)->patch(route('employer.ai.criteria.save', $vacancy), [
+        'remove' => $alien->id,
+    ]);
+
+    expect($alien->fresh())->not->toBeNull();
+});
+
+test('повторное удаление с открытой вкладки не ломает страницу', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $drop = AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'sql', 'label' => 'SQL',
+        'kind' => 'nice', 'weight' => 50, 'source' => 'ai', 'position' => 0,
+    ]);
+
+    $id = $drop->id;
+    $drop->delete();
+
+    $this->actingAs($user)->patch(route('employer.ai.criteria.save', $vacancy), [
+        'remove' => $id,
+    ])->assertSessionHas('status');
+});
+
+test('кнопка удаления не ссылается на чужую форму', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'php', 'label' => 'PHP',
+        'kind' => 'must', 'weight' => 50, 'source' => 'ai', 'position' => 0,
+    ]);
+
+    $html = $this->actingAs($user)->get(route('employer.ai.show', $vacancy))
+        ->assertOk()->getContent();
+
+    // ни привязки по идентификатору, ни спрятанных форм-спутников
+    expect($html)->not->toContain('form="drop-')
+        ->and($html)->not->toContain('id="drop-')
+        ->and($html)->toContain('name="remove"');
+});

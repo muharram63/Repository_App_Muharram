@@ -209,6 +209,22 @@ class AiScreeningController extends Controller
     {
         $this->authorizeVacancy($vacancy);
 
+        /*
+         * Удаление приходит сюда же, кнопкой этой самой формы.
+         *
+         * Раньше у кнопки «Удалить» был атрибут form, указывающий на отдельную
+         * спрятанную форму: вложить форму в форму нельзя, а кнопка стоит внутри
+         * карточки критерия. Привязка через чужой идентификатор — лишнее звено,
+         * которое ломается молча и без следа в логах. Кнопка теперь принадлежит
+         * той форме, в которой стоит, и ничего искать по странице не нужно.
+         *
+         * Проверку полей делаем после: удалять надо и тогда, когда у соседнего
+         * критерия стёрли название и форма целиком негодна.
+         */
+        if ($request->filled('remove')) {
+            return $this->removeCriterion($vacancy, (int) $request->input('remove'));
+        }
+
         $validated = $request->validate([
             'criteria' => 'required|array',
             'criteria.*.label' => 'required|string|min:2|max:120',
@@ -284,9 +300,32 @@ class AiScreeningController extends Controller
 
         abort_if($criterion->vacancy_id !== $vacancy->id, 403);
 
+        return $this->removeCriterion($vacancy, $criterion->id);
+    }
+
+    /**
+     * Удаление критерия — одно на оба входа.
+     *
+     * Входов два: отдельный адрес DELETE и кнопка внутри формы критериев.
+     * Удаляет при этом один метод, иначе однажды разойдутся права или
+     * сообщение.
+     */
+    private function removeCriterion(Vacancy $vacancy, int $criterionId)
+    {
+        $criterion = AiInterviewCriterion::where('vacancy_id', $vacancy->id)
+            ->whereKey($criterionId)
+            ->first();
+
+        if (! $criterion) {
+            // критерий уже удалён — с открытой вкладки такое приходит легко
+            return back()->with('status', 'Критерий уже удалён.');
+        }
+
+        $label = $criterion->label;
+
         $criterion->delete();
 
-        return back()->with('status', 'Критерий удалён.');
+        return back()->with('status', 'Критерий «'.$label.'» удалён.');
     }
 
     /**

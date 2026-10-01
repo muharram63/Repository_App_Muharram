@@ -36,21 +36,21 @@
         .sc-note { font-size: 13px; padding: 10px 12px; border-radius: 10px; }
 
         /* Чеклист готовности: три условия, каждое со своей отметкой. */
-        .sc-check { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
-        .sc-check li { display: flex; align-items: flex-start; gap: 8px; }
-        .sc-check .sc-mark {
+        .sc-ready-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+        .sc-ready-list li { display: flex; align-items: flex-start; gap: 8px; }
+        .sc-ready-list .sc-mark {
             flex: 0 0 auto; width: 16px; height: 16px; margin-top: 1px;
             border: 1.5px solid currentColor; border-radius: 50%; opacity: .45;
             display: inline-flex; align-items: center; justify-content: center;
             font-size: 11px; line-height: 1;
         }
-        .sc-check li.is-met { color: var(--ink-good); }
-        .sc-check li.is-met .sc-mark {
+        .sc-ready-list li.is-met { color: var(--ink-good); }
+        .sc-ready-list li.is-met .sc-mark {
             opacity: 1; border-color: var(--ink-good);
             background: var(--ink-good); color: var(--white);
         }
-        .sc-check li.is-met .sc-mark::before { content: '✓'; }
-        .sc-check b { font-variant-numeric: tabular-nums; }
+        .sc-ready-list li.is-met .sc-mark::before { content: '✓'; }
+        .sc-ready-list b { font-variant-numeric: tabular-nums; }
         .sc-good { background: var(--wash-good); color: var(--ink-good); }
         .sc-bad  { background: var(--wash-danger); color: var(--danger); }
         .sc-warn { background: var(--wash-warn); color: var(--ink-warn); }
@@ -137,7 +137,7 @@
                               : __('Пока собеседование включить нельзя:') }}
                 </b>
 
-                <ul class="sc-check">
+                <ul class="sc-ready-list">
                     @foreach($checklist as $item)
                         <li data-check="{{ $item['key'] }}" class="{{ $item['met'] ? 'is-met' : '' }}">
                             <span class="sc-mark" aria-hidden="true"></span>
@@ -246,7 +246,10 @@
                                         {{ __('Подтверждаю — использовать в оценке') }}
                                     </label>
 
-                                    <button type="submit" form="drop-{{ $criterion->id }}"
+                                    {{-- formnovalidate: удалить надо и тогда, когда у соседнего
+                                         критерия стёрли название и браузер не пускает отправку --}}
+                                    <button type="submit" name="remove" value="{{ $criterion->id }}"
+                                            formnovalidate
                                             class="sc-btn sc-btn-danger">{{ __('Удалить') }}</button>
                                 </div>
                             </div>
@@ -263,15 +266,6 @@
                         </div>
                     </form>
 
-                    {{-- Формы удаления вынесены наружу: вложенная форма внутри формы
-                         недопустима в HTML, а кнопка связывается с ней атрибутом form. --}}
-                    @foreach($criteria as $criterion)
-                        <form id="drop-{{ $criterion->id }}" method="POST"
-                              action="{{ route('employer.ai.criteria.destroy', [$vacancy, $criterion]) }}" hidden>
-                            @csrf
-                            @method('DELETE')
-                        </form>
-                    @endforeach
                 @endif
 
                 {{-- добавить свой --}}
