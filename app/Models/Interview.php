@@ -52,7 +52,14 @@ class Interview extends Model
      */
     public function isRoomOpen(): bool
     {
-        if (in_array($this->status, ['declined', 'canceled'], true)) {
+        /*
+         * Завершённая встреча тоже закрыта.
+         *
+         * Статуса finished в списке не было, и после того как работодатель
+         * отмечал встречу завершённой, комната оставалась открытой ещё
+         * полчаса: кнопка звала войти туда, откуда все уже вышли.
+         */
+        if (in_array($this->status, ['declined', 'canceled', 'finished'], true)) {
             return false;
         }
 

@@ -180,11 +180,41 @@ class User extends Authenticatable
 
         return $this->cabinetBadgesCache = [
             'notifications' => UserNotification::where('user_id', $this->id)->whereNull('read_at')->count(),
+            'interviews' => $this->openInterviewRooms(),
             'support' => AdminComment::where('user_id', $this->id)
                 ->whereNotNull('answered_at')->whereNull('seen_at')->count(),
             'complaints' => $freshDecisions + Complaint::againstUser($this)
                 ->whereIn('status', ['new', 'in_review'])->count(),
         ];
+    }
+
+    /**
+     * Сколько видеокомнат открыто прямо сейчас.
+     *
+     * Нужно для отметки в меню кабинета. Напоминать «пора» иначе нечем:
+     * уведомление приходит один раз, когда встречу назначают, а планировщика
+     * в проекте нет — фоновая задача к часу встречи просто не запустилась бы.
+     * Поэтому напоминание живёт там, где человек и так находится.
+     *
+     * Окно сначала сужаем запросом, а открытость проверяем моделью: правило
+     * «за 15 минут до и до конца плюс полчаса» живёт в Interview и повторять
+     * его условием SQL значило бы держать два списка.
+     */
+    public function openInterviewRooms(): int
+    {
+        $query = Interview::query()
+            ->whereNotIn('status', ['declined', 'canceled', 'finished'])
+            ->whereBetween('scheduled_at', [now()->subHours(4), now()->addHour()]);
+
+        if ($this->employer) {
+            $query->where('employer_id', $this->employer->id);
+        } elseif ($this->applicant) {
+            $query->where('applicant_id', $this->applicant->id);
+        } else {
+            return 0;
+        }
+
+        return $query->get()->filter(fn (Interview $i) => $i->isRoomOpen())->count();
     }
 
     public function settings()

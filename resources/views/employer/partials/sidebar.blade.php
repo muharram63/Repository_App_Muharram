@@ -57,6 +57,19 @@
     </div>
     @php($badges = auth()->user()->cabinetBadges())
     @php($freshComplaints = $badges['complaints'])
+    {{-- Собеседования: раздел был только в шапке публичного сайта, и человек,
+         сидящий в кабинете, не мог до него дойти. Отметка «сейчас» — это и есть
+         напоминание, что время пришло: уведомление приходит один раз, когда
+         встречу назначают, а планировщика в проекте нет. --}}
+    @php($openRooms = $badges['interviews'])
+    <div class="nav-item" data-section="interviews">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/><circle cx="9" cy="12" r="2"/></svg>
+      </span>
+        <a href="{{ route('public.interviews.index') }}"> {{ __('Собеседования') }} </a>
+        <span style="margin-left:auto; background:var(--green); color:#fff; font-size:11px; font-weight:700;
+                     border-radius:999px; padding:2px 7px;" @if(! $openRooms) hidden @endif>{{ __('сейчас') }}</span>
+    </div>
     <div class="nav-item" data-section="complaints">
       <span class="icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
