@@ -21,7 +21,7 @@
             --slate: #44506B;
             --slate-soft: #8195B8;
             --glass: rgba(255, 255, 255, 0.94);
-            --radius: 20px;
+            --card-radius: 20px;
         }
 
         body {
@@ -61,7 +61,7 @@
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
             border: 1px solid rgba(255, 255, 255, .7);
-            border-radius: var(--radius);
+            border-radius: var(--card-radius);
             box-shadow: 0 30px 60px -34px rgba(5, 15, 45, .45), 0 0 0 1px rgba(44, 95, 224, .06) inset;
             overflow: hidden;
         }

@@ -57,14 +57,50 @@ class AiInterviewController extends Controller
             return $applicant;
         }
 
+        $interviews = AiInterview::where('applicant_id', $applicant->id)
+            ->with('vacancy.employer', 'latestDecision')
+            ->latest('updated_at')
+            ->get();
+
         return view('applicant.pages.ai-interview.index', [
             'user' => auth()->user(),
             'applicant' => $applicant,
-            'interviews' => AiInterview::where('applicant_id', $applicant->id)
-                ->with('vacancy.employer', 'latestDecision')
-                ->latest('updated_at')
-                ->get(),
+            'interviews' => $interviews,
+            'waiting' => $this->waitingVacancies($applicant, $interviews),
         ]);
+    }
+
+    /**
+     * Вакансии, где собеседование ждёт, а кандидат его ещё не начинал.
+     *
+     * Без них пункт меню врал названием: «ИИ-собеседования» показывал только
+     * уже начатые, и человек, которого собеседование ждёт, заходил туда и видел
+     * пустую страницу — ровно там, куда он пойдёт искать.
+     *
+     * @param  \Illuminate\Support\Collection<int,AiInterview>  $started
+     * @return \Illuminate\Support\Collection<int,\App\Models\Vacancy>
+     */
+    private function waitingVacancies(Applicant $applicant, $started)
+    {
+        $responded = VacancyResponse::where('applicant_id', $applicant->id)
+            ->pluck('vacancy_id')
+            ->diff($started->pluck('vacancy_id'));
+
+        if ($responded->isEmpty()) {
+            return collect();
+        }
+
+        // только там, где собеседование действительно можно пройти: включённое
+        // с противоречивыми настройками никого не собеседует
+        $usable = AiInterviewConfig::whereIn('vacancy_id', $responded)
+            ->where('enabled', true)
+            ->get()
+            ->filter(fn (AiInterviewConfig $config) => $config->isUsable())
+            ->pluck('vacancy_id');
+
+        return $usable->isEmpty()
+            ? collect()
+            : Vacancy::whereIn('id', $usable)->with('employer')->get();
     }
 
     /**

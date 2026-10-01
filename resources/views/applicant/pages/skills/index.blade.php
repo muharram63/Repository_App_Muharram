@@ -16,7 +16,7 @@
             --blue-ice: #EAF1FC;
             --slate: #44506B;
             --slate-soft: #8195B8;
-            --radius: 18px;
+            --card-radius: 18px;
         }
 
         body { font-family: 'Inter', sans-serif; color: var(--navy-deep); }
@@ -35,7 +35,7 @@
 
         .sk-card {
             background: rgba(255, 255, 255, .94); border: 1px solid rgba(255, 255, 255, .7);
-            border-radius: var(--radius); overflow: hidden;
+            border-radius: var(--card-radius); overflow: hidden;
             box-shadow: 0 26px 54px -34px rgba(5, 15, 45, .45), 0 0 0 1px rgba(44, 95, 224, .06) inset;
         }
         .sk-head { padding: 20px 24px 16px; border-bottom: 1px solid rgba(44, 95, 224, .12); }
@@ -49,15 +49,20 @@
 
         /* ---------- подтверждённые навыки ---------- */
         .sk-badges { display: flex; flex-wrap: wrap; gap: 10px; }
+        /* Плашка подтверждённого навыка целиком на токенах: заливка и текст
+           переключаются вместе, иначе в тёмной теме светло-зелёная подложка
+           остаётся, а текст на ней становится светлым. */
         .sk-badge {
             display: flex; align-items: center; gap: 10px;
-            border: 1px solid #BBF7D0; background: #ECFDF3; border-radius: 12px; padding: 10px 14px;
+            border: 1px solid var(--ink-good); background: var(--wash-good);
+            border-radius: 12px; padding: 10px 14px;
         }
         .sk-badge-score {
-            font-family: 'Manrope', sans-serif; font-size: 17px; font-weight: 800; color: #15803D;
+            font-family: 'Manrope', sans-serif; font-size: 17px; font-weight: 800;
+            color: var(--ink-good);
         }
-        .sk-badge-name { font-size: 13.5px; font-weight: 700; }
-        .sk-badge-meta { font-size: 11.5px; color: #4D7C5A; }
+        .sk-badge-name { font-size: 13.5px; font-weight: 700; color: var(--ink-good); }
+        .sk-badge-meta { font-size: 11.5px; color: var(--ink-good); opacity: .8; }
         .sk-empty { font-size: 13.5px; color: var(--slate-soft); line-height: 1.65; margin: 0; }
 
         /* ---------- выбор навыка ---------- */
@@ -103,8 +108,8 @@
         .sk-table td { padding: 11px 10px; border-bottom: 1px solid rgba(44, 95, 224, .07); color: var(--slate); }
         .sk-table tr:last-child td { border-bottom: 0; }
         .sk-res { font-weight: 800; }
-        .sk-res.ok { color: #15803D; }
-        .sk-res.no { color: #B45309; }
+        .sk-res.ok { color: var(--ink-good); }
+        .sk-res.no { color: var(--ink-warn); }
 
         .sk-note {
             margin: 0; padding: 14px 17px; border-radius: 12px; font-size: 13.5px; line-height: 1.6;

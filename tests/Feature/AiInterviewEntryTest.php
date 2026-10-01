@@ -377,3 +377,74 @@ test('идущий разбор повторно не запускается', f
 
     expect(Queue::pushedJobs())->toBe([]);
 });
+
+// ==================== как соискатель узнаёт, что пора ====================
+
+test('приглашение на собеседование приходит непрочитанным', function () {
+    [$vacancy] = makeAiVacancy();
+
+    $user = User::factory()->applicant()->create();
+    makeResume(makeApplicant($user));
+
+    $this->actingAs($user)->post(route('public.vacancies.respond', $vacancy));
+
+    $invite = App\Models\UserNotification::where('user_id', $user->id)
+        ->where('title', 'По этой вакансии собеседование проводит ИИ')
+        ->sole();
+
+    /*
+     * «Вы откликнулись» приходит прочитанным — это запись о собственном
+     * действии. Приглашение так помечать нельзя: вкладку закроют, и
+     * непрочитанная отметка остаётся единственным, что напомнит. Пометка была
+     * скопирована у соседа, и закрывший вкладку не получал ни одного сигнала.
+     */
+    expect($invite->read_at)->toBeNull();
+
+    // а соседнее — по-прежнему прочитанным
+    expect(App\Models\UserNotification::where('user_id', $user->id)
+        ->where('title', 'Вы откликнулись на вакансию')->sole()->read_at)->not->toBeNull();
+});
+
+test('страница «Мои ИИ-собеседования» показывает и ждущие', function () {
+    [$vacancy, $user] = respondedTo();
+
+    /*
+     * Пункт меню врал названием: показывал только начатые, и человек, которого
+     * собеседование ждёт, заходил туда и видел пустую страницу — ровно там,
+     * куда он пойдёт искать.
+     */
+    $this->actingAs($user)->get(route('applicant.ai.index'))
+        ->assertOk()
+        ->assertSee($vacancy->title, false)
+        ->assertSee('Ждёт вас', false)
+        ->assertSee(route('applicant.ai.start', $vacancy), false)
+        ->assertDontSee('Собеседований пока нет', false);
+});
+
+test('начатое собеседование в ждущих не повторяется', function () {
+    [$vacancy, $user, $applicant] = respondedTo();
+
+    AiInterview::create([
+        'vacancy_id' => $vacancy->id,
+        'applicant_id' => $applicant->id,
+        'consent_at' => now(),
+        'stage' => 'interview',
+        'analysis_status' => 'ready',
+    ]);
+
+    $this->actingAs($user)->get(route('applicant.ai.index'))
+        ->assertOk()
+        ->assertDontSee('Ждёт вас', false);
+});
+
+test('без отклика ничего не ждёт', function () {
+    [$vacancy] = makeAiVacancy();
+
+    $user = User::factory()->applicant()->create();
+    makeResume(makeApplicant($user));
+
+    $this->actingAs($user)->get(route('applicant.ai.index'))
+        ->assertOk()
+        ->assertSee('Собеседований пока нет', false)
+        ->assertDontSee('Ждёт вас', false);
+});

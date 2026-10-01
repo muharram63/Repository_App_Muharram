@@ -63,15 +63,38 @@
                 </p>
             </div>
 
-            @if($interviews->isEmpty())
+            {{-- Ждущие собеседования — впереди начатых: это то, по чему
+                 человеку нужно действовать, а не то, что он уже сделал. --}}
+            @foreach($waiting as $vacancy)
+                <div class="iv-row">
+                    <div>
+                        <div class="iv-title">{{ $vacancy->title }}</div>
+                        <div class="iv-meta">
+                            {{ $vacancy->employer?->company_name }}
+                            <span class="iv-badge iv-wait" style="margin-left:6px">
+                                {{ __('Ждёт вас') }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <a class="iv-btn" href="{{ route('applicant.ai.start', $vacancy) }}">
+                            {{ __('Пройти собеседование') }}
+                        </a>
+                    </div>
+                </div>
+            @endforeach
+
+            @if($interviews->isEmpty() && $waiting->isEmpty())
                 <div class="iv-empty">
                     {{ __('Собеседований пока нет. Они появляются, когда вы откликаетесь на вакансию, где отбор проводит ИИ.') }}
                     <div style="margin-top:12px">
                         <a class="iv-btn" href="{{ route('public.vacancies.index') }}">{{ __('Смотреть вакансии') }}</a>
                     </div>
                 </div>
-            @else
-                @foreach($interviews as $interview)
+            @endif
+
+            @foreach($interviews as $interview)
                     <div class="iv-row">
                         <div>
                             <div class="iv-title">{{ $interview->vacancy?->title ?? __('Вакансия удалена') }}</div>
@@ -105,7 +128,6 @@
                         </div>
                     </div>
                 @endforeach
-            @endif
         </div>
     </main>
 </div>

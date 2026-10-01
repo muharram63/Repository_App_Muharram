@@ -16,7 +16,7 @@
             --blue-ice: #EAF1FC;
             --slate: #44506B;
             --slate-soft: #8195B8;
-            --radius: 18px;
+            --card-radius: 18px;
         }
 
         body { font-family: 'Inter', sans-serif; color: var(--navy-deep); }
@@ -33,7 +33,7 @@
 
         .qz-card {
             background: rgba(255, 255, 255, .95); border: 1px solid rgba(255, 255, 255, .7);
-            border-radius: var(--radius); overflow: hidden; margin-bottom: 18px;
+            border-radius: var(--card-radius); overflow: hidden; margin-bottom: 18px;
             box-shadow: 0 26px 54px -34px rgba(5, 15, 45, .45), 0 0 0 1px rgba(44, 95, 224, .06) inset;
         }
         .qz-head { padding: 20px 24px 17px; border-bottom: 1px solid rgba(44, 95, 224, .12); }
@@ -110,14 +110,14 @@
             border-bottom: 1px solid rgba(44, 95, 224, .12);
         }
         .qz-score-value { font-family: 'Manrope', sans-serif; font-size: 42px; font-weight: 800; line-height: 1; }
-        .qz-score.ok .qz-score-value { color: #15803D; }
-        .qz-score.no .qz-score-value { color: #B45309; }
+        .qz-score.ok .qz-score-value { color: var(--ink-good); }
+        .qz-score.no .qz-score-value { color: var(--ink-warn); }
         .qz-score-note { font-size: 13.5px; line-height: 1.6; color: var(--slate); }
 
         .qz-verdict { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800;
             letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
-        .qz-verdict.ok { color: #15803D; }
-        .qz-verdict.no { color: #B91C1C; }
+        .qz-verdict.ok { color: var(--ink-good); }
+        .qz-verdict.no { color: var(--danger); }
         /* «Зачтено» по-таджикски втрое длиннее — даём подписи перенос,
            а иконке запрещаем сжиматься */
         .qz-verdict { flex-wrap: wrap; }
@@ -129,7 +129,7 @@
         }
         .qz-given b { color: var(--navy-deep); }
         .qz-comment { font-size: 13px; line-height: 1.6; color: var(--slate); }
-        .qz-right { font-size: 13px; color: #15803D; margin-top: 6px; }
+        .qz-right { font-size: 13px; color: var(--ink-good); margin-top: 6px; }
 
         .qz-flash {
             margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; font-size: 13.5px;

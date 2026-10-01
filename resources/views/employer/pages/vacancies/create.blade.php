@@ -14,9 +14,9 @@
             --blue-ice: #EAF1FC;
             --slate: #44506B;
             --slate-soft: #8195B8;
-            --white: #FFFFFF;
+            --paper: #FFFFFF;
             --glass: rgba(255, 255, 255, 0.9);
-            --radius: 20px;
+            --card-radius: 20px;
         }
 
         * {
@@ -62,7 +62,7 @@
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
             border: 1px solid rgba(255, 255, 255, 0.6);
-            border-radius: var(--radius);
+            border-radius: var(--card-radius);
             box-shadow: 0 40px 80px -30px rgba(5, 15, 45, 0.55),
             0 0 0 1px rgba(255, 255, 255, 0.4) inset;
             overflow: hidden;
@@ -171,7 +171,7 @@
         input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--blue-primary);
-            background: var(--white);
+            background: var(--paper);
             box-shadow: 0 0 0 4px rgba(44, 95, 224, 0.14);
         }
 
@@ -219,7 +219,7 @@
         .pill input:checked + span {
             background: linear-gradient(135deg, var(--blue-primary), var(--blue-sky));
             border-color: transparent;
-            color: var(--white);
+            color: var(--paper);
             box-shadow: 0 10px 20px -8px rgba(44, 95, 224, 0.65);
         }
 
@@ -253,7 +253,7 @@
             font-family: 'Space Grotesk', sans-serif;
             font-weight: 600;
             font-size: 15px;
-            color: var(--white);
+            color: var(--paper);
             background: linear-gradient(135deg, var(--blue-primary) 0%, var(--navy-mid) 130%);
             border: none;
             padding: 14px 30px;
@@ -283,7 +283,7 @@
         }
 
         .submit-btn:focus-visible {
-            outline: 2px solid var(--white);
+            outline: 2px solid var(--paper);
             outline-offset: 3px;
         }
 

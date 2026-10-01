@@ -54,7 +54,12 @@
         }
 
         /* ---------- sidebar ---------- */
-        .sidebar{
+        .sidebar{
+            /* Цвет текста задаём явно, а не наследуем от body: страницы со своим
+               оформлением переопределяют body{color} после общей темы, и общая
+               поверхность получала чужой цвет — в тёмной теме выходил тёмный
+               текст на тёмной карточке. */
+            color:var(--ink);
             background:var(--white);
             border-right:1px solid var(--gray-200);
             /* на тёмной теме грань меню подсвечена, на светлой токен пустой */
@@ -211,7 +216,12 @@
             color:var(--gray-500);
             font-size:14px;
         }
-        .user-chip{
+        .user-chip{
+            /* Цвет текста задаём явно, а не наследуем от body: страницы со своим
+               оформлением переопределяют body{color} после общей темы, и общая
+               поверхность получала чужой цвет — в тёмной теме выходил тёмный
+               текст на тёмной карточке. */
+            color:var(--ink);
             display:flex;
             align-items:center;
             gap:10px;
@@ -240,7 +250,12 @@
             gap:16px;
             margin-bottom:28px;
         }
-        .stat-card{
+        .stat-card{
+            /* Цвет текста задаём явно, а не наследуем от body: страницы со своим
+               оформлением переопределяют body{color} после общей темы, и общая
+               поверхность получала чужой цвет — в тёмной теме выходил тёмный
+               текст на тёмной карточке. */
+            color:var(--ink);
             background:var(--white);
             border:1px solid var(--gray-200);
             border-radius:var(--radius);
@@ -267,7 +282,12 @@
         .stat-card .value{ font-size:26px; font-weight:700; }
         .stat-card .trend{ font-size:12px; color:var(--green); margin-top:4px; }
 
-        .card{
+        .card{
+            /* Цвет текста задаём явно, а не наследуем от body: страницы со своим
+               оформлением переопределяют body{color} после общей темы, и общая
+               поверхность получала чужой цвет — в тёмной теме выходил тёмный
+               текст на тёмной карточке. */
+            color:var(--ink);
             background:var(--white);
             border:1px solid var(--gray-200);
             border-radius:var(--radius);
