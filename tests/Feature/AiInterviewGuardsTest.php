@@ -522,3 +522,81 @@ test('пока задание составляется, страница ждё�
         ->assertSee('Тестовое задание готовится', false)
         ->assertSee('window.location.reload', false);
 });
+
+// ==================== выбор файла и самоперезагрузка ====================
+
+test('пока разбор идёт, формы загрузки нет', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'pending',
+    ]);
+
+    $response = $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.documents', $interview))
+        ->assertOk();
+
+    /*
+     * Страница в это время перезагружается каждые пять секунд, и диалог выбора
+     * файла закрывался под руками — выбрать ничего не удавалось. А если бы и
+     * удалось, толку нет: цепочка разбора собрана из тех документов, что были
+     * на момент нажатия «Продолжить», и новый в неё уже не попадёт.
+     */
+    $response->assertDontSee('type="file"', false)
+        ->assertDontSee('Добавить документ', false)
+        ->assertSee('Документы отправлены на разбор', false)
+        // а перезагрузка при этом идёт — одно с другим и сталкивалось
+        ->assertSee('window.location.reload', false);
+});
+
+test('до начала разбора файл выбрать можно', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'none',
+    ]);
+
+    $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.documents', $interview))
+        ->assertOk()
+        ->assertSee('type="file"', false)
+        ->assertSee('Добавить документ', false)
+        // страница стоит на месте: диалогу выбора ничто не мешает
+        ->assertDontSee('window.location.reload', false);
+});
+
+test('у зависшего разбора форма возвращается', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'pending',
+    ]);
+
+    $interview->forceFill([
+        'updated_at' => now()->subMinutes(AiInterview::ANALYSIS_PATIENCE_MINUTES + 1),
+    ])->saveQuietly();
+
+    // разбор можно запустить заново, и новый документ в цепочку попадёт
+    $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.documents', $interview))
+        ->assertOk()
+        ->assertSee('type="file"', false)
+        ->assertSee('Разбор затянулся', false)
+        ->assertDontSee('window.location.reload', false);
+});
+
+test('страница, которая сама перезагружается, не просит ничего заполнить', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'pending',
+    ]);
+
+    $html = $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.documents', $interview))->getContent();
+
+    /*
+     * Общее правило, ради которого всё это и проверяется: ввод пользователя и
+     * самоперезагрузка на одной странице несовместимы.
+     */
+    if (str_contains($html, 'window.location.reload')) {
+        expect($html)->not->toContain('type="file"')
+            ->and($html)->not->toContain('<textarea');
+    }
+});

@@ -295,6 +295,7 @@
     "Документов недостаточно для разбора": "Not enough documents to analyse",
     "Документы": "Documents",
     "Документы кандидата": "Candidate documents",
+    "Документы отправлены на разбор. Добавить ещё можно будет, если разбор не удастся.": "Your documents have been sent for analysis. You will be able to add more if the analysis fails.",
     "Документы приняты, но разбор не продвинулся. Ваши данные сохранены — можно попробовать ещё раз или вернуться позже.": "Your documents were accepted, but the analysis has not progressed. Your data is saved — you can try again or come back later.",
     "Документы разобраны": "Documents analysed",
     "Документы, %": "Documents, %",
