@@ -344,7 +344,8 @@ test('зависший разбор говорит правду и не пере
     $this->actingAs($applicantUser)->get(route('applicant.ai.documents', $interview))
         ->assertOk()
         ->assertSee('Разбор затянулся', false)
-        ->assertSee('Попробовать снова', false)
+        // кнопка называется тем, что делает: разбором человек и идёт дальше
+        ->assertSee('Запустить разбор и продолжить', false)
         // вечная перезагрузка каждые пять секунд — то, от чего и уходим
         ->assertDontSee('window.location.reload', false);
 });

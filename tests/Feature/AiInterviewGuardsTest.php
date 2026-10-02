@@ -600,3 +600,75 @@ test('страница, которая сама перезагружается, 
             ->and($html)->not->toContain('<textarea');
     }
 });
+
+test('зависший разбор на машине разработчика объясняет, что очередь не идёт', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'pending',
+    ]);
+
+    $interview->forceFill([
+        'updated_at' => now()->subMinutes(AiInterview::ANALYSIS_PATIENCE_MINUTES + 1),
+    ])->saveQuietly();
+
+    // задача лежит в очереди, обработчика нет — самая частая причина тупика
+    Illuminate\Support\Facades\DB::table('jobs')->insert([
+        'queue' => 'default', 'payload' => '{}', 'attempts' => 0,
+        'available_at' => time(), 'created_at' => time(),
+    ]);
+
+    app()->detectEnvironment(fn () => 'local');
+
+    /*
+     * Подсказка видна только на машине разработчика: кандидату такой совет ни
+     * к чему, а владельцу площадки он объясняет тупик за секунду вместо часа
+     * догадок.
+     */
+    $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.documents', $interview))
+        ->assertOk()
+        ->assertSee('queue:work', false)
+        ->assertSee('их никто не берёт', false);
+});
+
+test('на боевой площадке совета про очередь кандидат не видит', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'pending',
+    ]);
+
+    $interview->forceFill([
+        'updated_at' => now()->subMinutes(AiInterview::ANALYSIS_PATIENCE_MINUTES + 1),
+    ])->saveQuietly();
+
+    Illuminate\Support\Facades\DB::table('jobs')->insert([
+        'queue' => 'default', 'payload' => '{}', 'attempts' => 0,
+        'available_at' => time(), 'created_at' => time(),
+    ]);
+
+    app()->detectEnvironment(fn () => 'production');
+
+    $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.documents', $interview))
+        ->assertOk()
+        ->assertDontSee('queue:work', false);
+});
+
+test('пустая очередь совета не показывает', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'pending',
+    ]);
+
+    $interview->forceFill([
+        'updated_at' => now()->subMinutes(AiInterview::ANALYSIS_PATIENCE_MINUTES + 1),
+    ])->saveQuietly();
+
+    app()->detectEnvironment(fn () => 'local');
+
+    // задач нет — значит причина в другом, и гадать не надо
+    $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.documents', $interview))
+        ->assertOk()
+        ->assertDontSee('queue:work', false);
+});

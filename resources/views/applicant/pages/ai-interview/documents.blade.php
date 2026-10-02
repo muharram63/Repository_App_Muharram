@@ -222,17 +222,36 @@
                 <div class="dc-panel">
                     <h2>{{ __('Разбор затянулся') }}</h2>
                     <p class="dc-hint">
-                        {{ __('Документы приняты, но разбор не продвинулся. Ваши данные сохранены — можно попробовать ещё раз или вернуться позже.') }}
+                        {{ __('Документы приняты, но разбор не продвинулся. Ваши данные сохранены — можно запустить разбор заново или вернуться позже.') }}
                     </p>
+
+                    {{-- Кнопка называется тем, что делает. «Попробовать снова»
+                         читалось как «повторить то, что не вышло», и человек не
+                         понимал, что именно этим и идёт дальше: разбор — это
+                         шаг к разговору, других путей со страницы нет. --}}
                     <div class="dc-row">
                         <form method="POST" action="{{ route('applicant.ai.proceed', $interview) }}">
                             @csrf
-                            <button type="submit" class="dc-btn">{{ __('Попробовать снова') }}</button>
+                            <button type="submit" class="dc-btn">{{ __('Запустить разбор и продолжить') }}</button>
                         </form>
                         <a class="dc-btn dc-btn-ghost" href="{{ route('applicant.ai.index') }}">
                             {{ __('Продолжу потом') }}
                         </a>
                     </div>
+
+                    @if(app()->environment('local') && \Illuminate\Support\Facades\Schema::hasTable('jobs'))
+                        @php($queued = \Illuminate\Support\Facades\DB::table('jobs')->count())
+                        @if($queued > 0)
+                            {{-- Видно только на машине разработчика: кандидату такой
+                                 совет ни к чему, а владельцу площадки он объясняет
+                                 тупик за секунду вместо часа догадок. --}}
+                            <div class="dc-note dc-warn">
+                                В очереди ждёт задач: {{ $queued }}, и их никто не берёт.
+                                Запустите обработчик во втором окне:
+                                <code>php artisan queue:work</code>
+                            </div>
+                        @endif
+                    @endif
                 </div>
             @elseif($interview->analysis_status === 'pending')
                 {{-- Разбор в очереди. Страница обновляется сама: три модельных
