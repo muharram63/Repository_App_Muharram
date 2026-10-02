@@ -657,3 +657,106 @@ test('решение иначе, чем в эталоне, не считаетс
             && str_contains($r['input'][0]['content'][0]['text'], 'один из хороших вариантов');
     });
 });
+
+// ==================== задание под стек кандидата ====================
+
+/** Ответ Interactions API с готовым заданием. */
+function composedTaskAnswer(array $payload = []): array
+{
+    return [
+        'id' => 'int_1',
+        'model' => 'gemini-3.6-flash',
+        'usage' => ['total_input_tokens' => 100, 'total_output_tokens' => 80, 'total_thought_tokens' => 0],
+        'steps' => [['type' => 'model_output', 'content' => [['type' => 'text', 'text' => json_encode($payload + [
+            'statement' => 'Напишите функцию нормализации телефона и объясните проверки.',
+            'format' => 'code',
+            'language' => 'PHP',
+            'reference_solution' => 'preg_replace и проверка длины',
+            'rubric' => [
+                ['point' => 'Убирает нецифровые символы', 'weight' => 60],
+                ['point' => 'Отбрасывает неверную длину', 'weight' => 40],
+            ],
+        ], JSON_UNESCAPED_UNICODE)]]]],
+    ];
+}
+
+/** Настоящий составитель задания, а не подменный. */
+function realComposer(): App\Services\Ai\GeminiTaskExaminer
+{
+    return app(App\Services\Ai\GeminiTaskExaminer::class);
+}
+
+/** Что ушло в модель последним запросом. */
+function lastPrompt(): string
+{
+    return json_encode(Http::recorded()[0][0]->data(), JSON_UNESCAPED_UNICODE);
+}
+
+test('в составление уходят профессия и навыки кандидата', function () {
+    Http::fake(['*' => Http::response(composedTaskAnswer())]);
+
+    [$vacancy] = makeAiVacancy();
+    [$interview] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'test', 'analysis_status' => 'ready',
+        'analysis' => ['resume' => [
+            'profession' => 'PHP-разработчик',
+            'experience_years' => 4,
+            'skills' => ['PHP', 'CodeIgniter', 'MySQL'],
+            'positions' => [['company' => 'Студия', 'role' => 'Backend-разработчик',
+                'period' => '2021-2025', 'summary' => 'магазины']],
+        ]],
+    ]);
+
+    realComposer()->compose(
+        $interview,
+        AiInterviewCriterion::where('vacancy_id', $vacancy->id)->confirmed()->get(),
+    );
+
+    /*
+     * Раньше составление видело только вакансию. Она пишется широко, и
+     * человеку, работавшему на CodeIgniter, доставалась проверка знакомства с
+     * фреймворком из её описания, а не умения решать задачу.
+     */
+    expect(lastPrompt())->toContain('CodeIgniter')
+        ->toContain('PHP-разработчик')
+        ->toContain('Backend-разработчик');
+});
+
+test('резюме не влияет на сложность, и об этом сказано прямо', function () {
+    Http::fake(['*' => Http::response(composedTaskAnswer())]);
+
+    [$vacancy] = makeAiVacancy();
+    [$interview] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'test', 'analysis_status' => 'ready',
+        'analysis' => ['resume' => ['profession' => 'PHP-разработчик', 'skills' => ['PHP']]],
+    ]);
+
+    realComposer()->compose(
+        $interview,
+        AiInterviewCriterion::where('vacancy_id', $vacancy->id)->confirmed()->get(),
+    );
+
+    // иначе баллы разных людей стали бы несравнимыми: слабому простое задание
+    // и высокий балл, сильному сложное и низкий
+    expect(lastPrompt())->toContain('делай задание ни проще, ни труднее')
+        ->toContain('не для сложности');
+});
+
+test('без разбора резюме составление обходится вакансией', function () {
+    Http::fake(['*' => Http::response(composedTaskAnswer())]);
+
+    [$vacancy] = makeAiVacancy();
+    [$interview] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'test', 'analysis_status' => 'ready',
+        'analysis' => null,
+    ]);
+
+    realComposer()->compose(
+        $interview,
+        AiInterviewCriterion::where('vacancy_id', $vacancy->id)->confirmed()->get(),
+    );
+
+    // блока про кандидата нет, но составление не падает
+    expect(lastPrompt())->not->toContain('КАНДИДАТ (для выбора')
+        ->and(lastPrompt())->toContain('ВАКАНСИЯ');
+});
