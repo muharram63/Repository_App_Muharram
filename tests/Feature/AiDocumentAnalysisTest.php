@@ -422,14 +422,47 @@ test('пересчёт не затирает то, что подтвержден
         ->and($checks[$php->label]->origin)->toBe('interview');
 });
 
-test('уже разобранное резюме второй раз не разбирается', function () {
+test('готовая сверка второй раз не делается', function () {
     [$interview, , $auditor] = analysisReady();
 
     (new BuildRequirementMatrix($interview->id))->handle($auditor);
     (new BuildRequirementMatrix($interview->id))->handle($auditor);
 
+    /*
+     * Ни резюме, ни сверка повторно не идут.
+     *
+     * Кнопку «продолжить» нажимают не раз: разбор долгий, а при зависшей
+     * очереди его ещё и перезапускают руками. Каждое нажатие заводит свою
+     * цепочку. Разбор документа это переживал — у него есть проверка «тот же
+     * файл, те же требования», — а сверка шла заново каждый раз и тратила по
+     * два обращения к модели на пустом месте.
+     *
+     * Живой случай: шесть нажатий сожгли бесплатный лимит на работе, которая
+     * требовала трёх вызовов.
+     */
     expect($auditor->resumeCalls)->toBe(1)
-        ->and($auditor->matrixCalls)->toBe(2);
+        ->and($auditor->matrixCalls)->toBe(1);
+});
+
+test('неразобранный документ сверку всё же запускает', function () {
+    [$interview, , $auditor] = analysisReady();
+
+    (new BuildRequirementMatrix($interview->id))->handle($auditor);
+
+    // кандидат добавил документ после разбора и запустил ещё раз
+    App\Models\AiCandidateDocument::create([
+        'ai_interview_id' => $interview->id,
+        'kind' => 'diploma',
+        'path' => 'ai/documents/'.$interview->id.'/new.pdf',
+        'original_name' => 'new.pdf',
+        'mime' => 'application/pdf',
+        'status' => 'pending',
+    ]);
+
+    (new BuildRequirementMatrix($interview->id))->handle($auditor);
+
+    // есть что досверить — значит выход по готовности не срабатывает
+    expect($auditor->matrixCalls)->toBe(2);
 });
 
 // ==================== балл за документы ====================
