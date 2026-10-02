@@ -672,3 +672,42 @@ test('пустая очередь совета не показывает', funct
         ->assertOk()
         ->assertDontSee('queue:work', false);
 });
+
+// ==================== очередь не забивается копиями ====================
+
+test('перезагрузки страницы задания не плодят задач в очереди', function () {
+    [$vacancy] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'test', 'analysis_status' => 'ready',
+    ]);
+
+    /*
+     * Страница задания перезагружается каждые пять секунд, пока задания нет, и
+     * при каждой загрузке ставила составление в очередь: проверка смотрела, есть
+     * ли готовое задание, а оно появляется только когда задача выполнится.
+     * Стоящая в очереди задача этой проверке не видна. Живой случай: за час в
+     * очереди накопилось 236 копий.
+     */
+    for ($i = 0; $i < 5; $i++) {
+        $this->actingAs($applicantUser)->get(route('applicant.ai.task', $interview))->assertOk();
+    }
+
+    $composed = collect(Queue::pushedJobs()[App\Jobs\ComposeTestTask::class] ?? []);
+
+    expect($composed)->toHaveCount(1, 'в очереди '.$composed->count().' копий вместо одной');
+});
+
+test('для другого собеседования задача всё же ставится', function () {
+    [$vacancy] = makeAiVacancy();
+
+    foreach (range(1, 2) as $n) {
+        [$interview, , $user] = makeAiInterview($vacancy, [
+            'consent_at' => now(), 'stage' => 'test', 'analysis_status' => 'ready',
+        ]);
+
+        $this->actingAs($user)->get(route('applicant.ai.task', $interview))->assertOk();
+    }
+
+    // замок на собеседование, а не на всю очередь
+    expect(Queue::pushedJobs()[App\Jobs\ComposeTestTask::class] ?? [])->toHaveCount(2);
+});
