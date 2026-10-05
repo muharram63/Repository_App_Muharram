@@ -254,6 +254,8 @@
 </header>
 
 @include('partials.call-notify')
+{{-- новое уведомление — со звуком и всплывающей карточкой --}}
+@include('partials.notification-alert')
 
 <script>
     (function () {

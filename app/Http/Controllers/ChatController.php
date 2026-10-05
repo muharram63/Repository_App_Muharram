@@ -79,12 +79,12 @@ class ChatController extends Controller
             $employer = $user->employer;
             if (! $employer) {
                 return redirect()->route('public.employers.create')
-                    ->with('error', 'Сначала заполните анкету работодателя.');
+                    ->with('error', __('Сначала заполните анкету работодателя.'));
             }
 
             $applicantId = $validated['applicant_id'] ?? null;
             if (! $applicantId) {
-                return back()->with('error', 'Не выбран соискатель.');
+                return back()->with('error', __('Не выбран соискатель.'));
             }
 
             $employerId = $employer->id;
@@ -92,17 +92,17 @@ class ChatController extends Controller
             $applicant = $user->applicant;
             if (! $applicant) {
                 return redirect()->route('public.applicants.create')
-                    ->with('error', 'Сначала заполните анкету соискателя.');
+                    ->with('error', __('Сначала заполните анкету соискателя.'));
             }
 
             $employerId = $validated['employer_id'] ?? null;
             if (! $employerId) {
-                return back()->with('error', 'Не выбрана компания.');
+                return back()->with('error', __('Не выбрана компания.'));
             }
 
             $applicantId = $applicant->id;
         } else {
-            return back()->with('error', 'Чат доступен работодателям и соискателям.');
+            return back()->with('error', __('Чат доступен работодателям и соискателям.'));
         }
 
         $conversation = Conversation::where('employer_id', $employerId)
@@ -115,7 +115,7 @@ class ChatController extends Controller
             $company = Employer::find($employerId);
 
             if (! $company || ! $company->isRelatedToApplicant((int) $applicantId)) {
-                return back()->with('error', 'Написать можно после отклика или приглашения.');
+                return back()->with('error', __('Написать можно после отклика или приглашения.'));
             }
 
             $conversation = Conversation::create([
@@ -139,11 +139,11 @@ class ChatController extends Controller
             'body' => 'nullable|string|max:2000',
             'reply_to_id' => 'nullable|exists:messages,id',
             'attachment' => 'nullable|file|max:10240|mimes:jpeg,jpg,png,webp,gif,pdf,doc,docx,xls,xlsx,txt,zip',
-        ], [], ['attachment' => 'файл']);
+        ], [], ['attachment' => __('файл')]);
 
         // пустое сообщение без файла отправлять нечего
         if (blank($validated['body'] ?? null) && ! $request->hasFile('attachment')) {
-            return back()->with('error', 'Напишите сообщение или приложите файл.');
+            return back()->with('error', __('Напишите сообщение или приложите файл.'));
         }
 
         // отвечать можно только на сообщение из этого же диалога
@@ -185,8 +185,8 @@ class ChatController extends Controller
         UserNotification::deliver(
             $recipientId,
             'message',
-            'Новое сообщение',
-            auth()->user()->name.': '.$message->previewText(),
+            UserNotification::text('Новое сообщение'),
+            UserNotification::text(':name: :text', ['name' => auth()->user()->name, 'text' => $message->previewText()]),
             $chatUrl,
             'mail_messages',
             collapse: true,
@@ -197,7 +197,7 @@ class ChatController extends Controller
         UserNotification::deliver(
             auth()->id(),
             'message',
-            'Вы написали в чате',
+            UserNotification::text('Вы написали в чате'),
             $message->previewText(),
             $chatUrl,
             'mail_messages',
@@ -285,7 +285,7 @@ class ChatController extends Controller
             ]);
         }
 
-        return back()->with('status', 'Сообщение изменено.');
+        return back()->with('status', __('Сообщение изменено.'));
     }
 
     /**
@@ -313,7 +313,7 @@ class ChatController extends Controller
         $last = $conversation->messages()->latest('id')->first();
         $conversation->update(['last_message_at' => $last?->created_at]);
 
-        return back()->with('status', 'Сообщение удалено.');
+        return back()->with('status', __('Сообщение удалено.'));
     }
 
     /**
@@ -374,7 +374,7 @@ class ChatController extends Controller
             'messages' => $messages->map(fn (Message $message) => [
                 'id' => $message->id,
                 'mine' => $message->user_id === auth()->id(),
-                'author' => $message->user?->name ?? 'Пользователь',
+                'author' => $message->user?->name ?? __('Пользователь'),
                 'body' => $message->body,
                 'time' => $message->created_at->format('d.m.Y H:i'),
                 'edited' => (bool) $message->edited_at,
@@ -394,10 +394,10 @@ class ChatController extends Controller
                 ] : null,
                 'reply' => $message->replyTo ? [
                     'id' => $message->replyTo->id,
-                    'author' => $message->replyTo->user?->name ?? 'Пользователь',
+                    'author' => $message->replyTo->user?->name ?? __('Пользователь'),
                     'body' => $message->replyTo->body
                         ? \Illuminate\Support\Str::limit($message->replyTo->body, 90)
-                        : 'Вложение',
+                        : __('Вложение'),
                 ] : null,
                 'deleteUrl' => $message->user_id === auth()->id()
                     ? route('public.chats.message.destroy', [$conversation, $message])

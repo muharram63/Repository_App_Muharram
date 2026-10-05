@@ -35,7 +35,7 @@ class MatchController extends Controller
 
         if (! $this->analyst->available()) {
             return response()->json([
-                'error' => 'Разбор недоступен: в .env не задан GEMINI_API_KEY.',
+                'error' => __('Разбор недоступен: в .env не задан GEMINI_API_KEY.'),
             ], 503);
         }
 

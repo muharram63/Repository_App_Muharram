@@ -41,8 +41,7 @@ class AiSpeechController extends Controller
             'user' => auth()->user(),
             'applicant' => auth()->user()->applicant,
             'ttsAvailable' => $this->library->available(),
-            'sample' => 'Расскажите, пожалуйста, о задаче, которой вы сами довольны: '
-                .'что нужно было сделать, что вы сделали и что изменилось после этого?',
+            'sample' => __('Расскажите, пожалуйста, о задаче, которой вы сами довольны: что нужно было сделать, что вы сделали и что изменилось после этого?'),
         ]);
     }
 
@@ -78,6 +77,27 @@ class AiSpeechController extends Controller
     public function status(AiInterviewTurn $turn): JsonResponse
     {
         $this->authorizeTurn($turn);
+
+        /*
+         * Звук ещё не готов — готовим его прямо сейчас, не дожидаясь очереди.
+         *
+         * Синтез занимает около пяти секунд, и столько этот запрос и
+         * продлится. Если реплику уже озвучивает очередь или соседний запрос,
+         * отвечаем «готовится» — страница спросит ещё раз.
+         */
+        if ($turn->speech_status === 'pending') {
+            // длинный вопрос синтезируется до двадцати секунд и дольше —
+            // стандартные 30 секунд PHP оборвали бы запрос на полуслове
+            @set_time_limit((int) config('services.gemini.tts_timeout', 90) + 15);
+
+            try {
+                $this->library->voiceTurn($turn);
+            } catch (AiUnavailableException $e) {
+                $turn->update(['speech_status' => 'failed']);
+            }
+
+            $turn->refresh();
+        }
 
         return response()->json([
             'status' => $turn->speech_status,
@@ -120,7 +140,7 @@ class AiSpeechController extends Controller
 
         if (! $this->library->available()) {
             return response()->json([
-                'error' => 'Голосовой синтез выключен: проверьте GEMINI_API_KEY и GEMINI_TTS_ENABLED.',
+                'error' => __('Голосовой синтез выключен: проверьте GEMINI_API_KEY и GEMINI_TTS_ENABLED.'),
                 'fallback' => 'browser',
             ], 503);
         }

@@ -14,9 +14,11 @@ use App\Services\Ai\AiUnavailableException;
 use App\Services\Ai\GeminiInterviewer;
 use App\Services\Ai\Interviewer;
 use App\Services\Ai\SpeechLibrary;
+use App\Services\Ai\SpeechRecognizer;
 use App\Services\Security\InjectionGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -36,6 +38,7 @@ class AiChatController extends Controller
         private readonly Interviewer $interviewer,
         private readonly InjectionGuard $guard,
         private readonly SpeechLibrary $speech,
+        private readonly SpeechRecognizer $recognizer,
     ) {
     }
 
@@ -59,12 +62,16 @@ class AiChatController extends Controller
             'vacancy' => $interview->vacancy,
             'turns' => $turns,
             'config' => $interview->config,
-            'asked' => $turns->where('role', AiInterviewTurn::ROLE_AI)->count(),
+            'asked' => $turns->filter(fn (AiInterviewTurn $t) => $t->role === AiInterviewTurn::ROLE_AI && ! $t->isClosing())->count(),
             'target' => $interview->questionTarget(),
             'assistantName' => GeminiInterviewer::NAME,
             'assistantRole' => GeminiInterviewer::ROLE,
             'voiceEnabled' => $this->speech->available(),
+            // распознавание на сервере — для браузеров без своего (Firefox, Safari)
+            'serverRecognition' => $this->recognizer->available(),
             'maxAnswer' => self::MAX_ANSWER,
+            // разбор документов ещё идёт — скажем, что вопросы уточнятся
+            'analysing' => $interview->analysisRunning(),
         ]);
     }
 
@@ -96,11 +103,71 @@ class AiChatController extends Controller
             ], 422);
         }
 
-        if ($interview->turns()->exists()) {
+        /*
+         * Последняя реплика — вопрос: он уже задан, ждём ответа.
+         * Последняя реплика — ответ кандидата: следующий вопрос не пришёл
+         * (модель была недоступна) — задаём его сейчас. Без этого разговор
+         * после любого сбоя модели обрывался навсегда.
+         */
+        $last = $interview->turns()->reorder('position', 'desc')->first();
+
+        // завершение прошлого круга — не вопрос: после дораунда разговор
+        // продолжается новым вопросом
+        if ($last && $last->role === AiInterviewTurn::ROLE_AI && ! $last->isClosing()) {
             return response()->json(['already' => true]);
         }
 
-        return $this->askNext($interview);
+        return $this->proceed($interview);
+    }
+
+    /** Предел записи устного ответа: около трёх минут WAV 16 кГц моно. */
+    public const MAX_AUDIO_KB = 6144;
+
+    /**
+     * Устный ответ в текст — для голосового режима.
+     *
+     * Только расшифровка: ответ не сохраняется и не отправляется. Текст
+     * возвращается странице, кандидат видит его в поле ответа, и отправка
+     * идёт обычным путём. Так устный и письменный ответ — одно и то же, а
+     * сама запись голоса у нас не остаётся вовсе.
+     */
+    public function transcribe(Request $request, AiInterview $interview): JsonResponse
+    {
+        $this->mine($interview);
+
+        if ($error = $this->notReadyToTalk($interview)) {
+            return response()->json(['error' => $error, 'reload' => true], 422);
+        }
+
+        $validator = Validator::make($request->all(), [
+            // WAV собирает сама страница: его понимают и браузер, и модель
+            'audio' => 'required|file|max:'.self::MAX_AUDIO_KB.'|mimetypes:audio/wav,audio/x-wav,audio/wave,audio/vnd.wave',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        if (! $this->recognizer->available()) {
+            return response()->json(['error' => __('Распознавание речи недоступно — ответьте текстом.')], 503);
+        }
+
+        try {
+            $text = $this->recognizer->transcribe(
+                $interview,
+                (string) file_get_contents($request->file('audio')->getRealPath()),
+                'audio/wav',
+            );
+        } catch (AiInvalidAnswerException $e) {
+            return response()->json(['error' => __('Не удалось разобрать запись — повторите или ответьте текстом.')], 503);
+        } catch (AiUnavailableException $e) {
+            return response()->json(array_filter([
+                'error' => $e->getMessage(),
+                'retry_after' => $e->retryAfter,
+            ]), 503);
+        }
+
+        return response()->json(['text' => $text]);
     }
 
     /**
@@ -141,11 +208,11 @@ class AiChatController extends Controller
          * остаётся возрастающим. «Последним вопросом» оказывался первый, и
          * любой второй ответ отвергался как уже отправленный.
          */
-        $question = $interview->turns()->where('role', AiInterviewTurn::ROLE_AI)
+        $question = $interview->turns()->questions()
             ->reorder('position', 'desc')->first();
 
         if (! $question) {
-            return response()->json(['error' => 'Вопрос ещё не задан.'], 422);
+            return response()->json(['error' => __('Вопрос ещё не задан.')], 422);
         }
 
         /*
@@ -161,16 +228,7 @@ class AiChatController extends Controller
         $answering = (int) ($validated['question_id'] ?? 0);
 
         if ($answering > 0 && $answering !== $question->id) {
-            return response()->json(['error' => 'Этот ответ уже отправлен.'], 422);
-        }
-
-        $answered = $interview->turns()
-            ->where('role', AiInterviewTurn::ROLE_CANDIDATE)
-            ->where('position', '>', $question->position)
-            ->exists();
-
-        if ($answered) {
-            return response()->json(['error' => 'Этот ответ уже отправлен.'], 422);
+            return response()->json(['error' => __('Этот ответ уже отправлен.')], 422);
         }
 
         /*
@@ -181,15 +239,40 @@ class AiChatController extends Controller
          */
         $found = $this->guard->inspect($validated['text']);
 
-        $answer = AiInterviewTurn::create([
-            'ai_interview_id' => $interview->id,
-            'position' => $this->nextPosition($interview),
-            'role' => AiInterviewTurn::ROLE_CANDIDATE,
-            'text' => $validated['text'],
-            // критерий берём у вопроса: оценка должна знать, что проверялось
-            'criterion_key' => $question->criterion_key,
-            'injection_flagged' => $found['flagged'],
-        ]);
+        /*
+         * Проверка «ответа ещё нет» и запись ответа — под замком строки
+         * собеседования. Без него два запроса, пришедшие одновременно (двойное
+         * нажатие, две вкладки), оба проходили проверку и записывали два
+         * ответа на один вопрос — и оба получали оценку.
+         */
+        $answer = DB::transaction(function () use ($interview, $question, $validated, $found) {
+            AiInterview::whereKey($interview->id)->lockForUpdate()->first();
+
+            $answered = $interview->turns()
+                ->where('role', AiInterviewTurn::ROLE_CANDIDATE)
+                ->where('position', '>', $question->position)
+                ->exists();
+
+            if ($answered) {
+                return null;
+            }
+
+            return AiInterviewTurn::create([
+                'ai_interview_id' => $interview->id,
+                'position' => $this->nextPosition($interview),
+                'role' => AiInterviewTurn::ROLE_CANDIDATE,
+                'text' => $validated['text'],
+                // критерий берём у вопроса: оценка должна знать, что проверялось
+                'criterion_key' => $question->criterion_key,
+                'injection_flagged' => $found['flagged'],
+            ]);
+        });
+
+        if (! $answer) {
+            // ответ записан раньше, а следующего вопроса нет — страница не
+            // повторяет ответ, а просит продолжить разговор
+            return response()->json(['error' => __('Этот ответ уже отправлен.'), 'resume' => true], 422);
+        }
 
         if ($found['flagged']) {
             $this->guard->record($found, $interview, $answer);
@@ -198,14 +281,32 @@ class AiChatController extends Controller
         // балл считается в очереди: кандидату он не показывается
         ScoreInterviewAnswer::dispatch($answer->id);
 
-        return $this->askNext($interview);
+        return $this->proceed($interview, saved: true);
     }
 
     /**
-     * Спросить модель о следующей реплике и сохранить её.
+     * Следующий шаг разговора после ответа (или при возвращении к нему).
+     *
+     * Разговор заканчивается, когда кандидат ОТВЕТИЛ на нужное число вопросов,
+     * а не когда это число вопросов задано. Раньше счёт шёл по заданным
+     * вопросам: N-й вопрос появлялся на экране и тут же закрывал разговор —
+     * ответить на него было нельзя, и человек видел вопрос рядом с надписью
+     * «Собеседование пройдено».
+     *
+     * $saved — ответ кандидата уже записан. Если модель сейчас недоступна,
+     * странице надо сказать именно это: ответ не повторять, а продолжить
+     * позже. Раньше страница возвращала текст в поле, повторная отправка
+     * получала «Этот ответ уже отправлен», а следующий вопрос не задавался
+     * уже никогда — даже после перезагрузки.
      */
-    private function askNext(AiInterview $interview): JsonResponse
+    private function proceed(AiInterview $interview, bool $saved = false): JsonResponse
     {
+        $answers = $this->answersCount($interview);
+
+        if ($answers >= $interview->questionTarget()) {
+            return $this->finish($interview);
+        }
+
         $criteria = AiInterviewCriterion::where('vacancy_id', $interview->vacancy_id)
             ->confirmed()->ordered()->get();
 
@@ -215,12 +316,16 @@ class AiChatController extends Controller
             /*
              * Модель дважды не смогла задать вопрос. Разговор не бросаем на
              * полуслове: передаём человеку и честно говорим об этом кандидату.
+             *
+             * И сразу запускаем решение. Одной пометки было мало: стадия
+             * оставалась «собеседование», решение не принимал никто, и
+             * работодатель не мог вынести своё — переопределять было нечего.
              */
-            $interview->update(['requires_review' => true]);
+            $interview->update(['requires_review' => true, 'stage' => 'decision']);
+            MakeHiringDecision::dispatch($interview->id);
 
             return response()->json([
-                'error' => 'Не удалось продолжить разговор. Ваши ответы сохранены, '
-                    .'дальше кандидатуру рассмотрит человек.',
+                'error' => __('Не удалось продолжить разговор. Ваши ответы сохранены, дальше кандидатуру рассмотрит человек.'),
                 'handover' => true,
             ], 503);
         } catch (AiUnavailableException $e) {
@@ -228,30 +333,53 @@ class AiChatController extends Controller
             return response()->json(array_filter([
                 'error' => $e->getMessage(),
                 'retry_after' => $e->retryAfter,
+                'saved' => $saved ?: null,
             ]), 503);
         }
 
-        $asked = $interview->turns()->where('role', AiInterviewTurn::ROLE_AI)->count();
+        /*
+         * «Хватит» модели разговор не заканчивает.
+         *
+         * Раньше её done принимался после половины вопросов, и при пяти
+         * заказанных разговор обрывался на третьем ответе. Число вопросов —
+         * договорённость с работодателем: ИИ задаёт их все, а когда основные
+         * требования уже покрыты, углубляется в опыт кандидата.
+         */
 
-        $turn = AiInterviewTurn::create([
-            'ai_interview_id' => $interview->id,
-            'position' => $this->nextPosition($interview),
-            'role' => AiInterviewTurn::ROLE_AI,
-            'text' => $next['text'],
-            'question_kind' => $next['kind'],
-            'criterion_key' => $next['criterion_key'],
-            'speech_status' => $this->speech->available() ? 'pending' : 'none',
-        ]);
+        /*
+         * Вопрос записываем под замком и только если он всё ещё нужен.
+         *
+         * Модель думает несколько секунд, и за это время второй запрос
+         * (вторая вкладка, повтор после сбоя) мог уже задать свой вопрос —
+         * тогда этот лишний, и кандидат увидел бы два вопроса подряд.
+         */
+        $turn = DB::transaction(function () use ($interview, $next) {
+            AiInterview::whereKey($interview->id)->lockForUpdate()->first();
+
+            $last = $interview->turns()->reorder('position', 'desc')->first();
+
+            if ($last && $last->role === AiInterviewTurn::ROLE_AI && ! $last->isClosing()) {
+                return null;
+            }
+
+            return AiInterviewTurn::create([
+                'ai_interview_id' => $interview->id,
+                'position' => $this->nextPosition($interview),
+                'role' => AiInterviewTurn::ROLE_AI,
+                'text' => $next['text'],
+                'question_kind' => $next['kind'],
+                'criterion_key' => $next['criterion_key'],
+                'speech_status' => $this->speech->available() ? 'pending' : 'none',
+            ]);
+        });
+
+        if (! $turn) {
+            return response()->json(['already' => true, 'reload' => true]);
+        }
 
         // озвучка догоняет: вопрос уже виден текстом
         if ($this->speech->available()) {
             SynthesizeTurnSpeech::dispatch($turn->id);
-        }
-
-        $done = $this->conversationOver($interview, $asked + 1, (bool) $next['done']);
-
-        if ($done) {
-            $this->afterConversation($interview);
         }
 
         return response()->json([
@@ -263,36 +391,57 @@ class AiChatController extends Controller
                 'speech_url' => route('applicant.ai.speech.turn', $turn),
                 'speech_state_url' => route('applicant.ai.speech.status', $turn),
             ],
-            'asked' => $asked + 1,
+            'asked' => $interview->turns()->questions()->count(),
             'target' => $interview->questionTarget(),
-            'done' => $done,
+            'done' => false,
         ]);
     }
 
     /**
-     * Разговор закончен?
-     *
-     * Решает контроллер, а не модель. Модель может счесть, что ей всё ясно, уже
-     * на втором вопросе, а работодатель заказал восемь — собеседование в одну
-     * реплику не собеседование. Поэтому её «хватит» принимается только после
-     * половины заказанных вопросов, а безусловно разговор заканчивается, когда
-     * задано нужное число.
-     *
-     * Правило живёт здесь намеренно: в реализации собеседующего оно зависело бы
-     * от того, какая реализация стоит в контейнере, а это условие договора с
-     * работодателем, а не свойство провайдера.
+     * Разговор окончен: дальше задание или решение.
      */
-    private function conversationOver(AiInterview $interview, int $asked, bool $modelSaysDone): bool
+    private function finish(AiInterview $interview): JsonResponse
     {
-        // цель растёт после пограничного дораунда: иначе разговор
-        // заканчивался бы ровно там же, где и в прошлый раз
-        $target = $interview->questionTarget();
+        $this->afterConversation($interview);
 
-        if ($asked >= $target) {
-            return true;
+        /*
+         * Анна сама подводит черту.
+         *
+         * Раньше разговор просто обрывался панелью «Собеседование пройдено», и
+         * кандидат сам искал, куда идти. Теперь она говорит, что дальше и когда
+         * ждать ответа, а страница после её слов сама ведёт к заданию.
+         */
+        $closing = AiInterviewTurn::create([
+            'ai_interview_id' => $interview->id,
+            'position' => $this->nextPosition($interview),
+            'role' => AiInterviewTurn::ROLE_AI,
+            'text' => $interview->closingRemark($interview->fresh()->stage === 'test'),
+            'question_kind' => AiInterviewTurn::KIND_CLOSING,
+            'speech_status' => $this->speech->available() ? 'pending' : 'none',
+        ]);
+
+        if ($this->speech->available()) {
+            SynthesizeTurnSpeech::dispatch($closing->id);
         }
 
-        return $modelSaysDone && $asked >= (int) ceil($target / 2);
+        return response()->json([
+            'asked' => $interview->turns()->questions()->count(),
+            'target' => $interview->questionTarget(),
+            'done' => true,
+            'closing' => [
+                'id' => $closing->id,
+                'text' => $closing->text,
+                'speech_status' => $closing->speech_status,
+                'speech_state_url' => route('applicant.ai.speech.status', $closing),
+            ],
+            // куда идти дальше, решает show(): задание или ожидание решения
+            'next_url' => route('applicant.ai.interview', $interview),
+        ]);
+    }
+
+    private function answersCount(AiInterview $interview): int
+    {
+        return $interview->turns()->where('role', AiInterviewTurn::ROLE_CANDIDATE)->count();
     }
 
     /**
@@ -308,7 +457,16 @@ class AiChatController extends Controller
             ->whereHas('submissions', fn ($q) => $q->whereNotNull('graded_at'))
             ->exists();
 
-        if ($graded) {
+        // задание с нулевым весом в итог не входит — не выдаём его вовсе
+        $noTest = $interview->config && ! $interview->config->needsTest();
+
+        // задание составлялось заранее и не вышло — ждать нечего, решает человек
+        $failed = $interview->fresh()->requires_review
+            && ! $interview->testTasks()->where('kind', \App\Models\AiTestTask::KIND_MAIN)->exists();
+
+        $noTest = $noTest || $failed;
+
+        if ($graded || $noTest) {
             $interview->update(['stage' => 'decision']);
             MakeHiringDecision::dispatch($interview->id);
 
@@ -337,15 +495,11 @@ class AiChatController extends Controller
     private function notReadyToTalk(AiInterview $interview): ?string
     {
         if (! $interview->consented()) {
-            return 'Сначала нужно дать согласие на ИИ-собеседование.';
-        }
-
-        if ($interview->analysis_status !== 'ready') {
-            return 'Документы ещё не разобраны — разговор начнётся после этого.';
+            return __('Сначала нужно дать согласие на ИИ-собеседование.');
         }
 
         if ($interview->stage !== 'interview') {
-            return 'Собеседование уже завершено.';
+            return __('Собеседование уже завершено.');
         }
 
         return null;
@@ -358,10 +512,6 @@ class AiChatController extends Controller
     {
         if (! $interview->consented()) {
             return redirect()->route('applicant.ai.interview', $interview);
-        }
-
-        if ($interview->analysis_status !== 'ready') {
-            return redirect()->route('applicant.ai.documents', $interview);
         }
 
         // разговор пройден — дальше тестовое задание

@@ -83,6 +83,31 @@
         .ch-left { font-size: 12px; color: var(--gray-500); }
 
         .ch-note { font-size: 13px; padding: 10px 12px; border-radius: 10px; }
+
+        /* голосовой режим */
+        /* второстепенная кнопка: «Отвечать текстом», «Готово, отправить» */
+        .ch-btn-ghost { background: var(--white); color: var(--indigo-600); border-color: var(--gray-300); }
+        .ch-btn-ghost:hover { border-color: var(--indigo-600); filter: none; }
+
+        /* голосовая панель — в своей рамке, как остальные блоки */
+        .ch-voice {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+            padding: 10px 14px; border: 1px solid var(--gray-200); border-radius: var(--radius);
+            background: var(--white);
+        }
+        .ch-voice.is-listening { border-color: var(--green, #16A34A); }
+        .ch-start h2 { font-size: 15px; }
+        .ch-voice-toggle.is-on { background: var(--green, #16A34A); }
+        .ch-voice-state { font-size: 13px; color: var(--gray-500); }
+        .ch-voice.is-listening .ch-voice-state { color: var(--green, #16A34A); font-weight: 600; }
+        .ch-voice.is-listening .ch-voice-state::before {
+            content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px;
+            border-radius: 50%; background: var(--green, #16A34A); vertical-align: middle;
+            animation: chPulse 1.2s ease-in-out infinite;
+        }
+        @keyframes chPulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+        .ch-voice-level { width: 90px; height: 6px; border-radius: 99px; background: var(--gray-200); overflow: hidden; }
+        .ch-voice-level i { display: block; height: 100%; width: 0; background: var(--green, #16A34A); transition: width .1s; }
         .ch-bad { background: var(--wash-danger); color: var(--danger); }
         .ch-good { background: var(--wash-good); color: var(--ink-good); }
         .ch-warn { background: var(--wash-warn); color: var(--ink-warn); }
@@ -133,9 +158,22 @@
 
             {{-- ==================== справа: лента и ввод ==================== --}}
             <div style="display:flex; flex-direction:column; gap:14px; min-width:0;">
+                @if(session('status'))
+                    <div class="ch-note">{{ session('status') }}</div>
+                @endif
+
+                {{-- Разговор идёт, не дожидаясь разбора документов: пока он в
+                     работе, ИИ спрашивает по резюме и специальности. --}}
+                @if($analysing ?? false)
+                    <div class="ch-note">
+                        {{ __('ИИ ещё разбирает ваши документы — пока вопросы идут по резюме и вашей специальности, а разбор подключится по ходу разговора.') }}
+                    </div>
+                @endif
+
                 <div class="ch-feed" id="chFeed">
                     @forelse($turns as $turn)
-                        <div class="ch-msg" data-who="{{ $turn->isFromCandidate() ? 'me' : 'ai' }}">
+                        <div class="ch-msg" data-who="{{ $turn->isFromCandidate() ? 'me' : 'ai' }}"
+                             @if($turn->isClosing()) data-closing="1" @endif>
                             <div class="ch-who">
                                 {{ $turn->isFromCandidate()
                                     ? mb_substr($user->name, 0, 1)
@@ -155,17 +193,41 @@
 
                 <div class="ch-note ch-bad" id="chError" hidden></div>
 
+                {{-- Ответ сохранён, а следующий вопрос не пришёл (модель была
+                     недоступна). Повторять ответ не нужно — только продолжить. --}}
+                <div id="chResume" hidden>
+                    <button type="button" class="ch-btn" id="chResumeBtn">{{ __('Продолжить разговор') }}</button>
+                </div>
+
                 <div class="ch-panel ch-done" id="chDone" hidden>
                     <h2>{{ __('Собеседование пройдено') }}</h2>
                     <p class="ch-hint">
-                        {{ __('Спасибо за разговор. Дальше — тестовое задание, эта часть ещё готовится. Итог вы увидите в разделе «Мои ИИ-собеседования».') }}
+                        {{ __('Анна договорит — и страница сама перейдёт к следующему шагу. Можно перейти и сейчас.') }}
                     </p>
                     <div>
-                        <a class="ch-btn" href="{{ route('applicant.ai.index') }}">
-                            {{ __('К моим собеседованиям') }}
+                        <a class="ch-btn" id="chNext" href="{{ route('applicant.ai.interview', $interview) }}">
+                            {{ __('Дальше') }}
                         </a>
                     </div>
                 </div>
+
+                {{-- До первого вопроса — выбор, как отвечать. Нажатие заодно
+                     разрешает браузеру звук и микрофон: без него первый вопрос
+                     не прозвучал бы, а микрофон не включился. --}}
+                @if($turns->isEmpty())
+                    <div class="ch-panel ch-start" id="chStart">
+                        <h2>{{ __('Собеседование проходит голосом') }}</h2>
+                        <p class="ch-hint">
+                            {{ __('Анна задаёт вопросы голосом, а вы отвечаете так же, как в обычном разговоре: когда она договорит, микрофон включится сам, а ответ уйдёт, когда вы замолчите. Отвечать текстом можно в любой момент.') }}
+                        </p>
+                        <div class="ch-row" style="justify-content:flex-start; gap:10px; flex-wrap:wrap">
+                            <button type="button" class="ch-btn" id="chStartVoice">🎙 {{ __('Начать собеседование') }}</button>
+                            <button type="button" class="ch-btn ch-btn-ghost" id="chStartText">⌨ {{ __('Лучше отвечу текстом') }}</button>
+                        </div>
+                    </div>
+                @endif
+
+                @include('applicant.pages.ai-interview._voice')
 
                 <form class="ch-panel ch-form" id="chForm">
                     <label for="chText" style="font-size:12px; font-weight:600; color:var(--gray-500)">
@@ -195,6 +257,9 @@
         const done = document.getElementById('chDone');
         const askedOut = document.getElementById('chAsked');
         const bar = document.getElementById('chBar');
+        const resume = document.getElementById('chResume');
+        const resumeBtn = document.getElementById('chResumeBtn');
+        const next = document.getElementById('chNext');
 
         const token = @json(csrf_token());
         const urls = {
@@ -206,8 +271,52 @@
         const target = @json($target);
         const maxAnswer = @json($maxAnswer);
         const voiceEnabled = @json($voiceEnabled);
+        // язык собеседования — для голоса браузера, если звук с сервера не пришёл
+        const speechLang = @json($config?->language ?? 'ru');
 
         let busy = false;
+
+        /*
+         * Задание составляется заранее, пока идёт разговор.
+         *
+         * Составление — самый долгий вызов модуля, и раньше кандидат после
+         * беседы ждал его минутами. Теперь после первого ответа страница в
+         * фоне просит сервер составить задание, и к концу разговора оно уже
+         * готово. Кандидат этого запроса не ждёт и не видит.
+         */
+        const prepareUrl = @json(route('applicant.ai.task.prepare', $interview));
+        let taskRequested = false;
+
+        /*
+         * Один шаг собеседования в фоне — оценить прошлый ответ, доразобрать
+         * документы. Нужен там, где не запущен обработчик очереди: так к концу
+         * разговора всё уже посчитано, и решение не ждёт. Кандидат этого не
+         * видит и не ждёт.
+         */
+        const pumpUrl = @json(route('applicant.ai.pump', $interview));
+
+        function pumpStep() {
+            fetch(pumpUrl, {
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+            }).catch(function () {});
+        }
+
+        function prepareTask() {
+            if (taskRequested) { return; }
+            taskRequested = true;
+
+            fetch(prepareUrl, {
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+            })
+                .then(function (r) { return r.ok ? r.json() : {status: 'busy'}; })
+                .then(function (data) {
+                    // модель была занята — попросим снова после следующего ответа
+                    if (data.status === 'busy') { taskRequested = false; }
+                })
+                .catch(function () { taskRequested = false; });
+        }
         // номер вопроса, на который отвечаем: по нему сервер отличает
         // двойное нажатие от нового ответа
         let questionId = @json(optional($turns->where("role", "ai")->last())->id);
@@ -276,27 +385,73 @@
             if (!window.AiAvatar) { return; }
 
             if (!voiceEnabled || question.speech_status === 'none') {
-                window.AiAvatar.speak({text: question.text});
+                window.AiAvatar.speak({text: question.text, lang: speechLang, onEnd: questionSpoken});
 
                 return;
             }
 
-            // Синтез идёт в очереди: аватар подождёт, спрашивая состояние, а
-            // не дёрнет пустой файл.
+            // Звук готовится на сервере: аватар спрашивает состояние (первый
+            // же запрос сам запускает озвучку), а не дёргает пустой файл.
             window.AiAvatar.speak({
                 text: question.text,
                 statusUrl: question.speech_state_url,
+                lang: speechLang,
+                onEnd: questionSpoken,
             });
         }
+
+        // вопрос договорён — в голосовом режиме кандидат отвечает голосом
+        function questionSpoken() {
+            if (typeof voice !== 'undefined') { voice.afterQuestion(); }
+        }
+
+        function isBusy() { return busy; }
+
+        function speakQuestion(question) { speak(question); }
 
         function paintProgress(asked) {
             askedOut.textContent = asked;
             bar.style.width = target > 0 ? Math.min(100, Math.round(asked / target * 100)) + '%' : '0%';
         }
 
-        function finish() {
+        /*
+         * Анна подводит черту: говорит, что дальше и когда ждать ответа, — и
+         * после её слов страница сама ведёт к заданию. Если звук не сработал,
+         * переходим через минуту: кнопка «Дальше» видна и раньше.
+         */
+        function closeConversation(closing, nextUrl) {
+            if (!closing || !closing.text) { return; }
+
+            const node = bubble('ai', closing.text, null);
+            node.dataset.closing = '1';
+            scroll();
+
+            let gone = false;
+            const go = function () {
+                if (gone || !nextUrl) { return; }
+                gone = true;
+                setTimeout(function () { window.location.href = nextUrl; }, 1200);
+            };
+
+            setTimeout(go, 60000);
+
+            if (!window.AiAvatar) { go(); return; }
+
+            const say = {text: closing.text, lang: speechLang, onEnd: go};
+
+            if (voiceEnabled && closing.speech_status !== 'none') {
+                say.statusUrl = closing.speech_state_url;
+            }
+
+            window.AiAvatar.speak(say);
+        }
+
+        function finish(nextUrl) {
+            if (typeof voice !== 'undefined') { voice.stop(); }
             form.hidden = true;
+            resume.hidden = true;
             done.hidden = false;
+            if (nextUrl && next) { next.href = nextUrl; }
             if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
             scroll();
         }
@@ -312,6 +467,7 @@
          */
         function ask(url, payload, onFail) {
             hideError();
+            resume.hidden = true;
             waiting(true);
 
             return fetch(url, {
@@ -337,8 +493,27 @@
                         // Разговор передан человеку — продолжать нечего, но
                         // ответы сохранены, и об этом сказано прямо.
                         if (result.data.handover) {
+                            if (typeof voice !== 'undefined') { voice.stop(); }
                             form.hidden = true;
 
+                            return;
+                        }
+                        /*
+                         * Ответ уже записан, а вопрос не пришёл. Текст в поле
+                         * не возвращаем: повторная отправка того же ответа
+                         * ничего бы не дала. Вместо этого — «Продолжить».
+                         */
+                        if (result.data.saved) {
+                            form.hidden = true;
+                            resume.hidden = false;
+                            return;
+                        }
+                        // этот ответ уже лежит на сервере — продолжаем с него
+                        if (result.data.resume) {
+                            if (onFail) { onFail(); }
+                            text.value = '';
+                            paintLeft();
+                            ask(urls.begin, {});
                             return;
                         }
 
@@ -359,7 +534,12 @@
                         return;
                     }
 
+                    if (result.data.reload) {
+                        window.location.reload();
+                        return;
+                    }
                     if (result.data.already) { return; }
+                    form.hidden = false;
 
                     if (result.data.question) {
                         questionId = result.data.question.id;
@@ -367,9 +547,18 @@
                         paintProgress(result.data.asked);
                         speak(result.data.question);
                         scroll();
+
+                        // первый ответ уже дан — пора готовить задание
+                        if (result.data.asked >= 2) { prepareTask(); }
+
+                        pumpStep();
                     }
 
-                    if (result.data.done) { finish(); }
+                    if (result.data.done) {
+                        if (result.data.asked !== undefined) { paintProgress(result.data.asked); }
+                        finish(result.data.next_url);
+                        closeConversation(result.data.closing, result.data.next_url);
+                    }
                 })
                 .catch(function () {
                     waiting(false);
@@ -379,12 +568,17 @@
                 });
         }
 
+@include('applicant.pages.ai-interview._voice-script')
+
         form.addEventListener('submit', function (event) {
             event.preventDefault();
 
             const value = text.value.trim();
 
             if (!value || busy) { return; }
+
+            // ответ уходит — микрофон выключаем, пока Анна думает и говорит
+            if (typeof voice !== 'undefined') { voice.stop(); }
 
             const mine = bubble('me', value, null);
             text.value = '';
@@ -409,12 +603,59 @@
             }
         });
 
-        text.addEventListener('input', paintLeft);
+        text.addEventListener('input', function (event) {
+            paintLeft();
+
+            // печатает сам человек (распознавание пишет в поле без события) —
+            // голосовая автоотправка его не перебивает
+            if (event.isTrusted && typeof voice !== 'undefined') { voice.typed(); }
+        });
         paintLeft();
 
         // Разговор ещё не начался — просим первую реплику. Страница при этом
         // уже открыта: ждать её отрисовки из-за модели неправильно.
-        if (!feed.querySelector('.ch-msg[data-who]:not(#chTyping)')) {
+        resumeBtn.addEventListener('click', function () {
+            ask(urls.begin, {});
+        });
+
+        /*
+         * Пустая лента — первый вопрос. Последняя реплика наша — следующий
+         * вопрос в прошлый раз не пришёл: просим его сейчас, иначе кандидат
+         * смотрел бы на свой ответ без продолжения.
+         */
+        const messages = feed.querySelectorAll('.ch-msg[data-who]:not(#chTyping)');
+        const lastMessage = messages.length ? messages[messages.length - 1] : null;
+
+        const start = document.getElementById('chStart');
+
+        // вернулся к начатому разговору — задание, возможно, ещё не готово
+        if (feed.querySelector('.ch-msg[data-who="me"]')) { prepareTask(); }
+
+        if (start) {
+            // первый вопрос — после выбора, как отвечать
+            form.hidden = true;
+
+            const begin = function () {
+                start.remove();
+                form.hidden = false;
+                ask(urls.begin, {});
+            };
+
+            document.getElementById('chStartText').addEventListener('click', begin);
+
+            const voiceStart = document.getElementById('chStartVoice');
+
+            if (!voice.supported) {
+                voiceStart.disabled = true;
+                voiceStart.title = @json(__('В этом браузере голосовые ответы недоступны'));
+            }
+
+            voiceStart.addEventListener('click', function () {
+                voice.enable().then(begin, begin);
+            });
+        } else if (!lastMessage || lastMessage.dataset.who === 'me' || lastMessage.dataset.closing === '1') {
+            // наш ответ без продолжения или завершение прошлого круга (после
+            // пограничного дораунда разговор продолжается) — просим вопрос
             ask(urls.begin, {});
         } else {
             scroll();

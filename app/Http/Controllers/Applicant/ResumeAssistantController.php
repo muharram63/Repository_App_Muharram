@@ -35,7 +35,7 @@ class ResumeAssistantController extends Controller
 
         if (! $applicant) {
             return redirect()->route('public.applicants.create')
-                ->with('error', 'Сначала заполните анкету соискателя.');
+                ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
         // без явного адреса продолжаем последний незаконченный разговор,
@@ -100,7 +100,7 @@ class ResumeAssistantController extends Controller
 
         if (blank($draft->data)) {
             return response()->json([
-                'error' => 'Сначала расскажите о себе — собирать пока нечего.',
+                'error' => __('Сначала расскажите о себе — собирать пока нечего.'),
             ], 422);
         }
 
@@ -145,7 +145,7 @@ class ResumeAssistantController extends Controller
         $draft->save();
 
         return redirect()->route('applicant.resume.index')
-            ->with('status', 'Резюме опубликовано.');
+            ->with('status', __('Резюме опубликовано.'));
     }
 
     /**
@@ -182,7 +182,7 @@ class ResumeAssistantController extends Controller
         $this->mine($draft)->delete();
 
         return redirect()->route('applicant.resume.assistant')
-            ->with('status', 'Разговор удалён.');
+            ->with('status', __('Разговор удалён.'));
     }
 
     /**
@@ -215,7 +215,7 @@ class ResumeAssistantController extends Controller
     {
         return ResumeDraft::create([
             'applicant_id' => $applicantId,
-            'messages' => [['role' => 'model', 'text' => self::GREETING]],
+            'messages' => [['role' => 'model', 'text' => __(self::GREETING)]],
             'data' => [],
             'stage' => 'identity',
         ]);

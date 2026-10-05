@@ -389,11 +389,20 @@ test('решение объявляется и пишется снимком', f
         ->and($decision->message_to_candidate)->toContain('Живое письмо');
 });
 
-test('статус отклика ставится в режиме auto', function () {
+/*
+ * Решение ИИ — рекомендация: статус отклика ставится, когда ответ отправлен
+ * кандидату, а не когда его посчитал код.
+ */
+test('статус отклика ставится, когда ответ отправлен кандидату', function () {
     Queue::fake();
     [$interview] = decisionReady(answerScore: 5, testScore: 95);
 
     (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    expect(VacancyResponse::find($interview->vacancy_response_id)->status)->toBe('new');
+
+    app(App\Services\Scoring\DecisionRelease::class)
+        ->release($interview->fresh()->latestDecision, 'employer');
 
     expect(VacancyResponse::find($interview->vacancy_response_id)->status)->toBe('accepted');
 });
@@ -421,16 +430,98 @@ test('ручная проверка отклик не трогает ни в к�
         ->and($interview->fresh()->outcome)->toBe('manual_review');
 });
 
-test('обе стороны получают уведомление', function () {
+test('ИИ советуется с работодателем, а кандидат ответа пока не получает', function () {
     Queue::fake();
     [$interview] = decisionReady(answerScore: 5, testScore: 95);
 
     (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
 
-    expect(UserNotification::where('user_id', $interview->applicant->user_id)
-        ->where('title', 'Вы прошли отбор')->exists())->toBeTrue()
-        ->and(UserNotification::where('user_id', $interview->vacancy->employer->user_id)
-            ->where('title', 'ИИ принял решение по кандидату')->exists())->toBeTrue();
+    expect(UserNotification::where('user_id', $interview->vacancy->employer->user_id)
+        ->where('title', 'ИИ подготовил отчёт — подтвердите решение')->exists())->toBeTrue()
+        ->and(UserNotification::where('user_id', $interview->applicant->user_id)
+            ->where('title', 'Вы прошли отбор')->exists())->toBeFalse()
+        ->and($interview->fresh()->isAnnounced())->toBeFalse();
+});
+
+test('подтверждённое работодателем решение уходит кандидату', function () {
+    Queue::fake();
+    [$interview] = decisionReady(answerScore: 5, testScore: 95);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    $employer = $interview->vacancy->employer->user;
+
+    $this->actingAs($employer)
+        ->post(route('employer.ai.candidate.approve', [$interview->vacancy_id, $interview]))
+        ->assertSessionHas('status');
+
+    expect($interview->fresh()->isAnnounced())->toBeTrue()
+        ->and($interview->fresh()->latestDecision->release_source)->toBe('employer')
+        ->and(UserNotification::where('user_id', $interview->applicant->user_id)
+            ->where('title', 'Вы прошли отбор')->exists())->toBeTrue();
+});
+
+test('без разрешения работодателя ИИ не отправляет ответ кандидату и через неделю', function () {
+    Queue::fake();
+    [$interview] = decisionReady(answerScore: 5, testScore: 95);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    $this->travel(7)->days();
+    app(App\Services\Scoring\DecisionRelease::class)->remindOverdue();
+    $this->artisan('ai:sweep')->assertSuccessful();
+
+    expect($interview->fresh()->isAnnounced())->toBeFalse()
+        ->and($interview->fresh()->latestDecision->released_at)->toBeNull()
+        ->and(UserNotification::where('user_id', $interview->applicant->user_id)
+            ->where('type', 'response_status')->exists())->toBeFalse();
+});
+
+test('кандидат ждёт больше суток — ИИ напоминает работодателю, раз в сутки', function () {
+    Queue::fake();
+    [$interview] = decisionReady(answerScore: 5, testScore: 95);
+    $employerId = $interview->vacancy->employer->user_id;
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    $release = app(App\Services\Scoring\DecisionRelease::class);
+    $reminders = fn () => UserNotification::where('user_id', $employerId)->where('title', 'Кандидат ждёт вашего ответа')->count();
+
+    // сутки ещё не прошли
+    expect($release->remindOverdue())->toBe(0);
+
+    $this->travel(25)->hours();
+    expect($release->remindOverdue())->toBe(1)
+        // повторно в те же сутки не дёргаем
+        ->and($release->remindOverdue())->toBe(0)
+        ->and($reminders())->toBe(1);
+});
+
+test('в режиме без напоминаний ИИ не напоминает и ничего не отправляет', function () {
+    Queue::fake();
+    [$interview] = decisionReady(config: ['decision_mode' => 'advisory'], answerScore: 5, testScore: 95);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    $this->travel(48)->hours();
+
+    expect(app(App\Services\Scoring\DecisionRelease::class)->remindOverdue())->toBe(0)
+        ->and($interview->fresh()->isAnnounced())->toBeFalse();
+});
+
+test('ручную проверку ИИ не отправляет и через сутки', function () {
+    Queue::fake();
+    [$interview] = decisionReady(answerScore: 5, testScore: 95);
+    $interview->update(['requires_review' => true]);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    $this->travel(48)->hours();
+
+    app(App\Services\Scoring\DecisionRelease::class)->remindOverdue();
+
+    expect($interview->fresh()->outcome)->toBe('manual_review')
+        ->and($interview->fresh()->isAnnounced())->toBeFalse();
 });
 
 test('при ручной проверке работодателя зовут прямо', function () {
@@ -680,6 +771,7 @@ test('кандидат видит решение и не видит баллов
     [$interview, $user] = decisionReady(answerScore: 5, testScore: 95);
 
     (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+    app(App\Services\Scoring\DecisionRelease::class)->release($interview->fresh()->latestDecision, 'employer');
 
     $response = $this->actingAs($user)->get(route('applicant.ai.result', $interview->fresh()))
         ->assertOk()
@@ -693,19 +785,29 @@ test('кандидат видит решение и не видит баллов
         ->and($html)->not->toContain('documents_score');
 });
 
-test('до решения страница результата отправляет назад', function () {
+test('пока ответ не отправлен, результата для кандидата нет', function () {
     Queue::fake();
-    [$interview, $user] = decisionReady();
+    [$interview, $user] = decisionReady(answerScore: 5, testScore: 95);
 
     $this->actingAs($user)->get(route('applicant.ai.result', $interview))
-        ->assertRedirect(route('applicant.ai.interview', $interview));
+        ->assertRedirect(route('applicant.ai.index'));
+
+    // решение ИИ готово, но работодатель его ещё не видел
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    $this->actingAs($user)->get(route('applicant.ai.result', $interview))
+        ->assertRedirect(route('applicant.ai.index'));
+
+    $this->actingAs($user)->get(route('applicant.ai.interview', $interview->fresh()))
+        ->assertRedirect(route('applicant.ai.task', $interview));
 });
 
-test('после решения кандидата ведут на результат', function () {
+test('после отправки ответа кандидата ведут на результат', function () {
     Queue::fake();
     [$interview, $user] = decisionReady(answerScore: 5, testScore: 95);
 
     (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+    app(App\Services\Scoring\DecisionRelease::class)->release($interview->fresh()->latestDecision, 'employer');
 
     $this->actingAs($user)->get(route('applicant.ai.interview', $interview->fresh()))
         ->assertRedirect(route('applicant.ai.result', $interview));
@@ -733,4 +835,65 @@ test('письмо кандидату в базе зашифровано', funct
 
     expect($decision->message_to_candidate)->toContain('Далер')
         ->and(rawColumn('ai_decisions', $decision->id, 'message_to_candidate'))->not->toContain('Далер');
+});
+
+/*
+ * Работодатель мог сам принять или отклонить кандидата в обычном списке
+ * откликов, пока шло собеседование. Решение ИИ не должно переписывать его.
+ */
+test('решение ИИ не перетирает статус, который работодатель поставил сам', function () {
+    Queue::fake();
+    [$interview] = decisionReady(answerScore: 5, testScore: 95);
+
+    VacancyResponse::whereKey($interview->vacancy_response_id)->update(['status' => 'rejected']);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    expect($interview->fresh()->outcome)->toBe('passed')
+        ->and(VacancyResponse::find($interview->vacancy_response_id)->status)->toBe('rejected');
+});
+
+/*
+ * Разговор может закончиться раньше, чем разбор документов. Пока разбор идёт
+ * своим ходом, решение ждёт его, а не зовёт человека из-за медленной очереди.
+ */
+test('решение ждёт идущий разбор документов', function () {
+    Queue::fake();
+    [$interview] = decisionReady(answerScore: 5, testScore: 95);
+    $interview->update(['analysis_status' => 'pending', 'analysis_started_at' => now()]);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    expect($interview->fresh()->outcome)->toBeNull();
+    Queue::assertPushed(MakeHiringDecision::class);
+});
+
+test('ответ кандидату приходит уведомлением, когда работодатель разрешил', function () {
+    Queue::fake();
+    [$interview] = decisionReady(answerScore: 5, testScore: 95);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    app(App\Services\Scoring\DecisionRelease::class)->release($interview->fresh()->latestDecision, 'employer');
+
+    expect(UserNotification::where('user_id', $interview->applicant->user_id)
+        ->where('title', 'Вы прошли отбор')->exists())->toBeTrue();
+});
+
+test('отказ приходит кандидату вежливым письмом с причиной', function () {
+    Queue::fake();
+    // ответы слабые — балл ниже порога
+    [$interview] = decisionReady(answerScore: 0, testScore: 5);
+
+    (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
+
+    $decision = $interview->fresh()->latestDecision;
+    expect($decision->outcome)->toBe('rejected');
+
+    app(App\Services\Scoring\DecisionRelease::class)->release($decision, 'employer');
+
+    $note = UserNotification::where('user_id', $interview->applicant->user_id)
+        ->where('title', 'Ответ по вашей кандидатуре')->first();
+
+    expect($note)->not->toBeNull();
 });

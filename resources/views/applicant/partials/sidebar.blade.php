@@ -156,5 +156,7 @@
 
 
 @include('partials.call-notify')
+{{-- новое уведомление — со звуком и всплывающей карточкой --}}
+@include('partials.notification-alert')
 @include('partials.moderation-notices')
 @include('partials.live-counters', ['liveUrl' => route('public.live.counters')])

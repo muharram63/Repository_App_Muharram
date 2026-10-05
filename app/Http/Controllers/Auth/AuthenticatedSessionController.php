@@ -50,7 +50,7 @@ class AuthenticatedSessionController extends Controller
             'employer' => route('employer.dashboard', absolute: false),
             'applicant' => route('applicant.dashboard', absolute: false),
             // на всякий случай, если роль не распознана
-            default => abort(403, 'Неизвестная роль пользователя.'),
+            default => abort(403, __('Неизвестная роль пользователя.')),
         };
 
         return redirect()->to($intended ?: $home);

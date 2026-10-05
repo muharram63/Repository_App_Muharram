@@ -50,7 +50,7 @@ class GuardExaminer implements App\Services\Ai\TaskExaminer
         throw new App\Services\Ai\AiInvalidAnswerException('дважды негодно', ['statement' => ['пусто']]);
     }
 
-    public function grade(AiTestTask $task, string $solution): array
+    public function grade(AiTestTask $task, string $solution, int $part = 0): array
     {
         if ($this->gradeFails) {
             throw new App\Services\Ai\AiInvalidAnswerException('дважды негодно', ['score' => ['вне шкалы']]);
@@ -135,7 +135,7 @@ test('разобранные документы не разбираются за
 
     $this->actingAs($applicantUser)
         ->post(route('applicant.ai.proceed', $interview))
-        ->assertRedirect(route('applicant.ai.interview', $interview));
+        ->assertRedirect(route('applicant.ai.chat', $interview));
 
     /*
      * Повторный разбор не просто тратил бы квоту: он переписывает сверку
@@ -163,10 +163,10 @@ test('неудавшийся разбор пробуется снова', functi
     ]);
 
     // сбой сети не должен означать тупик — эту кнопку жмут именно для того,
-    // чтобы попробовать ещё раз
+    // чтобы попробовать ещё раз; а кандидат при этом сразу идёт в разговор
     $this->actingAs($applicantUser)
         ->post(route('applicant.ai.proceed', $interview))
-        ->assertRedirect(route('applicant.ai.documents', $interview));
+        ->assertRedirect(route('applicant.ai.chat', $interview));
 
     expect($interview->fresh()->analysis_status)->toBe('pending')
         ->and(Queue::pushedJobs())->not->toBe([]);
@@ -326,7 +326,7 @@ test('после объявленного решения отказаться п
 
     $this->actingAs($applicantUser)
         ->delete(route('applicant.ai.decline', $interview))
-        ->assertRedirect(route('applicant.ai.result', $interview))
+        ->assertRedirect(route('applicant.ai.index'))
         ->assertSessionHas('error');
 
     // иначе работодатель лишился бы отчёта по кандидату, которому сам ответил
@@ -458,10 +458,10 @@ test('несоставленное задание уходит на ручную
         ->and($interview->outcome)->toBe('manual_review')
         ->and($interview->latestDecision)->not->toBeNull();
 
-    // обе стороны узнали
-    expect(UserNotification::where('user_id', $applicantUser->id)->count())->toBeGreaterThan(0)
-        ->and(UserNotification::where('user_id', $interview->vacancy->employer->user_id)
-            ->where('title', 'Кандидат ждёт вашего решения')->count())->toBe(1);
+    // работодателя позвали решать; кандидат ответ получит от него
+    expect(UserNotification::where('user_id', $interview->vacancy->employer->user_id)
+        ->where('title', 'Кандидат ждёт вашего решения')->count())->toBe(1)
+        ->and($interview->isAnnounced())->toBeFalse();
 });
 
 test('провал составления ставит решение в очередь', function () {

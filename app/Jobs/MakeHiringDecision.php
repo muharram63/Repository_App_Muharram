@@ -114,6 +114,13 @@ class MakeHiringDecision implements ShouldQueue
             return false;
         }
 
+        // Разговор начинается раньше, чем готов разбор документов, и закончиться
+        // может тоже раньше. Пока разбор идёт своим ходом, ждём его: решать без
+        // документов значило бы звать человека из-за медленной очереди.
+        if ($interview->analysisRunning()) {
+            return true;
+        }
+
         if (! InterviewScore::allScored($interview->turns()->get())) {
             return true;
         }
@@ -142,8 +149,8 @@ class MakeHiringDecision implements ShouldQueue
         UserNotification::deliver(
             $interview->applicant?->user_id,
             'interview',
-            'Ещё несколько вопросов по вакансии',
-            'По вакансии «'.($interview->vacancy?->title ?? '—').'» ассистент хочет кое-что уточнить.',
+            UserNotification::text('Ещё несколько вопросов по вакансии'),
+            UserNotification::text('По вакансии «:title» ассистент хочет кое-что уточнить.', ['title' => $interview->vacancy?->title ?? '—']),
             route('applicant.ai.chat', $interview),
         );
     }
@@ -187,32 +194,17 @@ class MakeHiringDecision implements ShouldQueue
             'stage' => 'done',
         ]);
 
-        $this->applyToResponse($interview, $outcome);
-        $this->notifyCandidate($interview, $outcome, $message);
+        /*
+         * Кандидату — пока ничего.
+         *
+         * Решение ИИ — рекомендация: работодатель смотрит отчёт и подтверждает
+         * или меняет её, и только тогда кандидат получает ответ
+         * (DecisionRelease). Без разрешения работодателя ответ не уходит
+         * никогда — ИИ только напоминает ему, если кандидат ждёт больше суток.
+         */
         $this->notifyEmployer($interview, $decision);
     }
 
-    /**
-     * Статус отклика.
-     *
-     * Только в режиме auto и только при объявленном исходе. В режиме advisory
-     * работодатель ставит статус сам — ИИ для него советчик, и переписывать за
-     * него отклик было бы обманом договорённости.
-     */
-    private function applyToResponse(AiInterview $interview, string $outcome): void
-    {
-        if (! $interview->config?->decidesItself()) {
-            return;
-        }
-
-        if (! in_array($outcome, [DecisionEngine::PASSED, DecisionEngine::REJECTED], true)) {
-            return;
-        }
-
-        $interview->response?->update([
-            'status' => $outcome === DecisionEngine::PASSED ? 'accepted' : 'rejected',
-        ]);
-    }
 
     /**
      * Живая формулировка. Любой сбой — берём шаблон и идём дальше: кандидат не
@@ -243,16 +235,6 @@ class MakeHiringDecision implements ShouldQueue
         }
     }
 
-    private function notifyCandidate(AiInterview $interview, string $outcome, string $message): void
-    {
-        UserNotification::deliver(
-            $interview->applicant?->user_id,
-            'response_status',
-            DecisionMessage::headline($outcome),
-            \Illuminate\Support\Str::limit($message, 160),
-            route('applicant.ai.result', $interview),
-        );
-    }
 
     private function notifyEmployer(AiInterview $interview, AiDecision $decision): void
     {
@@ -262,8 +244,12 @@ class MakeHiringDecision implements ShouldQueue
         UserNotification::deliver(
             $interview->vacancy?->employer?->user_id,
             'interview',
-            $manual ? 'Кандидат ждёт вашего решения' : 'ИИ принял решение по кандидату',
-            $name.' · «'.($interview->vacancy?->title ?? '—').'» · '.$decision->outcomeLabel(),
+            UserNotification::text($manual ? 'Кандидат ждёт вашего решения' : 'ИИ подготовил отчёт — подтвердите решение'),
+            UserNotification::text(':name · «:title» · :outcome', [
+                'name' => $name,
+                'title' => $interview->vacancy?->title ?? '—',
+                'outcome' => UserNotification::text(AiDecision::OUTCOMES[$decision->effectiveOutcome()] ?? (string) $decision->outcome),
+            ]),
             route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]),
         );
     }

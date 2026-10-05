@@ -119,14 +119,13 @@ class AiInterviewController extends Controller
         // вакансия могла выключить собеседование уже после отклика
         if (! $config || ! $config->isUsable()) {
             return redirect()->route('public.responses.index')
-                ->with('status', 'По этой вакансии ИИ-собеседование не проводится — '
-                    .'ваш отклик рассмотрит работодатель.');
+                ->with('status', __('По этой вакансии ИИ-собеседование не проводится — ваш отклик рассмотрит работодатель.'));
         }
 
         // резюме — источник данных для разбора, без него собеседовать не о чем
         if (! $applicant->resume()->exists()) {
             return redirect()->route('applicant.resume.create')
-                ->with('error', 'Сначала создайте резюме: ИИ-собеседование опирается на него.');
+                ->with('error', __('Сначала создайте резюме: ИИ-собеседование опирается на него.'));
         }
 
         /*
@@ -147,14 +146,23 @@ class AiInterviewController extends Controller
 
         if (! $responseId) {
             return redirect()->route('public.vacancies.show', $vacancy)
-                ->with('error', 'Сначала откликнитесь на вакансию — '
-                    .'собеседование начинается с отклика.');
+                ->with('error', __('Сначала откликнитесь на вакансию — собеседование начинается с отклика.'));
         }
 
         $interview = AiInterview::firstOrCreate(
             ['vacancy_id' => $vacancy->id, 'applicant_id' => $applicant->id],
             ['vacancy_response_id' => $responseId],
         );
+
+        /*
+         * Кандидат отозвал отклик и откликнулся снова: собеседование осталось
+         * прежним, а ссылка на отклик у него обнулилась. Без перепривязки
+         * решение ставило статус «в никуда» — новый отклик так и висел
+         * необработанным у работодателя.
+         */
+        if ($interview->vacancy_response_id !== $responseId) {
+            $interview->update(['vacancy_response_id' => $responseId]);
+        }
 
         return redirect()->route('applicant.ai.interview', $interview);
     }
@@ -177,24 +185,49 @@ class AiInterviewController extends Controller
         }
 
         // решение объявлено — показываем его, а не отправляем по кругу
-        if ($interview->isDecided() && $interview->latestDecision) {
+        if ($interview->isAnnounced()) {
             return redirect()->route('applicant.ai.result', $interview);
         }
 
-        // Ведём туда, где кандидат нужен сейчас. Разбор мог закончиться, пока
-        // он ходил по другим страницам, — возвращать его к документам значило
-        // бы заставлять искать продолжение самому.
-        if ($interview->analysis_status === 'ready') {
-            if ($interview->stage === 'interview') {
-                return redirect()->route('applicant.ai.chat', $interview);
-            }
+        /*
+         * Ведём туда, где кандидат нужен сейчас — по стадии, а не по разбору.
+         *
+         * Раньше в разговор пускали только после готового разбора документов.
+         * Разбор идёт в очереди, и если её обработчик не запущен или модель
+         * занята, кандидат часами смотрел на «ИИ разбирает документы» и не мог
+         * начать. Теперь разговор начинается сразу, а разбор догоняет в фоне.
+         */
+        if ($interview->stage === 'interview') {
+            return redirect()->route('applicant.ai.chat', $interview);
+        }
 
-            if (in_array($interview->stage, ['test', 'decision', 'done'], true)) {
-                return redirect()->route('applicant.ai.task', $interview);
-            }
+        if (in_array($interview->stage, ['test', 'decision', 'done'], true)) {
+            return redirect()->route('applicant.ai.task', $interview);
         }
 
         return redirect()->route('applicant.ai.documents', $interview);
+    }
+
+    /**
+     * Следующий шаг собеседования — если очередь его не делает.
+     *
+     * Страницы кандидата зовут это в фоне: после ответа в разговоре и пока
+     * проверяется задание. Так оценки, проверка и решение идут и без
+     * обработчика очереди (подробности — в InterviewPump).
+     */
+    public function pump(AiInterview $interview, \App\Services\Ai\InterviewPump $pump)
+    {
+        $this->mine($interview);
+
+        @set_time_limit(180);
+        ignore_user_abort(true);
+
+        $state = $pump->step($interview);
+
+        return response()->json($state + [
+            'result_url' => $state['decided'] ? route('applicant.ai.result', $interview) : null,
+            'next_url' => route('applicant.ai.interview', $interview),
+        ]);
     }
 
     /**
@@ -210,9 +243,16 @@ class AiInterviewController extends Controller
 
         $decision = $interview->latestDecision;
 
-        // решения ещё нет — возвращаем туда, где кандидат нужен
-        if (! $decision) {
-            return redirect()->route('applicant.ai.interview', $interview);
+        /*
+         * Ответ ещё не отправлен — его нет и для кандидата.
+         *
+         * Решение ИИ сначала смотрит работодатель: подтверждает или меняет.
+         * До этого кандидат не видит ни итога, ни рекомендации — только то,
+         * что ответ придёт в обещанный срок.
+         */
+        if (! $decision || ! $decision->isReleased()) {
+            return redirect()->route('applicant.ai.index')
+                ->with('status', __('Ответ по этому собеседованию ещё готовится — мы пришлём его в уведомления.'));
         }
 
         return view('applicant.pages.ai-interview.result', [
@@ -242,7 +282,7 @@ class AiInterviewController extends Controller
         $interview->eraseCompletely();
 
         return redirect()->route('applicant.ai.index')
-            ->with('status', 'Ваши данные по этому собеседованию удалены.');
+            ->with('status', __('Ваши данные по этому собеседованию удалены.'));
     }
 
     /**
@@ -257,7 +297,7 @@ class AiInterviewController extends Controller
             // а не просто присутствовать в запросе
             'consent' => 'accepted',
         ], [
-            'consent.accepted' => 'Без согласия ИИ-собеседование начать нельзя.',
+            'consent.accepted' => __('Без согласия ИИ-собеседование начать нельзя.'),
         ]);
 
         if (! $interview->consented()) {
@@ -269,7 +309,7 @@ class AiInterviewController extends Controller
         }
 
         return redirect()->route('applicant.ai.documents', $interview)
-            ->with('status', 'Согласие получено. Загрузите дипломы и сертификаты, если они есть.');
+            ->with('status', __('Согласие получено. Загрузите дипломы и сертификаты, если они есть.'));
     }
 
     /**
@@ -297,9 +337,8 @@ class AiInterviewController extends Controller
          * данные — страница результата без записи решения не открывается.
          */
         if ($interview->latestDecision) {
-            return redirect()->route('applicant.ai.result', $interview)
-                ->with('error', 'Решение по вам уже принято — отказываться от собеседования поздно. '
-                    .'Удалить свои данные можно кнопкой ниже.');
+            return redirect()->route('applicant.ai.index')
+                ->with('error', __('Собеседование уже завершено — отказаться от него нельзя. Ответ придёт в уведомления.'));
         }
 
         // Собеседование удаляем целиком, а не помечаем отказом: несостоявшийся
@@ -310,8 +349,7 @@ class AiInterviewController extends Controller
         $interview->eraseCompletely();
 
         return redirect()->route('public.responses.index')
-            ->with('status', 'Вы отказались от ИИ-собеседования. Отклик остался — '
-                .'его рассмотрит работодатель.');
+            ->with('status', __('Вы отказались от ИИ-собеседования. Отклик остался — его рассмотрит работодатель.'));
     }
 
     /**
@@ -321,7 +359,7 @@ class AiInterviewController extends Controller
     {
         $this->mine($interview);
 
-        abort_unless($interview->consented(), 403, 'Сначала нужно согласие.');
+        abort_unless($interview->consented(), 403, __('Сначала нужно согласие.'));
 
         return view('applicant.pages.ai-interview.documents', [
             'user' => auth()->user(),
@@ -345,14 +383,18 @@ class AiInterviewController extends Controller
 
         abort_unless($interview->consented(), 403);
 
+        if ($interview->documentsLocked()) {
+            return back()->with('error', __('Документы уже переданы на разбор — менять их сейчас нельзя.'));
+        }
+
         $validated = $request->validate([
             'kind' => 'required|in:'.implode(',', array_keys(AiCandidateDocument::KINDS)),
             'file' => 'required|file|max:'.self::MAX_KB.'|mimes:pdf,jpg,jpeg,png,docx,txt',
-        ], [], ['file' => 'файл']);
+        ], [], ['file' => __('файл')]);
 
         if ($interview->documents()->count() >= self::MAX_DOCUMENTS) {
-            return back()->with('error', 'Больше '.self::MAX_DOCUMENTS
-                .' документов не нужно — уберите лишние, если хотите заменить.');
+            return back()->with('error', __('Больше :count документов не нужно — уберите лишние, если хотите заменить.',
+                ['count' => self::MAX_DOCUMENTS]));
         }
 
         $file = $request->file('file');
@@ -375,8 +417,8 @@ class AiInterviewController extends Controller
         return back()->with(
             $document->status === 'unreadable' ? 'error' : 'status',
             $document->status === 'unreadable'
-                ? 'Файл сохранён, но прочитать его не удалось: '.$document->failure_reason
-                : 'Документ загружен.',
+                ? __('Файл сохранён, но прочитать его не удалось: :reason', ['reason' => __($document->failure_reason)])
+                : __('Документ загружен.'),
         );
     }
 
@@ -389,15 +431,19 @@ class AiInterviewController extends Controller
 
         abort_if($document->ai_interview_id !== $interview->id, 403);
 
+        if ($interview->documentsLocked()) {
+            return back()->with('error', __('Документы уже переданы на разбор — менять их сейчас нельзя.'));
+        }
+
         Storage::disk(TextExtractor::DISK)->delete($document->path);
         $document->delete();
 
-        return back()->with('status', 'Документ удалён.');
+        return back()->with('status', __('Документ удалён.'));
     }
 
     /**
-     * Отдать файл владельцу. Работодатель увидит его в отчёте позже —
-     * сейчас доступ только у самого кандидата.
+     * Отдать файл владельцу. Работодатель открывает его из своего отчёта
+     * (AiReportController::document).
      */
     public function file(AiInterview $interview, AiCandidateDocument $document)
     {
@@ -423,54 +469,53 @@ class AiInterviewController extends Controller
 
         abort_unless($interview->consented(), 403);
 
-        /*
-         * Повторное нажатие не должно ставить разбор в очередь второй раз —
-         * но и запирать человека навсегда нельзя. Если разбор помечен идущим
-         * слишком давно, значит он не идёт: задача стоит в очереди, а
-         * обработчика нет. Тогда попытка снова — единственный выход, и повтор
-         * безвреден: разбор документа проверяет, не сделан ли он уже.
-         */
-        if ($interview->analysis_status === 'pending' && ! $interview->analysisStalled()) {
-            return redirect()->route('applicant.ai.documents', $interview)
-                ->with('status', 'Разбор документов уже идёт — это занимает до минуты.');
-        }
-
-        /*
-         * Разбор делается один раз.
-         *
-         * Кнопка «продолжить» остаётся достижимой и после того, как разбор
-         * прошёл: стадия сменилась, но адрес никуда не делся. Повторный запуск
-         * не просто тратил бы квоту — он переписывал бы сверку требований и
-         * балл за документы у собеседования, решение по которому уже объявлено,
-         * и в отчёте работодателя баллы разошлись бы с решением. Поэтому здесь
-         * не «уже идёт», а «уже сделано»: дальше кандидата ведёт show().
-         *
-         * Неудавшийся разбор — другое дело: его и надо пробовать снова, иначе
-         * сбой сети означал бы тупик.
-         */
-        if ($interview->analysis_status === 'ready' || $interview->isDecided()) {
+        // решение уже объявлено — разбирать и собеседовать поздно
+        if ($interview->isDecided()) {
             return redirect()->route('applicant.ai.interview', $interview);
         }
 
-        $interview->update(['analysis_status' => 'pending']);
+        /*
+         * Разбор запускаем, только если он не идёт и не сделан.
+         *
+         * Повторное нажатие не должно ставить его в очередь второй раз. Но
+         * зависший или упавший разбор надо запускать снова — повтор безвреден:
+         * разбор документа проверяет, не сделан ли он уже.
+         */
+        if (! $interview->analysisRunning() && $interview->analysis_status !== 'ready') {
+            $interview->update([
+                'analysis_status' => 'pending',
+                'analysis_started_at' => now(),
+            ]);
+
+            /*
+             * Цепочкой, а не пачкой независимых задач: сверка требований
+             * опирается на вердикты по документам, и запустить её раньше —
+             * значит сверять с пустотой.
+             */
+            $chain = $interview->documents()
+                ->whereIn('status', ['pending', 'failed'])
+                ->pluck('id')
+                ->map(fn (int $id) => new AnalyzeCandidateDocument($id))
+                ->push(new BuildRequirementMatrix($interview->id))
+                ->all();
+
+            Bus::chain($chain)->dispatch();
+        }
 
         /*
-         * Цепочкой, а не пачкой независимых задач: сверка требований опирается
-         * на вердикты по документам, и запустить её раньше — значит сверять с
-         * пустотой. Bus::chain выполняет их по очереди и обрывает цепочку, если
-         * звено упало окончательно.
+         * В разговор — сразу.
+         *
+         * Ждать разбора больше не нужно: первые вопросы ИИ задаёт по резюме и
+         * специальности кандидата, а когда разбор готов, подключает и его —
+         * несостыковки и требования, которые документы не подтвердили.
          */
-        $chain = $interview->documents()
-            ->whereIn('status', ['pending', 'failed'])
-            ->pluck('id')
-            ->map(fn (int $id) => new AnalyzeCandidateDocument($id))
-            ->push(new BuildRequirementMatrix($interview->id))
-            ->all();
+        if (in_array($interview->stage, ['consent', 'documents'], true)) {
+            $interview->update(['stage' => 'interview']);
+        }
 
-        Bus::chain($chain)->dispatch();
-
-        return redirect()->route('applicant.ai.documents', $interview)
-            ->with('status', 'Документы приняты. ИИ разбирает их — это занимает до минуты.');
+        // сразу в чат: через show() сообщение потерялось бы на втором редиректе
+        return redirect()->route($interview->stage === 'interview' ? 'applicant.ai.chat' : 'applicant.ai.interview', $interview)
+            ->with('status', __('Документы приняты. ИИ разбирает их в фоне, а собеседование начинается сейчас.'));
     }
 
     /**
@@ -513,6 +558,6 @@ class AiInterviewController extends Controller
         $applicant = auth()->user()->applicant;
 
         return $applicant ?: redirect()->route('public.applicants.create')
-            ->with('error', 'Сначала заполните анкету соискателя.');
+            ->with('error', __('Сначала заполните анкету соискателя.'));
     }
 }

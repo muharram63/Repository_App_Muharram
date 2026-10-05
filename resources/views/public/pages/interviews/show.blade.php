@@ -47,6 +47,18 @@
         .status-pill.declined, .status-pill.canceled{background:#FEE2E2; border-color:transparent; color:#B91C1C;}
 
         #jitsi{width:100%; height:580px; background:#0B0E1A;}
+        .room-launch{
+            min-height:420px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:14px; padding:48px 24px; text-align:center; color:#fff; background:#0B0E1A;
+        }
+        .room-launch .icn{font-size:44px;}
+        .room-launch b{font-size:19px;}
+        .room-launch p{color:rgba(255,255,255,.72); font-size:14.5px; line-height:1.65; max-width:470px; margin:0;}
+        .room-launch .go{
+            display:inline-flex; align-items:center; gap:8px; padding:14px 26px; border-radius:999px;
+            background:#22C55E; color:#fff; font-weight:800; font-size:16px; text-decoration:none;
+        }
+        .room-launch .go:hover{background:#16A34A;}
 
         .room-closed{
             padding:64px 28px; text-align:center;
@@ -125,6 +137,9 @@
         $applicantName = $applicantUser?->name ?? 'Соискатель';
         $me = auth()->user();
         $roomOpen = $interview->isRoomOpen();
+        // встроить можно, только если сервер Jitsi это разрешает (см. VideoRoom)
+        $embed = $roomOpen && \App\Support\VideoRoom::embeddable(request()->getHost());
+        $roomUrl = \App\Support\VideoRoom::url($interview->room);
     @endphp
 
     <section class="section">
@@ -177,7 +192,16 @@
                     </div>
 
                     @if($roomOpen)
-                        <div id="jitsi"></div>
+                        {{-- #jitsi — и рамка встречи, и панель запуска: опрос статуса
+                             закрывает комнату в обоих случаях. --}}
+                        <div id="jitsi" data-embed="{{ $embed ? '1' : '0' }}">
+                            @unless($embed)
+                                @include('public.pages.interviews._launch', ['roomUrl' => $roomUrl])
+                            @endunless
+                        </div>
+                        <template id="roomLaunch">
+                            @include('public.pages.interviews._launch', ['roomUrl' => $roomUrl])
+                        </template>
                     @else
                         <div class="room-closed">
                             <div class="icn">
@@ -342,48 +366,55 @@
         }
     </script>
 
-    @if($roomOpen)
-        @php($jitsiDomain = config('services.jitsi.domain'))
+    @if($roomOpen && $embed)
+        @php($jitsiDomain = \App\Support\VideoRoom::domain())
         <script src="https://{{ $jitsiDomain }}/external_api.js"></script>
         <script>
             document.addEventListener('DOMContentLoaded', function () {
                 const container = document.getElementById('jitsi');
-                const roomUrl = @json('https://'.$jitsiDomain.'/'.$interview->room);
+                const launch = document.getElementById('roomLaunch');
 
-                if (!container || typeof JitsiMeetExternalAPI === 'undefined') {
-                    if (container) {
-                        // запасной путь: прямая ссылка работает и тогда, когда
-                        // встроенный модуль не загрузился или его заблокировали
-                        container.innerHTML =
-                            '<div style="padding:56px 24px; text-align:center; color:#fff;">' +
-                            'Не удалось загрузить видеомодуль. ' +
-                            '<a href="' + roomUrl + '" target="_blank" rel="noopener" ' +
-                            'style="color:#8FB6FF; text-decoration:underline;">' +
-                            'Откройте комнату в новой вкладке</a>.' +
-                            '</div>';
+                // встречу не встроить — показываем запуск в новой вкладке
+                function fallback() {
+                    if (container && launch) {
+                        container.innerHTML = launch.innerHTML;
                     }
+                }
+
+                /*
+                 * Камеру и микрофон браузер даёт встроенной встрече только на
+                 * защищённой странице: https или localhost. Сайт, открытый по
+                 * http с другим адресом, получал бы чёрный экран без камеры.
+                 * В новой вкладке встреча открывается по https и работает.
+                 */
+                if (!window.isSecureContext || typeof JitsiMeetExternalAPI === 'undefined' || !container) {
+                    fallback();
                     return;
                 }
 
-                new JitsiMeetExternalAPI(@json($jitsiDomain), {
-                    roomName: @json($interview->room),
-                    parentNode: container,
-                    width: '100%',
-                    height: 580,
-                    userInfo: {
-                        displayName: @json($me->name),
-                        email: @json($me->email)
-                    },
-                    configOverwrite: {
-                        prejoinPageEnabled: true,
-                        startWithAudioMuted: false,
-                        startWithVideoMuted: false
-                    },
-                    interfaceConfigOverwrite: {
-                        SHOW_JITSI_WATERMARK: false,
-                        DEFAULT_REMOTE_DISPLAY_NAME: 'Собеседник'
-                    }
-                });
+                try {
+                    new JitsiMeetExternalAPI(@json($jitsiDomain), {
+                        roomName: @json($interview->room),
+                        parentNode: container,
+                        width: '100%',
+                        height: 580,
+                        // только имя: почту на чужой сервер видеосвязи не отдаём
+                        userInfo: {
+                            displayName: @json($me->name)
+                        },
+                        configOverwrite: {
+                            prejoinConfig: {enabled: true},
+                            startWithAudioMuted: false,
+                            startWithVideoMuted: false
+                        },
+                        interfaceConfigOverwrite: {
+                            SHOW_JITSI_WATERMARK: false,
+                            DEFAULT_REMOTE_DISPLAY_NAME: @json(__('Собеседник'))
+                        }
+                    });
+                } catch (e) {
+                    fallback();
+                }
             });
         </script>
     @endif

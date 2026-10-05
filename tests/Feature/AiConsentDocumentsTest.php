@@ -440,11 +440,11 @@ test('дипломов может не быть вовсе, и дальше пр
         ->assertRedirect()->assertSessionHas('status');
 
     /*
-     * Стадия остаётся на документах, пока разбор не закончен: вопросы для
-     * разговора рождаются из разбора, и до его готовности собеседованию не о
-     * чем спрашивать. Стадию двигает задача BuildRequirementMatrix.
+     * В разговор — сразу, не дожидаясь разбора: он идёт в фоне. Раньше стадию
+     * двигал только готовый разбор, и без обработчика очереди кандидат не
+     * мог начать собеседование вовсе.
      */
-    expect($interview->fresh()->stage)->toBe('documents')
+    expect($interview->fresh()->stage)->toBe('interview')
         ->and($interview->fresh()->analysis_status)->toBe('pending')
         ->and(AiCandidateDocument::count())->toBe(0);
 });
@@ -540,4 +540,72 @@ test('длинный текст обрезается по пределу', funct
     $result = (new TextExtractor)->extract('ai/documents/long.txt', 'text/plain');
 
     expect(mb_strlen($result['text']))->toBeLessThanOrEqual(TextExtractor::LIMIT);
+});
+
+// ==================== набор документов после разбора ====================
+
+/*
+ * Разбор сделан по тому набору, что был на момент «Продолжить». Добавленный
+ * позже файл в него не попадал и висел у работодателя неразобранным, а
+ * удалённый выбивал опору из готового отчёта.
+ */
+test('после разбора документы нельзя ни добавить, ни удалить', function () {
+    [$interview, $user] = consented();
+
+    $this->actingAs($user)->post(route('applicant.ai.documents.upload', $interview), [
+        'kind' => 'diploma',
+        'file' => UploadedFile::fake()->create('diplom.pdf', 120, 'application/pdf'),
+    ]);
+
+    $document = AiCandidateDocument::sole();
+    $interview->update(['analysis_status' => 'ready', 'stage' => 'interview']);
+
+    $this->actingAs($user)->post(route('applicant.ai.documents.upload', $interview), [
+        'kind' => 'certificate',
+        'file' => UploadedFile::fake()->create('cert.pdf', 120, 'application/pdf'),
+    ])->assertSessionHas('error');
+
+    $this->actingAs($user)
+        ->delete(route('applicant.ai.documents.destroy', [$interview, $document]))
+        ->assertSessionHas('error');
+
+    expect(AiCandidateDocument::count())->toBe(1);
+    Storage::disk('local')->assertExists($document->path);
+
+    $this->actingAs($user)->get(route('applicant.ai.documents', $interview))
+        ->assertOk()
+        ->assertSee(__('Документы уже разобраны и учтены в оценке — менять их больше нельзя.'))
+        // формы загрузки нет (её адрес совпадает с адресом страницы,
+        // поэтому ищем саму форму)
+        ->assertDontSee('enctype="multipart/form-data"', false);
+});
+
+test('после зависшего разбора документы снова можно менять', function () {
+    [$interview, $user] = consented();
+
+    $interview->update(['analysis_status' => 'pending']);
+    AiInterview::whereKey($interview->id)->update(['updated_at' => now()->subHour()]);
+
+    $this->actingAs($user)->post(route('applicant.ai.documents.upload', $interview->fresh()), [
+        'kind' => 'diploma',
+        'file' => UploadedFile::fake()->create('diplom.pdf', 120, 'application/pdf'),
+    ])->assertSessionHas('status');
+});
+
+/*
+ * Кандидат отозвал отклик и откликнулся снова. Собеседование прежнее, а его
+ * ссылка на отклик обнулилась — решение ставило статус «в никуда».
+ */
+test('повторный отклик привязывается к прежнему собеседованию', function () {
+    [$interview, $user] = consented();
+
+    $this->actingAs($user)->delete(route('public.vacancies.respond.destroy', $interview->vacancy_id));
+    expect($interview->fresh()->vacancy_response_id)->toBeNull();
+
+    $this->actingAs($user)->post(route('public.vacancies.respond', $interview->vacancy_id));
+
+    $response = VacancyResponse::where('vacancy_id', $interview->vacancy_id)->sole();
+
+    expect($interview->fresh()->vacancy_response_id)->toBe($response->id)
+        ->and(AiInterview::count())->toBe(1);
 });

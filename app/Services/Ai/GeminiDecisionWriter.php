@@ -74,12 +74,13 @@ class GeminiDecisionWriter implements DecisionWriter
      */
     private function mentionsScores(string $message): bool
     {
-        return (bool) preg_match('/\b\d{1,3}\s*(%|балл|из\s+100|процент)/ui', $message);
+        return (bool) preg_match('/\b\d{1,3}\s*(%|балл|из\s+100|процент|points?\b|out\s+of\s+100|хол)/ui', $message);
     }
 
     private function prompt(string $outcome, AiInterview $interview): string
     {
         $sla = $interview->config?->response_sla ?? 'в ближайшее время';
+        $language = $interview->config?->languageName() ?? 'русском';
 
         $task = match ($outcome) {
             DecisionEngine::PASSED => <<<TXT
@@ -128,7 +129,8 @@ class GeminiDecisionWriter implements DecisionWriter
         полностью, а формулировку сделай живее. Если сомневаешься, лучше держись ближе к
         образцу: точность здесь важнее красоты.
 
-        Пиши на русском языке.
+        Пиши на {$language} языке: на нём кандидат проходил собеседование. Образец может быть
+        на другом языке — переведи смысл, а не слова.
         PROMPT;
     }
 

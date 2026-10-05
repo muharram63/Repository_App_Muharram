@@ -6,10 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ComposeTestTask;
 use App\Jobs\GradeTestSubmission;
 use App\Jobs\MakeHiringDecision;
+use App\Jobs\SynthesizeTurnSpeech;
 use App\Models\AiInterview;
+use App\Models\AiInterviewTurn;
 use App\Models\AiTestSubmission;
 use App\Models\AiTestTask;
+use App\Services\Ai\AiUnavailableException;
 use App\Services\Ai\GeminiTaskExaminer;
+use App\Services\Ai\SpeechLibrary;
+use App\Services\Ai\TaskPreparer;
 use App\Services\Security\InjectionGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -23,8 +28,10 @@ use Illuminate\Support\Facades\Validator;
  */
 class AiTaskController extends Controller
 {
-    public function __construct(private readonly InjectionGuard $guard)
-    {
+    public function __construct(
+        private readonly InjectionGuard $guard,
+        private readonly SpeechLibrary $speech,
+    ) {
     }
 
     /**
@@ -40,8 +47,18 @@ class AiTaskController extends Controller
 
         $task = $interview->testTasks()->where('kind', AiTestTask::KIND_MAIN)->latest('id')->first();
 
+        // задание с нулевым весом не составляем: оно ни на что не влияет
+        $testSkipped = ! $task && $interview->config && ! $interview->config->needsTest();
+
+        // кандидат попал на стадию задания раньше, чем вес обнулили, —
+        // ждать нечего, сразу к решению
+        if ($testSkipped && $interview->stage === 'test') {
+            $interview->update(['stage' => 'decision']);
+            MakeHiringDecision::dispatch($interview->id);
+        }
+
         // задания ещё нет — ставим составление в очередь и показываем ожидание
-        if (! $task) {
+        if (! $task && ! $testSkipped) {
             $this->requestTask($interview);
         }
 
@@ -54,15 +71,60 @@ class AiTaskController extends Controller
             $task->refresh();
         }
 
+        // Время вышло, а решения нет: страница перезагружается по таймеру
+        // именно затем, чтобы сервер закрыл попытку и запустил решение.
+        // Без этого собеседование оставалось на стадии задания навсегда.
+        if ($task && $task->closeIfExpired()) {
+            $interview->refresh();
+        }
+
         return view('applicant.pages.ai-interview.task', [
             'user' => auth()->user(),
             'applicant' => $interview->applicant,
             'interview' => $interview,
             'vacancy' => $interview->vacancy,
             'task' => $task,
+            'testSkipped' => $testSkipped,
+            // тест без верных ответов и все практические задания
+            'quiz' => $task?->quizForCandidate() ?? [],
+            'practical' => $task?->practical() ?? [],
+            // заключительные слова Анны — последняя реплика, если это прощание
+            'farewell' => $this->farewell($interview),
+            'assistantName' => \App\Services\Ai\GeminiInterviewer::NAME,
+            'assistantRole' => \App\Services\Ai\GeminiInterviewer::ROLE,
             'submission' => $task?->submission()->first(),
             'maxSolution' => GeminiTaskExaminer::MAX_SOLUTION,
         ]);
+    }
+
+    /**
+     * Составить задание сейчас, не дожидаясь очереди.
+     *
+     * Зовёт страница разговора в фоне — после первого ответа, чтобы к концу
+     * беседы задание уже было готово, — и страница задания, если кандидат
+     * пришёл раньше. Составление занимает до полуминуты, столько этот
+     * запрос и длится; кандидат его не ждёт.
+     */
+    public function prepare(AiInterview $interview, TaskPreparer $preparer)
+    {
+        $this->mine($interview);
+
+        if (! $interview->consented() || ! in_array($interview->stage, ['interview', 'test'], true)) {
+            return response()->json(['status' => 'skipped']);
+        }
+
+        @set_time_limit(180);
+        // страница могла уйти дальше, а задание всё равно нужно доделать
+        ignore_user_abort(true);
+
+        try {
+            $status = $preparer->prepare($interview);
+        } catch (AiUnavailableException $e) {
+            // модель занята — попробуем позже, страница спросит снова
+            $status = 'busy';
+        }
+
+        return response()->json(['status' => $status]);
     }
 
     /**
@@ -84,18 +146,18 @@ class AiTaskController extends Controller
         if (! in_array($interview->stage, ['test', 'decision'], true)) {
             return redirect()->route('applicant.ai.interview', $interview)
                 ->with('error', $interview->isDecided()
-                    ? 'Решение уже принято — задание больше не принимается.'
-                    : 'Задание откроется после собеседования.');
+                    ? __('Собеседование завершено — задание больше не принимается.')
+                    : __('Задание откроется после собеседования.'));
         }
 
         $task = $interview->testTasks()->where('kind', AiTestTask::KIND_MAIN)->latest('id')->first();
 
         if (! $task) {
-            return back()->with('error', 'Задание ещё не готово.');
+            return back()->with('error', __('Задание ещё не готово.'));
         }
 
         if ($task->submission()->first()?->submitted_at) {
-            return back()->with('error', 'Решение уже отправлено.');
+            return back()->with('error', __('Решение уже отправлено.'));
         }
 
         /*
@@ -104,29 +166,50 @@ class AiTaskController extends Controller
          * приём, что в проверке навыков.
          */
         if ($task->expired()) {
-            $this->closeExpired($interview, $task);
+            $task->closeIfExpired();
 
             return redirect()->route('applicant.ai.task', $interview)
-                ->with('error', 'Время на задание вышло.');
+                ->with('error', __('Время на задание вышло.'));
         }
 
         $validator = Validator::make($request->all(), [
-            'solution' => 'required|string|min:1|max:'.GeminiTaskExaminer::MAX_SOLUTION,
+            // решение первого задания, остальных — в parts, ответы теста — в quiz
+            'solution' => 'nullable|string|max:'.GeminiTaskExaminer::MAX_SOLUTION,
+            'parts' => 'nullable|array|max:5',
+            'parts.*' => 'nullable|string|max:'.GeminiTaskExaminer::MAX_SOLUTION,
+            'quiz' => 'nullable|array|max:10',
+            'quiz.*' => 'nullable|integer|min:0|max:3',
         ]);
 
         if ($validator->fails()) {
             return back()->with('error', $validator->errors()->first())->withInput();
         }
 
-        $solution = $validator->validated()['solution'];
+        $validated = $validator->validated();
+        $solution = trim((string) ($validated['solution'] ?? ''));
+        $parts = array_map(fn ($p) => trim((string) $p), array_values($validated['parts'] ?? []));
+        $quiz = $validated['quiz'] ?? [];
+
+        // совсем пустую отправку не принимаем: скорее всего, нажали случайно
+        if ($solution === '' && collect($parts)->filter()->isEmpty() && collect($quiz)->filter(fn ($v) => $v !== null)->isEmpty()) {
+            return back()->with('error', __('Ответьте хотя бы на часть теста или заданий, прежде чем отправлять.'))->withInput();
+        }
+
+        $quizAnswers = [];
+        foreach (array_keys($task->quiz ?? []) as $i) {
+            $quizAnswers[$i] = isset($quiz[$i]) ? (int) $quiz[$i] : null;
+        }
 
         $submission = AiTestSubmission::create([
             'ai_test_task_id' => $task->id,
             'content' => $solution,
+            'answers' => ['quiz' => $quizAnswers, 'parts' => $parts],
             'submitted_at' => now(),
         ]);
 
-        // в коде бывают комментарии, читающиеся как указания модели
+        // попытку повлиять на оценку ищем во всех решениях сразу
+        $solution = implode(PHP_EOL, array_merge([$solution], $parts));
+
         $found = $this->guard->inspect($solution);
 
         if ($found['flagged']) {
@@ -135,8 +218,27 @@ class AiTaskController extends Controller
 
         GradeTestSubmission::dispatch($submission->id);
 
+        /*
+         * Анна прощается: собеседование закончено, ответ придёт в срок.
+         *
+         * Реплика ложится в разговор, как и завершение беседы: её можно
+         * озвучить, и в отчёте видно, что кандидату сказали напоследок.
+         */
+        $farewell = AiInterviewTurn::create([
+            'ai_interview_id' => $interview->id,
+            'position' => (int) $interview->turns()->max('position') + 1,
+            'role' => AiInterviewTurn::ROLE_AI,
+            'text' => $interview->farewellRemark(),
+            'question_kind' => AiInterviewTurn::KIND_CLOSING,
+            'speech_status' => $this->speech->available() ? 'pending' : 'none',
+        ]);
+
+        if ($this->speech->available()) {
+            SynthesizeTurnSpeech::dispatch($farewell->id);
+        }
+
         return redirect()->route('applicant.ai.task', $interview)
-            ->with('status', 'Решение отправлено. ИИ проверяет его — это занимает до минуты.');
+            ->with('status', __('Решение отправлено. ИИ проверяет его — это занимает до минуты.'));
     }
 
 
@@ -153,34 +255,11 @@ class AiTaskController extends Controller
         ComposeTestTask::dispatch($interview->id);
     }
 
-    /**
-     * Срок вышел, решения нет.
-     *
-     * Ноль за задание, а не отказ: невыполненное задание — это часть итога с
-     * весом, который задал работодатель, и решение принимается по сумме.
-     */
-    private function closeExpired(AiInterview $interview, AiTestTask $task): void
+    private function farewell(AiInterview $interview): ?AiInterviewTurn
     {
-        if ($task->submission()->first()) {
-            return;
-        }
+        $last = $interview->turns()->reorder('position', 'desc')->first();
 
-        AiTestSubmission::create([
-            'ai_test_task_id' => $task->id,
-            'content' => null,
-            'score' => 0,
-            'review' => [],
-            'submitted_at' => null,
-            'graded_at' => now(),
-        ]);
-
-        $interview->update([
-            'test_score' => 0,
-            ...($interview->stage === 'test' ? ['stage' => 'decision'] : []),
-        ]);
-
-        // части собраны: задание не сдано, и это тоже результат
-        MakeHiringDecision::dispatch($interview->id);
+        return $last && $last->isClosing() ? $last : null;
     }
 
     private function guardStage(AiInterview $interview)

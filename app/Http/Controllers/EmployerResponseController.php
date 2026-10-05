@@ -17,18 +17,18 @@ class EmployerResponseController extends Controller
         $user = auth()->user();
 
         if ($user->role !== 'employer') {
-            return back()->with('error', 'Приглашать соискателей могут только работодатели.');
+            return back()->with('error', __('Приглашать соискателей могут только работодатели.'));
         }
 
         $employer = $user->employer;
 
         if (! $employer) {
             return redirect()->route('public.employers.create')
-                ->with('error', 'Сначала заполните анкету работодателя.');
+                ->with('error', __('Сначала заполните анкету работодателя.'));
         }
 
         if ($resume->applicant && $resume->applicant->user_id === $user->id) {
-            return back()->with('error', 'Нельзя откликнуться на собственное резюме.');
+            return back()->with('error', __('Нельзя откликнуться на собственное резюме.'));
         }
 
         $validated = $request->validate([
@@ -41,15 +41,18 @@ class EmployerResponseController extends Controller
         );
 
         if (! $response->wasRecentlyCreated) {
-            return back()->with('status', 'Вы уже приглашали этого соискателя.');
+            return back()->with('status', __('Вы уже приглашали этого соискателя.'));
         }
 
         // обе стороны: соискателю — новое, работодателю — отметка о своём действии
         UserNotification::deliver(
             $resume->applicant?->user_id,
             'response',
-            'Приглашение от работодателя',
-            $employer->company_name.' заинтересовалась вашим резюме «'.$resume->profession.'»',
+            UserNotification::text('Приглашение от работодателя'),
+            UserNotification::text(':company заинтересовалась вашим резюме «:profession»', [
+                'company' => $employer->company_name,
+                'profession' => $resume->profession,
+            ]),
             route('public.responses.index'),
             'mail_responses',
         );
@@ -57,14 +60,17 @@ class EmployerResponseController extends Controller
         UserNotification::deliver(
             $user->id,
             'response',
-            'Вы отправили приглашение',
-            '«'.$resume->profession.'» · '.($resume->applicant?->user?->name ?? 'соискатель'),
+            UserNotification::text('Вы отправили приглашение'),
+            UserNotification::text('«:title» · :company', [
+                'title' => $resume->profession,
+                'company' => $resume->applicant?->user?->name ?? UserNotification::text('соискатель'),
+            ]),
             route('public.responses.index'),
             'mail_responses',
             read: true,
         );
 
-        return back()->with('status', 'Приглашение отправлено.');
+        return back()->with('status', __('Приглашение отправлено.'));
     }
 
     /**
@@ -96,13 +102,16 @@ class EmployerResponseController extends Controller
         UserNotification::deliver(
             $resumeResponse->employer?->user_id,
             'response_status',
-            'Ответ на ваше приглашение',
-            ($resumeResponse->resume?->profession ?? 'Резюме').': '.$labels[$validated['status']],
+            UserNotification::text('Ответ на ваше приглашение'),
+            UserNotification::text(':title: :status', [
+                'title' => $resumeResponse->resume?->profession ?? UserNotification::text('Резюме'),
+                'status' => UserNotification::text($labels[$validated['status']]),
+            ]),
             route('public.responses.index'),
             'mail_responses',
         );
 
-        return back()->with('status', $labels[$validated['status']]);
+        return back()->with('status', __($labels[$validated['status']]));
     }
 
     /**
@@ -118,6 +127,6 @@ class EmployerResponseController extends Controller
             ->where('resume_id', $resume->id)
             ->delete();
 
-        return back()->with('status', 'Приглашение отозвано.');
+        return back()->with('status', __('Приглашение отозвано.'));
     }
 }

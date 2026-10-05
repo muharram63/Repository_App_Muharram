@@ -415,7 +415,7 @@ test('настройки считаются рабочими только при
         ->and($config->weightsAreValid())->toBeTrue()
         ->and($config->thresholdsAreValid())->toBeTrue()
         ->and($config->isUsable())->toBeTrue()
-        ->and($config->decidesItself())->toBeTrue();
+        ->and($config->remindsEmployer())->toBeTrue();
 
     $broken = AiInterviewConfig::factory()->brokenWeights()->make();
 
@@ -439,7 +439,7 @@ test('режим advisory оставляет решение человеку', f
     // настроек он не влияет вовсе, поэтому веса и пороги остаются верными.
     $config = AiInterviewConfig::factory()->advisory()->make();
 
-    expect($config->decidesItself())->toBeFalse()
+    expect($config->remindsEmployer())->toBeFalse()
         ->and($config->weightsAreValid())->toBeTrue()
         ->and($config->thresholdsAreValid())->toBeTrue();
 });
@@ -483,15 +483,62 @@ test('неподтверждённый и желательный критери�
         ->and($config->fresh()->isUsable())->toBeFalse();
 });
 
-test('прогресс растёт по стадиям от нуля до сотни', function () {
-    $interview = AiInterview::factory()->make();
+/*
+ * Полоса кандидата — его шаги: согласие 10, документы 10, разговор 50
+ * (растёт с каждым ответом), тестовая часть 30. Прошёл всё — 100%, даже
+ * если проверка и решение ещё впереди: это уже не его работа.
+ */
+test('прогресс считает шаги кандидата, и прошедший всё видит 100%', function () {
+    [$vacancy] = makeAiVacancy(config: ['questions_count' => 10]);
+    [$interview] = makeAiInterview($vacancy);
 
     expect($interview->progress())->toBe(0);
 
-    foreach (['documents' => 20, 'interview' => 40, 'test' => 60, 'decision' => 80, 'done' => 100] as $stage => $expected) {
-        $interview->stage = $stage;
-        expect($interview->progress())->toBe($expected, "стадия {$stage}");
+    $interview->update(['consent_at' => now(), 'stage' => 'documents']);
+    expect($interview->fresh()->progress())->toBe(10);
+
+    $interview->update(['stage' => 'interview', 'analysis_status' => 'pending']);
+    expect($interview->fresh()->progress())->toBe(20);
+
+    // ровно половина ответов — половина разговора: 20 + 25
+    for ($i = 1; $i <= 5; $i++) {
+        AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => $i * 2 - 1, 'role' => 'ai', 'text' => 'В']);
+        AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => $i * 2, 'role' => 'candidate', 'text' => 'О']);
     }
+    expect($interview->fresh()->progress())->toBe(45);
+
+    // разговор позади, тест впереди
+    $interview->update(['stage' => 'test']);
+    expect($interview->fresh()->progress())->toBe(70)
+        ->and($interview->fresh()->candidateFinished())->toBeFalse();
+
+    // решения отправлены — кандидат прошёл всё, хотя проверки ещё нет
+    $task = App\Models\AiTestTask::create([
+        'ai_interview_id' => $interview->id, 'kind' => 'main', 'statement' => 'Задание',
+        'format' => 'case', 'reference_solution' => 'э', 'rubric' => [],
+    ]);
+    App\Models\AiTestSubmission::create(['ai_test_task_id' => $task->id, 'content' => 'р', 'submitted_at' => now()]);
+
+    expect($interview->fresh()->progress())->toBe(100)
+        ->and($interview->fresh()->candidateFinished())->toBeTrue();
+});
+
+test('без тестового задания разговор — это всё, что нужно пройти', function () {
+    [$vacancy] = makeAiVacancy(config: [
+        'questions_count' => 10, 'weight_documents' => 50, 'weight_interview' => 50, 'weight_test' => 0,
+    ]);
+    [$interview] = makeAiInterview($vacancy, ['consent_at' => now(), 'stage' => 'interview', 'analysis_status' => 'ready']);
+
+    for ($i = 1; $i <= 5; $i++) {
+        AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => $i * 2 - 1, 'role' => 'ai', 'text' => 'В']);
+        AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => $i * 2, 'role' => 'candidate', 'text' => 'О']);
+    }
+
+    // 20 + половина от 80
+    expect($interview->fresh()->progress())->toBe(60);
+
+    $interview->update(['stage' => 'decision']);
+    expect($interview->fresh()->progress())->toBe(100);
 });
 
 test('незакрытые обязательные требования собираются отдельно от желательных', function () {

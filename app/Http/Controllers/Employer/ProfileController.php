@@ -18,7 +18,7 @@ class ProfileController extends Controller
 
        if (! $employer) {
            return redirect()->route('public.employers.create')
-               ->with('error', 'Сначала заполните анкету работодателя.');
+               ->with('error', __('Сначала заполните анкету работодателя.'));
        }
 
        $validated = $request->validate([
@@ -70,7 +70,7 @@ class ProfileController extends Controller
 
         if (! $employer) {
             return redirect()->route('public.employers.create')
-                ->with('error', 'Сначала заполните анкету работодателя.');
+                ->with('error', __('Сначала заполните анкету работодателя.'));
         }
 
         $categories = Category::all();

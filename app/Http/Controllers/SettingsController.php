@@ -67,7 +67,7 @@ class SettingsController extends Controller
             Storage::disk('public')->delete(Str::after($oldAvatar, 'storage/'));
         }
 
-        return back()->with('status', 'Данные аккаунта сохранены.');
+        return back()->with('status', __('Данные аккаунта сохранены.'));
     }
 
     /**
@@ -84,7 +84,7 @@ class SettingsController extends Controller
 
         if (! Hash::check($validated['current_password'], $user->password)) {
             return back()->withErrors(
-                ['current_password' => 'Текущий пароль указан неверно.'],
+                ['current_password' => __('Текущий пароль указан неверно.')],
                 'password'
             );
         }
@@ -95,7 +95,7 @@ class SettingsController extends Controller
         Auth::logoutOtherDevices($validated['password']);
         $request->session()->regenerate();
 
-        return back()->with('status', 'Пароль изменён.');
+        return back()->with('status', __('Пароль изменён.'));
     }
 
     /**
@@ -110,13 +110,13 @@ class SettingsController extends Controller
         ])->validateWithBag('devices');
 
         if (! Hash::check($validated['password'], $user->password)) {
-            return back()->withErrors(['password' => 'Пароль указан неверно.'], 'devices');
+            return back()->withErrors(['password' => __('Пароль указан неверно.')], 'devices');
         }
 
         Auth::logoutOtherDevices($validated['password']);
         $request->session()->regenerate();
 
-        return back()->with('status', 'Вы вышли на всех остальных устройствах.');
+        return back()->with('status', __('Вы вышли на всех остальных устройствах.'));
     }
 
     /**
@@ -139,7 +139,7 @@ class SettingsController extends Controller
         $request->session()->put('locale', $validated['locale']);
         $request->session()->put('theme', $validated['theme']);
 
-        return back()->with('status', 'Настройки интерфейса сохранены.');
+        return back()->with('status', __('Настройки интерфейса сохранены.'));
     }
 
     /**
@@ -156,7 +156,7 @@ class SettingsController extends Controller
             'mail_messages' => $request->boolean('mail_messages'),
         ]);
 
-        return back()->with('status', 'Настройки уведомлений сохранены.');
+        return back()->with('status', __('Настройки уведомлений сохранены.'));
     }
 
     /**
@@ -175,7 +175,7 @@ class SettingsController extends Controller
 
         UserSetting::updateOrCreate(['user_id' => $user->id], $data);
 
-        return back()->with('status', 'Настройки приватности сохранены.');
+        return back()->with('status', __('Настройки приватности сохранены.'));
     }
 
     /**
@@ -190,7 +190,7 @@ class SettingsController extends Controller
         ])->validateWithBag('destroy');
 
         if (! Hash::check($validated['password'], $user->password)) {
-            return back()->withErrors(['password' => 'Пароль указан неверно.'], 'destroy');
+            return back()->withErrors(['password' => __('Пароль указан неверно.')], 'destroy');
         }
 
         $avatar = $user->avatar;
@@ -205,7 +205,7 @@ class SettingsController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('public.home')->with('status', 'Аккаунт удалён.');
+        return redirect()->route('public.home')->with('status', __('Аккаунт удалён.'));
     }
 
     /**

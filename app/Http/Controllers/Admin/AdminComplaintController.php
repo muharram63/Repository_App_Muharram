@@ -132,7 +132,7 @@ class AdminComplaintController extends Controller
         $target = $complaint->target();
 
         if (! $target) {
-            return back()->with('error', 'Объект жалобы уже удалён.');
+            return back()->with('error', __('Объект жалобы уже удалён.'));
         }
 
         $action = $validated['action'];
@@ -140,30 +140,34 @@ class AdminComplaintController extends Controller
         // тот же список, по которому шаблон рисует кнопки: присланное напрямую
         // неподходящее действие сюда не пройдёт
         if (! in_array($action, $complaint->allowedActions(), true)) {
-            return back()->with('error', 'Эта мера сейчас неприменима к объекту жалобы.');
+            return back()->with('error', __('Эта мера сейчас неприменима к объекту жалобы.'));
         }
 
         $result = $this->switchUser($target, $action === 'block_user');
 
         if (! $result['ok']) {
-            return back()->with('error', $result['message']);
+            return back()->with('error', __($result['message']));
         }
 
         // status — ответ владельца объекта, модератор его не трогает.
         // Своё состояние очереди он ведёт в review_state.
         // admin_comment хранит последнюю меру и не склеивается: полная
         // хронология и так лежит в complaint_actions
+        // в базу — текстом на языке модератора; уведомления ниже переводятся
+        // каждому на его язык
+        $text = __($result['message'], $result['replace'] ?? []);
+
         $complaint->update([
             // автор жалобы должен увидеть новость о блокировке
             'seen_at' => null,
-            'admin_comment' => $result['message'],
+            'admin_comment' => $text,
         ]);
 
-        $this->log($complaint, $action, $result['message']);
+        $this->log($complaint, $action, $text);
         $this->notifyOwner($complaint, $action, $result);
         $this->notifyReporter($complaint, $result);
 
-        return back()->with('status', $result['message']);
+        return back()->with('status', $text);
     }
 
     /**
@@ -174,7 +178,7 @@ class AdminComplaintController extends Controller
     {
         $complaint->delete();
 
-        return back()->with('status', 'Жалоба убрана в корзину.');
+        return back()->with('status', __('Жалоба убрана в корзину.'));
     }
 
     /**
@@ -185,7 +189,7 @@ class AdminComplaintController extends Controller
         $found = Complaint::onlyTrashed()->findOrFail($complaint);
         $found->restore();
 
-        return back()->with('status', 'Жалоба возвращена из корзины.');
+        return back()->with('status', __('Жалоба возвращена из корзины.'));
     }
 
     /**
@@ -198,15 +202,15 @@ class AdminComplaintController extends Controller
             : ($target->user ?? $target->applicant?->user ?? $target->employer?->user ?? null);
 
         if (! $user) {
-            return ['ok' => false, 'message' => 'Не удалось определить владельца объекта.'];
+            return ['ok' => false, 'message' => __('Не удалось определить владельца объекта.')];
         }
 
         if ($block && $user->id === auth()->id()) {
-            return ['ok' => false, 'message' => 'Нельзя заблокировать собственный аккаунт.'];
+            return ['ok' => false, 'message' => __('Нельзя заблокировать собственный аккаунт.')];
         }
 
         if ($block && $user->role === 'admin') {
-            return ['ok' => false, 'message' => 'Администратора заблокировать нельзя.'];
+            return ['ok' => false, 'message' => __('Администратора заблокировать нельзя.')];
         }
 
         $user->status = $block ? 'blocked' : 'active';
@@ -217,8 +221,9 @@ class AdminComplaintController extends Controller
             'owner' => $user,
             'subject' => $user->name,
             'message' => $block
-                ? 'Пользователь '.$user->name.' заблокирован модератором.'
-                : 'Пользователь '.$user->name.' разблокирован модератором.',
+                ? __('Пользователь :name заблокирован модератором.')
+                : __('Пользователь :name разблокирован модератором.'),
+            'replace' => ['name' => $user->name],
         ];
     }
 
@@ -231,8 +236,8 @@ class AdminComplaintController extends Controller
         UserNotification::deliver(
             $complaint->user_id,
             'moderation',
-            'По вашей жалобе приняты меры',
-            $result['message'] ?? null,
+            UserNotification::text('По вашей жалобе приняты меры'),
+            isset($result['message']) ? UserNotification::text($result['message'], $result['replace'] ?? []) : null,
             Complaint::cabinetUrl($complaint->user),
         );
     }
@@ -251,8 +256,8 @@ class AdminComplaintController extends Controller
         UserNotification::deliver(
             $owner->id,
             'moderation',
-            ModerationNotice::ACTIONS[$action] ?? 'Решение модератора',
-            $result['message'] ?? null,
+            UserNotification::text(ModerationNotice::ACTIONS[$action] ?? 'Решение модератора'),
+            isset($result['message']) ? UserNotification::text($result['message'], $result['replace'] ?? []) : null,
             Complaint::cabinetUrl($owner),
         );
 
@@ -262,7 +267,7 @@ class AdminComplaintController extends Controller
             'action' => $action,
             'subject' => $result['subject'] ?? $complaint->targetTitle(),
             'reason' => $complaint->reasonLabel(),
-            'comment' => $result['message'],
+            'comment' => __($result['message'], $result['replace'] ?? []),
         ]);
     }
 

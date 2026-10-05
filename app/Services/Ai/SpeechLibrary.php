@@ -130,6 +130,54 @@ class SpeechLibrary
      * 16 бит на отсчёт при 24 кГц моно. Читать заголовок ради этого излишне —
      * число нужно интерфейсу для полосы воспроизведения, а не для монтажа.
      */
+    /**
+     * Озвучить реплику собеседования и отметить это на ней.
+     *
+     * Вызывают двое: задача в очереди (если обработчик запущен, звук готов
+     * заранее) и сама страница, когда спрашивает, готов ли звук. Раньше
+     * озвучивала только очередь, и без запущенного обработчика вопросы не
+     * звучали никогда: страница двадцать секунд молчала, а потом пыталась
+     * читать голосом браузера, который до первого клика тоже молчит.
+     *
+     * Замок не даёт озвучить одну реплику дважды, если очередь и страница
+     * пришли одновременно: второй просто подождёт готового файла.
+     *
+     * @return bool озвучено ли сейчас (false — занято другим или не вышло)
+     */
+    public function voiceTurn(\App\Models\AiInterviewTurn $turn): bool
+    {
+        if (! $turn->needsSpeech() || $turn->speechReady()) {
+            return $turn->speechReady();
+        }
+
+        if (! $this->available()) {
+            $turn->update(['speech_status' => 'failed']);
+
+            return false;
+        }
+
+        $lock = \Illuminate\Support\Facades\Cache::lock('speech-turn-'.$turn->id, 120);
+
+        if (! $lock->get()) {
+            return false;
+        }
+
+        try {
+            $made = $this->make($turn->text, $turn->interview);
+
+            $turn->update([
+                'speech_status' => 'ready',
+                'speech_path' => $made['path'],
+                'speech_voice' => config('services.gemini.tts_voice'),
+                'speech_ms' => $made['ms'],
+            ]);
+
+            return true;
+        } finally {
+            $lock->release();
+        }
+    }
+
     private function duration(int $bytes): int
     {
         // 44 байта заголовка RIFF в расчёт не берём: на семи секундах речи

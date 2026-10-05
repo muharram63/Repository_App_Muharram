@@ -199,3 +199,116 @@ test('соискатель получает непрочитанное приг�
     expect($note->read_at)->toBeNull()
         ->and($note->url)->toBe(route('public.interviews.show', $interview));
 });
+
+// ==================== видеосвязь: встраивание или новая вкладка ====================
+
+/*
+ * meet.ffmuc.net запрещает показ себя внутри чужих сайтов (X-Frame-Options
+ * SAMEORIGIN и frame-ancestors со своими доменами). Встроенная встреча была
+ * пустой рамкой «отказано в подключении», а запасная ссылка не появлялась.
+ */
+test('сервер, запрещающий встраивание, — встреча открывается в новой вкладке', function () {
+    config(['services.jitsi.embed' => 'auto', 'services.jitsi.domain' => 'meet.ffmuc.net']);
+    Illuminate\Support\Facades\Cache::flush();
+
+    Illuminate\Support\Facades\Http::fake(['*' => Illuminate\Support\Facades\Http::response('', 200, [
+        'X-Frame-Options' => 'SAMEORIGIN',
+        'Content-Security-Policy' => "frame-ancestors 'self' *.ffmuc.net;",
+    ])]);
+
+    [$interview, $applicantUser] = meeting();
+
+    $this->actingAs($applicantUser)
+        ->get(route('public.interviews.show', $interview))
+        ->assertOk()
+        ->assertSee('data-embed="0"', false)
+        ->assertSee('https://meet.ffmuc.net/'.$interview->room, false)
+        ->assertSee('target="_blank"', false)
+        ->assertDontSee('external_api.js', false);
+});
+
+test('сервер, разрешающий встраивание, — встреча прямо на странице', function () {
+    config(['services.jitsi.embed' => 'auto', 'services.jitsi.domain' => 'meet.element.io']);
+    Illuminate\Support\Facades\Cache::flush();
+
+    Illuminate\Support\Facades\Http::fake(['*' => Illuminate\Support\Facades\Http::response('', 200)]);
+
+    [$interview, $applicantUser] = meeting();
+
+    $this->actingAs($applicantUser)
+        ->get(route('public.interviews.show', $interview))
+        ->assertOk()
+        ->assertSee('data-embed="1"', false)
+        ->assertSee('https://meet.element.io/external_api.js', false)
+        // на незащищённой странице скрипт сам уходит в новую вкладку
+        ->assertSee('window.isSecureContext', false);
+});
+
+test('ответ сервера Jitsi запоминается, а не спрашивается на каждом открытии', function () {
+    config(['services.jitsi.embed' => 'auto', 'services.jitsi.domain' => 'meet.element.io']);
+    Illuminate\Support\Facades\Cache::flush();
+    Illuminate\Support\Facades\Http::fake(['*' => Illuminate\Support\Facades\Http::response('', 200)]);
+
+    App\Support\VideoRoom::embeddable('workio.tj');
+    App\Support\VideoRoom::embeddable('workio.tj');
+
+    Illuminate\Support\Facades\Http::assertSentCount(1);
+});
+
+test('недоступный сервер Jitsi — новая вкладка, а не пустая рамка', function () {
+    config(['services.jitsi.embed' => 'auto']);
+    Illuminate\Support\Facades\Cache::flush();
+    Illuminate\Support\Facades\Http::fake(fn () => throw new Illuminate\Http\Client\ConnectionException('нет сети'));
+
+    expect(App\Support\VideoRoom::embeddable('workio.tj'))->toBeFalse();
+});
+
+test('разбор заголовков встраивания', function () {
+    $allow = fn (string $xfo, string $csp, string $host = 'workio.tj') => App\Support\VideoRoom::headersAllow($host, $xfo, $csp);
+
+    expect($allow('', ''))->toBeTrue()
+        ->and($allow('SAMEORIGIN', ''))->toBeFalse()
+        ->and($allow('DENY', ''))->toBeFalse()
+        ->and($allow('', "frame-ancestors 'self' *.ffmuc.net"))->toBeFalse()
+        ->and($allow('', 'frame-ancestors *'))->toBeTrue()
+        ->and($allow('', 'frame-ancestors https://workio.tj'))->toBeTrue()
+        ->and($allow('', 'frame-ancestors *.workio.tj', 'app.workio.tj'))->toBeTrue();
+});
+
+test('почта участника на сервер видеосвязи не уходит', function () {
+    config(['services.jitsi.embed' => 'always']);
+    [$interview, $applicantUser] = meeting();
+
+    $html = $this->actingAs($applicantUser)
+        ->get(route('public.interviews.show', $interview))
+        ->assertOk()
+        ->getContent();
+
+    // настройки встречи, которые уходят на сервер Jitsi
+    preg_match('/new JitsiMeetExternalAPI\((.*?)\}\);/s', $html, $setup);
+
+    expect($setup)->not->toBeEmpty()
+        ->and($setup[1])->toContain('displayName')
+        ->and($setup[1])->not->toContain('email')
+        ->and($setup[1])->not->toContain($applicantUser->email);
+});
+
+// ==================== вторая сторона узнаёт о решении ====================
+
+test('отказ соискателя от встречи приходит работодателю, отмена — соискателю', function () {
+    [$interview, $applicantUser, $employerUser] = meeting(['scheduled_at' => now()->addDay()]);
+
+    $this->actingAs($applicantUser)
+        ->patch(route('public.interviews.status', $interview), ['status' => 'declined']);
+
+    expect(App\Models\UserNotification::where('user_id', $employerUser->id)
+        ->where('title', 'Приглашение на собеседование отклонено')->exists())->toBeTrue();
+
+    [$other, $otherApplicant, $otherEmployer] = meeting(['scheduled_at' => now()->addDay()]);
+
+    $this->actingAs($otherEmployer)
+        ->patch(route('public.interviews.status', $other), ['status' => 'canceled']);
+
+    expect(App\Models\UserNotification::where('user_id', $otherApplicant->id)
+        ->where('title', 'Собеседование отменено')->exists())->toBeTrue();
+});

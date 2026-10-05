@@ -157,6 +157,9 @@
         @endif
     </div>
 
+    {{-- ==================== сводка: рекомендация и резюме ==================== --}}
+    @include('employer.pages.ai-screening._summary')
+
     {{-- ==================== требования ==================== --}}
     <div class="rp-card">
         <h2>{{ __('Требования вакансии') }}</h2>
@@ -192,7 +195,14 @@
         @forelse($documents as $document)
             <div class="rp-row">
                 <div class="rp-line">
-                    <b style="font-size:14px">{{ $document->original_name }}</b>
+                    {{-- В выгрузке ссылки нет: файл отдаётся только вошедшему
+                         работодателю, а выгрузку открывают без площадки. --}}
+                    @if($withFileLinks ?? false)
+                        <a style="font-size:14px; font-weight:700" target="_blank" rel="noopener"
+                           href="{{ route('employer.ai.candidate.document', [$vacancy, $interview, $document]) }}">{{ $document->original_name }}</a>
+                    @else
+                        <b style="font-size:14px">{{ $document->original_name }}</b>
+                    @endif
                     <span class="rp-chip">{{ $document->kindLabel() }}</span>
                     <span class="rp-chip {{ $document->isAnalysed() ? 'rp-ok' : 'rp-no' }}">
                         {{ $document->statusLabel() }}
@@ -339,6 +349,70 @@
                     @endforeach
                 @endif
             @endif
+
+            @php($details = $submission?->details ?? [])
+            @php($answers = $submission?->answers ?? [])
+
+            {{-- ===== тест с вариантами ответа ===== --}}
+            @if($task->hasQuiz())
+                <h2 style="margin-top:12px">
+                    {{ __('Тест') }}
+                    @isset($details['quiz'])
+                        <span class="rp-chip {{ $details['quiz']['score'] >= 60 ? 'rp-ok' : 'rp-no' }}">
+                            {{ $details['quiz']['correct'] }} / {{ $details['quiz']['total'] }}
+                        </span>
+                    @endisset
+                </h2>
+                @foreach($task->quiz as $i => $q)
+                    @php($chosen = $answers['quiz'][$i] ?? null)
+                    @php($ok = $chosen !== null && (int) $chosen === (int) $q['answer'])
+                    <div class="rp-row">
+                        <div class="rp-line">
+                            <span class="rp-chip {{ $ok ? 'rp-ok' : 'rp-no' }}">{{ $ok ? __('верно') : __('неверно') }}</span>
+                            <b style="font-size:13px">{{ $i + 1 }}. {{ $q['question'] }}</b>
+                        </div>
+                        <div class="rp-hint">
+                            {{ __('Ответ кандидата:') }} {{ $chosen !== null ? ($q['options'][$chosen] ?? '—') : __('нет ответа') }}
+                            @unless($ok) · {{ __('верно:') }} {{ $q['options'][$q['answer']] ?? '—' }} @endunless
+                        </div>
+                        @if($q['explain'] ?? null)
+                            <div class="rp-hint">{{ $q['explain'] }}</div>
+                        @endif
+                    </div>
+                @endforeach
+            @endif
+
+            {{-- ===== остальные практические задания ===== --}}
+            @foreach(array_slice($task->practical(), 1, null, true) as $i => $item)
+                @php($part = $details['parts'][$i] ?? null)
+                <h2 style="margin-top:12px">
+                    {{ __('Задание') }} {{ $i + 1 }}
+                    @if($part)
+                        <span class="rp-chip {{ $part['score'] >= 60 ? 'rp-ok' : 'rp-no' }}">{{ $part['score'] }}/100</span>
+                    @endif
+                </h2>
+                <div class="rp-text">{{ $item['statement'] }}</div>
+                @php($given = $answers['parts'][$i - 1] ?? '')
+                @if(filled($given))
+                    <pre class="rp-pre">{{ $given }}</pre>
+                @else
+                    <div class="rp-warn">{{ __('Решение не дано.') }}</div>
+                @endif
+                @if($part['summary'] ?? null)
+                    <div class="rp-quote">{{ $part['summary'] }}</div>
+                @endif
+                @foreach($part['review'] ?? [] as $point)
+                    <div class="rp-line">
+                        <span class="rp-chip {{ ($point['passed'] ?? false) ? 'rp-ok' : 'rp-no' }}">
+                            {{ ($point['passed'] ?? false) ? __('да') : __('нет') }}
+                        </span>
+                        <span style="font-size:13px">{{ $point['point'] ?? '' }}</span>
+                        @if($point['note'] ?? null)
+                            <span class="rp-hint">— {{ $point['note'] }}</span>
+                        @endif
+                    </div>
+                @endforeach
+            @endforeach
         @endif
     </div>
 
@@ -348,6 +422,10 @@
             <h2>{{ __('Что получил кандидат') }}</h2>
             <p class="rp-hint">{{ __('Сохранено дословно: формулировки со временем меняются, а сказанное человеку должно быть воспроизводимо.') }}</p>
             <div class="rp-text">{{ $decision->message_to_candidate }}</div>
+            @if($decision->isOverridden() && $decision->override_message)
+                <h2 style="margin-top:14px">{{ __('После вашего решения кандидат получил') }}</h2>
+                <div class="rp-text">{{ $decision->override_message }}</div>
+            @endif
         </div>
     @endif
 

@@ -10,16 +10,14 @@ use App\Models\Industry;
 use App\Models\User;
 use Illuminate\Http\Request;
 
+/**
+ * Первое заполнение анкеты компании после регистрации.
+ *
+ * Правка анкеты живёт в ProfileController (employer.profile.update), удаление —
+ * в админке, поэтому здесь только create и store.
+ */
 class EmployerController extends Controller
 {
-
-    public function index()
-    {
-        $employers = Employer::all();
-        $categories = Category::all();
-        $industries = Industry::all();
-        return view('employer.pages.employers.index' , compact('employers' , 'categories' , 'industries'));
-    }
     public function create()
     {
         $categories = Category::all();
@@ -38,7 +36,7 @@ class EmployerController extends Controller
         // анкету компании заводит только работодатель: иначе у соискателя появляется
         // строка в employers, и всё приложение начинает считать его работодателем
         if ($user->role !== 'employer') {
-            return back()->with('error', 'Анкету компании может заполнить только работодатель.');
+            return back()->with('error', __('Анкету компании может заполнить только работодатель.'));
         }
 
         $validated = $request->validate([
@@ -47,7 +45,9 @@ class EmployerController extends Controller
             'email_company' => 'string|required|max:255|email',
             'phone' => 'string|required|max:255',
             'category_id' => 'required|exists:categories,id',
-            'description' => 'string|required|max:255',
+            // как при правке профиля: колонка text, а предел 255 не давал
+            // сохранить анкету, которую потом можно было бы отредактировать
+            'description' => 'string|required|max:600',
             'city_id' => 'required|exists:cities,id',
             'industry_id' => 'required|exists:industries,id',
             'website_url' => 'string|required|max:255',
@@ -58,65 +58,7 @@ class EmployerController extends Controller
         Employer::updateOrCreate(['user_id' => $user->id], $validated);
 
         return redirect()->route('employer.dashboard')
-            ->with('status', 'Анкета компании сохранена.');
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(Employer $employer)
-    {
-        $categories = Category::all();
-        $industries = Industry::all();
-        $users = User::where('role', 'employer')->latest()->get();
-
-        return view('employer.pages.employers.show', compact('employer', 'users', 'categories', 'industries'));
-
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Employer $employer)
-    {
-
-        // анкету компании правит только её владелец: админу доступны просмотр и удаление
-        abort_if($employer->user_id !== auth()->id(), 403);
-
-        $validated = $request->validate([
-            'company_name' => 'string|required|max:255',
-            'job' => 'string|required|max:255',
-            'email_company' => 'string|required|max:255|email',
-            'phone' => 'string|required|max:255',
-            'category_id' => 'required|exists:categories,id',
-            'description' => 'string|required|max:255',
-            'city_id' => 'required|exists:cities,id',
-            'industry_id' => 'required|exists:industries,id',
-            'website_url' => 'string|required|max:255',
-        ]);
-        $employer->update($validated);
-
-        return redirect()->route('employer.dashboard');
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Employer $employer)
-    {
-        // удалять анкету компании может владелец или админ
-        abort_if($employer->user_id !== auth()->id() && auth()->user()?->role !== 'admin', 403);
-
-        $employer->delete();
-        return redirect()->route('employer.dashboard');
+            ->with('status', __('Анкета компании сохранена.'));
     }
 
     /**

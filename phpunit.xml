@@ -32,5 +32,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- страница встречи не спрашивает сервер Jitsi из тестов: сеть не нужна -->
+        <env name="JITSI_EMBED" value="never"/>
     </php>
 </phpunit>

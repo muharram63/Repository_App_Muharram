@@ -228,7 +228,7 @@ class CalibExaminer implements TaskExaminer
         ];
     }
 
-    public function grade(AiTestTask $task, string $solution): array
+    public function grade(AiTestTask $task, string $solution, int $part = 0): array
     {
         if (trim($solution) === '') {
             return ['score' => 0, 'review' => [], 'summary' => 'Решение пустое.', 'executed' => false, 'execution' => []];

@@ -79,7 +79,7 @@ class AdminDashboardController extends Controller
 
     private function monthLabel(Carbon $date): string
     {
-        $months = [1 => 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+        $months = [1 => __('Янв'), __('Фев'), __('Мар'), __('Апр'), __('Май'), __('Июн'), __('Июл'), __('Авг'), __('Сен'), __('Окт'), __('Ноя'), __('Дек')];
 
         return $months[(int) $date->format('n')];
     }

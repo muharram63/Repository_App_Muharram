@@ -119,18 +119,20 @@
     .av-card [hidden] { display: none !important; }
 
     .av-card {
-        display: flex; flex-direction: column; gap: 14px;
+        display: flex; flex-direction: column; gap: 14px; min-width: 0; max-width: 100%; box-sizing: border-box;
         padding: 18px; border-radius: var(--radius, 12px);
         background: var(--white, #fff); border: 1px solid var(--gray-200, #E5E7EB);
     }
 
-    .av-stage { display: flex; align-items: center; gap: 16px; min-width: 0; }
+    /* Подпись рядом с фигурой, а если места мало — под ней: в узкой колонке
+       «HR-специалист, ИИ» не помещалась справа и вылезала за рамку. */
+    .av-stage { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 16px; min-width: 0; }
 
     .av-figure { width: 132px; height: 132px; flex: none; overflow: visible; }
 
-    .av-meta { min-width: 0; }
-    .av-name { font-weight: 700; color: var(--ink, #111827); }
-    .av-role { font-size: 13px; color: var(--gray-500, #6B7280); }
+    .av-meta { min-width: 0; flex: 1 1 120px; overflow-wrap: break-word; hyphens: auto; }
+    .av-name { font-weight: 700; color: var(--ink, #111827); line-height: 1.3; }
+    .av-role { font-size: 13px; color: var(--gray-500, #6B7280); line-height: 1.35; margin-top: 2px; }
     .av-state {
         margin-top: 6px; font-size: 12px; font-weight: 600;
         color: var(--indigo-600, #4F46E5);
@@ -292,6 +294,8 @@
         let synthetic = null;   // таймер псевдоогибающей для голоса браузера
         let blinkTimer = null;
         let statusPoll = null;
+        // текущее ожидание звука: новая реплика отменяет прежнее
+        let waiting = null;
 
         try { muted = localStorage.getItem(muteKey) === 'off'; } catch (e) {}
 
@@ -467,7 +471,8 @@
             cancelAnimationFrame(frame);
             frame = null;
             stopSynthetic();
-            clearInterval(statusPoll);
+            clearTimeout(statusPoll);
+            waiting = null;
             closeMouth();
         }
 
@@ -478,26 +483,44 @@
          * statusUrl — адрес, где можно спросить, дождался ли звук синтеза;
          * text      — то, что прочитает браузер, если файла нет или он не дошёл.
          */
+        /*
+         * Реплика договорена — сообщаем тому, кто просил её сказать.
+         *
+         * Нужен голосовому режиму: как в живом разговоре, кандидат начинает
+         * отвечать, когда собеседник замолчал, — и микрофон включается сам.
+         * Зовётся один раз на реплику, как бы она ни закончилась: доиграл файл,
+         * дочитал браузер, говорить было нечем или звук выключен.
+         */
+        let current = null;
+
+        function finished() {
+            const done = current && current.onEnd;
+            current = null;
+
+            if (typeof done === 'function') { done(); }
+        }
+
         function speak(options) {
             const opts = options || {};
             last = opts;
 
             stop();
+            current = opts;
 
-            if (muted) { setState('idle'); return; }
+            if (muted) { setState('idle'); finished(); return; }
 
             if (opts.audioUrl) {
-                playFile(opts.audioUrl, opts.text);
+                playFile(opts.audioUrl, opts.text, opts.lang);
             } else if (opts.statusUrl) {
                 // звук ещё готовится: аватар думает, текст уже на экране
                 setState('thinking');
                 waitForSpeech(opts);
             } else {
-                speakByBrowser(opts.text);
+                speakByBrowser(opts.text, opts.lang);
             }
         }
 
-        function playFile(url, fallbackText) {
+        function playFile(url, fallbackText, lang) {
             const analysing = ensureAnalyser();
             unlock();
 
@@ -512,7 +535,7 @@
                         Это не поломка: показываем кнопку и ждём клика, а не
                         роняем собеседование.
                     */
-                    showPlayButton(url, fallbackText);
+                    showPlayButton(function () { playFile(url, fallbackText, lang); });
                 });
             }
 
@@ -535,29 +558,58 @@
                 closeMouth();
                 setState('idle');
                 scheduleBlink();
+                finished();
             };
 
             audio.onerror = function () {
                 // файл не дошёл или битый — читаем текстом, чтобы вопрос
                 // всё равно был произнесён
-                speakByBrowser(fallbackText);
+                speakByBrowser(fallbackText, lang);
             };
         }
 
         /**
          * Голос браузера. Работает без сети и без ключа, но амплитуды не даёт.
          */
-        function speakByBrowser(text) {
+        /*
+         * Голос браузера под язык собеседования, а не интерфейса.
+         *
+         * Раньше язык брался из страницы, и при таджикском интерфейсе браузер
+         * искал таджикский голос, которого почти нигде нет, — и молчал. Если
+         * голоса нужного языка нет, читаем русским: таджикский пишется
+         * кириллицей, и так вопрос хотя бы прозвучит.
+         */
+        const LOCALES = {ru: 'ru-RU', en: 'en-US', tg: 'tg-TJ'};
+
+        // Chrome отдаёт список голосов не сразу: просим его заранее, чтобы к
+        // первому вопросу нужный голос уже был известен
+        try { window.speechSynthesis && window.speechSynthesis.getVoices(); } catch (e) {}
+
+        function pickVoice(lang) {
+            const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+            const wanted = (lang || '').toLowerCase().slice(0, 2);
+
+            return voices.find(function (v) { return v.lang.toLowerCase().indexOf(wanted) === 0; })
+                || voices.find(function (v) { return v.lang.toLowerCase().indexOf('ru') === 0; })
+                || null;
+        }
+
+        function speakByBrowser(text, lang) {
             if (!text || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') {
                 // говорить нечем — аватар стоит молча, вопрос читается глазами
                 setState('idle');
                 closeMouth();
+                finished();
 
                 return;
             }
 
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = document.documentElement.lang || 'ru-RU';
+            const code = lang || document.documentElement.lang || 'ru';
+            const voice = pickVoice(code);
+
+            utterance.lang = voice ? voice.lang : (LOCALES[code] || 'ru-RU');
+            if (voice) { utterance.voice = voice; }
             utterance.rate = 0.98;
             utterance.pitch = 1.0;
 
@@ -573,11 +625,31 @@
                 follow(0.3 + Math.random() * 0.25);
             };
 
-            utterance.onend = utterance.onerror = function () {
+            utterance.onend = function () {
                 stopSynthetic();
                 closeMouth();
                 setState('idle');
                 scheduleBlink();
+                finished();
+            };
+
+            utterance.onerror = function (event) {
+                stopSynthetic();
+                closeMouth();
+                setState('idle');
+
+                // браузер не даёт говорить до первого клика по странице —
+                // предлагаем кнопку, а не молчим
+                if (event && event.error === 'not-allowed') {
+                    showPlayButton(function () { speakByBrowser(text, lang); });
+
+                    return;
+                }
+
+                // прервали новой репликой — не наш конец; иначе договорили как смогли
+                if (!event || event.error !== 'interrupted' && event.error !== 'canceled') {
+                    finished();
+                }
             };
 
             try {
@@ -585,6 +657,7 @@
                 window.speechSynthesis.speak(utterance);
             } catch (e) {
                 setState('idle');
+                finished();
             }
         }
 
@@ -592,17 +665,23 @@
          * Ждём, пока очередь озвучит вопрос. Если не дождались — читает браузер.
          */
         function waitForSpeech(opts) {
-            let tries = 0;
+            /*
+             * Спрашиваем по очереди, а не по таймеру.
+             *
+             * Первый же запрос сам озвучивает реплику на сервере (около пяти
+             * секунд, длинный вопрос — до двадцати), поэтому ждём его ответа,
+             * а не шлём следом новые. Сорок пять секунд — с запасом; дальше читаем
+             * голосом браузера, чтобы вопрос всё равно прозвучал.
+             */
+            const deadline = Date.now() + 45000;
+            const ticket = {};
+            waiting = ticket;
 
-            clearInterval(statusPoll);
-            statusPoll = setInterval(function () {
-                tries++;
+            function ask() {
+                if (waiting !== ticket) { return; }
 
-                // около двадцати секунд ожидания: синтез занимает четыре,
-                // дольше ждать незачем — прочитаем сами
-                if (tries > 10) {
-                    clearInterval(statusPoll);
-                    speakByBrowser(opts.text);
+                if (Date.now() > deadline) {
+                    speakByBrowser(opts.text, opts.lang);
 
                     return;
                 }
@@ -610,23 +689,28 @@
                 fetch(opts.statusUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
                     .then(function (r) { return r.ok ? r.json() : null; })
                     .then(function (data) {
-                        if (!data) { return; }
+                        if (waiting !== ticket) { return; }
 
-                        if (data.status === 'ready' && data.url) {
-                            clearInterval(statusPoll);
-                            playFile(data.url, opts.text);
-                        } else if (data.status === 'failed' || data.status === 'none') {
-                            clearInterval(statusPoll);
-                            speakByBrowser(opts.text);
+                        if (data && data.status === 'ready' && data.url) {
+                            playFile(data.url, opts.text, opts.lang);
+                        } else if (data && (data.status === 'failed' || data.status === 'none')) {
+                            speakByBrowser(opts.text, opts.lang);
+                        } else {
+                            statusPoll = setTimeout(ask, 1500);
                         }
                     })
-                    .catch(function () { /* сеть мигнула — попробуем на следующем тике */ });
-            }, 2000);
+                    .catch(function () {
+                        // сеть мигнула — спросим ещё раз
+                        statusPoll = setTimeout(ask, 1500);
+                    });
+            }
+
+            ask();
         }
 
         // ==================== кнопки ====================
 
-        function showPlayButton(url, text) {
+        function showPlayButton(play) {
             playBtn.hidden = false;
             playLabel.textContent = @json(__('Озвучить'));
             setState('idle');
@@ -634,7 +718,7 @@
             playBtn.onclick = function () {
                 unlock();
                 playBtn.hidden = true;
-                playFile(url, text);
+                play();
             };
         }
 
@@ -658,6 +742,8 @@
             if (muted) {
                 stop();
                 setState('idle');
+                // замолчала по просьбе — для разговора это тоже «договорила»
+                finished();
             } else if (last) {
                 speak(last);
             }

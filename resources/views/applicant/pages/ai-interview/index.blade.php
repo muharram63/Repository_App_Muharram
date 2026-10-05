@@ -44,7 +44,10 @@
             border-radius: var(--radius); padding: 22px; text-align: center; color: var(--gray-500);
         }
         .iv-note { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--wash-good); color: var(--ink-good); }
-    </style>
+            .iv-progress { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+        .iv-progress .iv-bar { flex: 1; margin-top: 0; }
+        .iv-percent { font-size: 12px; font-weight: 700; color: var(--indigo-600); min-width: 38px; text-align: right; }
+</style>
 </head>
 <body>
 <div class="app">
@@ -109,26 +112,41 @@
                             <div class="iv-title">{{ $interview->vacancy?->title ?? __('Вакансия удалена') }}</div>
                             <div class="iv-meta">
                                 {{ $interview->vacancy?->employer?->company_name }}
-                                @if($interview->outcome)
-                                    <span class="iv-badge {{ match($interview->outcome) {
+                                {{-- Итог кандидат видит, только когда ответ отправлен: до этого
+                                     решение ИИ смотрит работодатель. --}}
+                                @if($interview->isAnnounced())
+                                    @php $shown = $interview->latestDecision->effectiveOutcome(); @endphp
+                                    <span class="iv-badge {{ match($shown) {
                                         'passed' => 'iv-pass',
                                         'rejected' => 'iv-fail',
                                         default => 'iv-wait',
-                                    } }}" style="margin-left:6px">{{ $interview->outcomeLabel() }}</span>
+                                    } }}" style="margin-left:6px">{{ $interview->latestDecision->outcomeLabel() }}</span>
+                                @elseif($interview->candidateFinished())
+                                    <span class="iv-badge iv-pass" style="margin-left:6px">
+                                        {{ __('Вы прошли все шаги — ждём ответа, он придёт в уведомления') }}
+                                    </span>
                                 @else
                                     <span class="iv-badge iv-go" style="margin-left:6px">
                                         {{ $interview->stageLabel() }}
                                     </span>
                                 @endif
                             </div>
-                            <div class="iv-bar"><i style="width: {{ $interview->progress() }}%"></i></div>
+                            {{-- процент по настоящим шагам: согласие, документы, каждый
+                                 ответ в разговоре, тестовая часть, проверка, ответ --}}
+                            @php $percent = $interview->progress(); @endphp
+                            <div class="iv-progress">
+                                <div class="iv-bar"><i style="width: {{ $percent }}%"></i></div>
+                                <span class="iv-percent">{{ $percent }}%</span>
+                            </div>
                         </div>
 
                         <div>
-                            @if($interview->isDecided())
+                            @if($interview->isAnnounced())
                                 <a class="iv-btn" href="{{ route('applicant.ai.result', $interview) }}">
                                     {{ __('Смотреть результат') }}
                                 </a>
+                            @elseif($interview->candidateFinished())
+                                {{-- всё пройдено, ответ у работодателя — идти некуда --}}
                             @else
                                 <a class="iv-btn" href="{{ route('applicant.ai.interview', $interview) }}">
                                     {{ $interview->consented() ? __('Продолжить') : __('Начать') }}
@@ -140,6 +158,47 @@
         </div>
     </main>
 </div>
+
+@php
+    // кандидат всё прошёл, а ИИ ещё не закончил: проверка решений или решение
+    $working = $interviews->filter(fn ($i) => $i->candidateFinished() && ! $i->isAnnounced() && ! $i->latestDecision);
+@endphp
+
+@if($working->isNotEmpty())
+<script>
+    /*
+     * ИИ ведёт собеседование до конца сам.
+     *
+     * Кандидат всё прошёл, но проверка решений и рекомендация для
+     * работодателя ещё не готовы. Пока открыт этот список, страница просит
+     * сервер сделать следующий шаг — по очереди для каждого собеседования.
+     * Кандидат ничего не ждёт: ответ придёт в уведомления.
+     */
+    (function () {
+        const urls = @json($working->map(fn ($i) => route('applicant.ai.pump', $i))->values());
+        const token = @json(csrf_token());
+
+        function run(url, tries) {
+            if (tries <= 0) { return; }
+
+            fetch(url, {
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+            })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                    // шаг сделан — следующий; ждём модель — реже; всё готово — хватит
+                    if (!data || data.decided) { return; }
+                    if (data.did === null && data.stage === 'done') { return; }
+                    setTimeout(function () { run(url, tries - 1); }, data.did && data.did !== 'busy' ? 800 : 5000);
+                })
+                .catch(function () { setTimeout(function () { run(url, tries - 1); }, 6000); });
+        }
+
+        urls.forEach(function (url) { run(url, 40); });
+    })();
+</script>
+@endif
 
 @include('applicant.partials.js')
 @include('applicant.partials.script')

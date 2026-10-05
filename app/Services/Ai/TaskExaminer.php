@@ -50,5 +50,10 @@ interface TaskExaminer
      * @throws AiUnavailableException
      * @throws AiInvalidAnswerException
      */
-    public function grade(AiTestTask $task, string $solution): array;
+    /**
+     * Проверить решение одного практического задания. $part — номер задания
+     * по порядку AiTestTask::practical(): их несколько, и каждое проверяется
+     * отдельно.
+     */
+    public function grade(AiTestTask $task, string $solution, int $part = 0): array;
 }

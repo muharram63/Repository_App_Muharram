@@ -28,8 +28,8 @@ Route::prefix('resume/assistant')->name('resume.assistant')->group(function () {
     Route::delete('{draft}', [$controller, 'destroy'])->whereNumber('draft')->name('.destroy');
 });
 
-// ИИ-собеседование: пока только голос аватара. Страница диалога появится
-// вместе с остальными этапами модуля, компонент встанет в неё готовым.
+// ИИ-собеседование кандидата: согласие, документы, разговор с ИИ, тестовое
+// задание и результат. Голос аватара — страница проверки и озвучка реплик.
 Route::prefix('ai-interview')->name('ai.')->group(function () {
     $speech = \App\Http\Controllers\Applicant\AiSpeechController::class;
 
@@ -47,6 +47,10 @@ Route::prefix('ai-interview')->name('ai.')->group(function () {
     Route::get('{interview}', [$interview, 'show'])->whereNumber('interview')->name('interview');
     Route::post('{interview}/consent', [$interview, 'consent'])->whereNumber('interview')->name('consent');
     Route::delete('{interview}', [$interview, 'decline'])->whereNumber('interview')->name('decline');
+
+    // следующий шаг собеседования без очереди: оценки, проверка, решение
+    Route::post('{interview}/pump', [$interview, 'pump'])
+        ->whereNumber('interview')->middleware('throttle:40,1')->name('pump');
 
     Route::get('{interview}/result', [$interview, 'result'])
         ->whereNumber('interview')->name('result');
@@ -76,6 +80,10 @@ Route::prefix('ai-interview')->name('ai.')->group(function () {
     $task = \App\Http\Controllers\Applicant\AiTaskController::class;
 
     Route::get('{interview}/task', [$task, 'show'])->whereNumber('interview')->name('task');
+    // составить задание заранее — зовёт страница разговора в фоне и страница
+    // задания, если кандидат пришёл раньше, чем оно готово
+    Route::post('{interview}/task/prepare', [$task, 'prepare'])
+        ->whereNumber('interview')->middleware('throttle:12,1')->name('task.prepare');
     Route::post('{interview}/task', [$task, 'submit'])
         ->whereNumber('interview')->middleware('throttle:10,1')->name('task.submit');
 
@@ -84,6 +92,9 @@ Route::prefix('ai-interview')->name('ai.')->group(function () {
             ->whereNumber('interview')->name('chat.begin');
         Route::post('{interview}/chat/answer', [$chat, 'answer'])
             ->whereNumber('interview')->name('chat.answer');
+        // голосовой режим: устный ответ, если браузер не распознал речь сам
+        Route::post('{interview}/chat/transcribe', [$chat, 'transcribe'])
+            ->whereNumber('interview')->name('chat.transcribe');
     });
 
     // Озвучка произвольного текста — только для страницы проверки. Частота

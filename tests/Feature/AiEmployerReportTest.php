@@ -330,7 +330,12 @@ test('кандидат узнаёт, что решение принял чело
         ->where('title', 'Вы прошли отбор')->first();
 
     expect($note)->not->toBeNull()
-        ->and($note->body)->toContain('принял работодатель');
+        ->and($note->body)->toContain('Поздравляем');
+
+    // на странице результата сказано, что решил человек
+    $this->actingAs($interview->applicant->user)
+        ->get(route('applicant.ai.result', $interview))
+        ->assertSee(__('Итоговое решение принял работодатель.'));
 });
 
 test('неверный исход не принимается', function () {
@@ -485,4 +490,491 @@ test('в списке вакансий видна кнопка кандидат�
     $this->actingAs($employerUser)->get(route('employer.ai.index'))
         ->assertOk()
         ->assertSee(route('employer.ai.candidates', $vacancy), false);
+});
+
+// ==================== файлы документов ====================
+
+test('работодатель открывает файл документа из отчёта', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $document = $interview->documents()->first();
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertSee(route('employer.ai.candidate.document', [$vacancy, $interview, $document]), false);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate.document', [$vacancy, $interview, $document]))
+        ->assertOk();
+});
+
+test('чужой работодатель файл документа не получит', function () {
+    [$vacancy, $interview] = reportReady();
+    $document = $interview->documents()->first();
+    $stranger = User::factory()->employer()->create();
+    makeEmployer($stranger);
+
+    $this->actingAs($stranger)
+        ->get(route('employer.ai.candidate.document', [$vacancy, $interview, $document]))
+        ->assertForbidden();
+});
+
+test('в выгрузке ссылки на файл нет: её открывают без площадки', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $document = $interview->documents()->first();
+
+    $html = $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate.export', [$vacancy, $interview]))
+        ->streamedContent();
+
+    expect($html)->toContain('diplom.pdf')
+        ->and($html)->not->toContain(route('employer.ai.candidate.document', [$vacancy, $interview, $document]));
+});
+
+// ==================== удаление каскадом ====================
+
+/*
+ * Каскад базы уносит строки собеседования, но не файлы дипломов. Удаление
+ * аккаунта и вакансии обязано стирать и их.
+ */
+test('удаление вакансии стирает файлы документов кандидатов', function () {
+    [$vacancy, $interview] = reportReady();
+    $path = $interview->documents()->first()->path;
+
+    $vacancy->delete();
+
+    Storage::disk('local')->assertMissing($path);
+    expect(AiInterview::find($interview->id))->toBeNull();
+});
+
+test('удаление аккаунта кандидата стирает файлы его документов', function () {
+    [, $interview] = reportReady();
+    $path = $interview->documents()->first()->path;
+
+    $interview->applicant->user->delete();
+
+    Storage::disk('local')->assertMissing($path);
+});
+
+test('удаление аккаунта работодателя стирает файлы кандидатов по его вакансиям', function () {
+    [, $interview, $employerUser] = reportReady();
+    $path = $interview->documents()->first()->path;
+
+    $employerUser->delete();
+
+    Storage::disk('local')->assertMissing($path);
+});
+
+
+// ==================== решение работодателя: крайние случаи ====================
+
+/*
+ * Разбор документов провалился: собеседование ушло «на ручную проверку» без
+ * записи решения. Раньше работодатель получал «решения ещё нет — переопределять
+ * нечего», и кандидату не мог ответить никто.
+ */
+test('работодатель решает по кандидату, которого система передала без решения', function () {
+    [$vacancy, , $employerUser] = reportReady();
+
+    [$stuck, , $candidate] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'documents', 'analysis_status' => 'failed',
+        'requires_review' => true, 'outcome' => 'manual_review',
+    ]);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $stuck]))
+        ->assertOk()
+        ->assertSee(__('Принять решение'));
+
+    $this->actingAs($employerUser)
+        ->post(route('employer.ai.candidate.override', [$vacancy, $stuck]), ['outcome' => 'passed'])
+        ->assertSessionHas('status');
+
+    $stuck->refresh();
+
+    expect($stuck->outcome)->toBe('passed')
+        ->and($stuck->requires_review)->toBeFalse()
+        ->and($stuck->latestDecision)->not->toBeNull()
+        ->and($stuck->latestDecision->outcome)->toBe('manual_review')
+        ->and($stuck->latestDecision->effectiveOutcome())->toBe('passed');
+
+    // и кандидат наконец видит результат
+    $this->actingAs($candidate)
+        ->get(route('applicant.ai.result', $stuck))
+        ->assertOk()
+        ->assertSee('Поздравляем');
+});
+
+/*
+ * Раньше менялся только исход: кандидат видел «Прошёл отбор», а под ним
+ * письмо-отказ, которое ИИ написал раньше.
+ */
+test('после переопределения кандидат получает письмо под новый исход', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+
+    $this->actingAs($employerUser)
+        ->post(route('employer.ai.candidate.override', [$vacancy, $interview]), ['outcome' => 'passed']);
+
+    $decision = $interview->fresh()->latestDecision;
+
+    expect($decision->candidateMessage())->toContain('Поздравляем')
+        // письмо ИИ сохранено как было — сказанное должно быть воспроизводимо
+        ->and($decision->message_to_candidate)->toBe('Спасибо за собеседование. К сожалению…');
+
+    $this->actingAs($interview->applicant->user)
+        ->get(route('applicant.ai.result', $interview))
+        ->assertSee('Поздравляем')
+        ->assertDontSee('К сожалению…');
+
+    // работодатель видит оба письма
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertSee('К сожалению…')
+        ->assertSee(__('После вашего решения кандидат получил'));
+});
+
+test('пока собеседование идёт, решение не принимается', function () {
+    [$vacancy, , $employerUser] = reportReady();
+
+    [$running] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'interview', 'analysis_status' => 'ready',
+    ]);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $running]))
+        ->assertOk()
+        ->assertDontSee(route('employer.ai.candidate.override', [$vacancy, $running]), false);
+
+    $this->actingAs($employerUser)
+        ->post(route('employer.ai.candidate.override', [$vacancy, $running]), ['outcome' => 'rejected'])
+        ->assertSessionHas('error');
+
+    expect($running->fresh()->outcome)->toBeNull();
+});
+
+// ==================== сводка для работодателя ====================
+
+test('отчёт открывается рекомендацией ИИ, соответствием и резюме', function () {
+    [$vacancy, $interview, $employerUser] = reportReady(outcome: 'passed');
+    $interview->latestDecision->update(['outcome' => 'passed']);
+    $interview->applicant->resume()->latest('id')->first()->update(['skills' => 'PHP, Laravel, MySQL']);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Рекомендация ИИ'))
+        ->assertSee(__('Рекомендую принять кандидата'))
+        ->assertSee(__('Соответствие требованиям вакансии'))
+        // PHP найдено (60), SQL нет (40) — 60%
+        ->assertSee('60%')
+        ->assertSee(__('Резюме кандидата'))
+        ->assertSee('Laravel')
+        ->assertSee(__('Ждёт вашего разрешения: ИИ ничего не отправит кандидату, пока вы не подтвердите или не измените решение.'))
+        ->assertSee(route('employer.ai.candidate.approve', [$vacancy, $interview]), false);
+});
+
+test('после отправки ответа кнопки подтверждения нет', function () {
+    [$vacancy, $interview, $employerUser] = reportReady(outcome: 'passed');
+    $interview->latestDecision->update(['outcome' => 'passed', 'released_at' => now(), 'release_source' => 'employer']);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('по вашему решению'))
+        ->assertDontSee(route('employer.ai.candidate.approve', [$vacancy, $interview]), false);
+});
+
+test('ручную проверку одной кнопкой не подтвердить', function () {
+    [$vacancy, $interview, $employerUser] = reportReady(outcome: 'manual_review');
+    $interview->latestDecision->update(['outcome' => 'manual_review']);
+
+    $this->actingAs($employerUser)
+        ->post(route('employer.ai.candidate.approve', [$vacancy, $interview]))
+        ->assertSessionHas('error');
+
+    expect($interview->fresh()->isAnnounced())->toBeFalse();
+});
+
+test('пока решения нет, работодатель видит, что именно сейчас происходит', function () {
+    [$vacancy, , $employerUser] = reportReady();
+
+    [$running] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'interview', 'analysis_status' => 'ready',
+    ]);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $running]))
+        ->assertOk()
+        ->assertSee(__('Кандидат отвечает на вопросы ИИ'))
+        ->assertDontSee(__('Отбор ещё идёт'));
+});
+
+// ==================== обсуждение кандидата с ИИ ====================
+
+/** Анна-советник без сети: отвечает заранее заданным. */
+function fakeAdvisor(string $reply = 'Кандидат подходит: PHP подтверждён.', string $action = 'none'): object
+{
+    $advisor = new class($reply, $action) implements App\Services\Ai\HiringAdvisor
+    {
+        public array $calls = [];
+
+        public function __construct(private string $reply, private string $action)
+        {
+        }
+
+        public function available(): bool
+        {
+            return true;
+        }
+
+        public function advise(AiInterview $interview, array $history, string $message, string $locale): array
+        {
+            $this->calls[] = compact('history', 'message', 'locale');
+
+            return ['reply' => $this->reply, 'action' => $this->action];
+        }
+    };
+
+    app()->instance(App\Services\Ai\HiringAdvisor::class, $advisor);
+
+    return $advisor;
+}
+
+test('на странице отчёта есть голосовое обсуждение кандидата с ИИ', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Обсудить кандидата с ИИ'))
+        ->assertSee('id="adStart"', false)
+        ->assertSee('id="adMic"', false)
+        ->assertSee(trim(json_encode(route('employer.ai.candidate.advise', [$vacancy, $interview])), '"'), false);
+});
+
+test('Анна отвечает работодателю по отчёту', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $advisor = fakeAdvisor();
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.advise', [$vacancy, $interview]), [
+            'message' => 'Почему такая рекомендация?',
+            'history' => [['role' => 'ai', 'text' => 'Здравствуйте!']],
+        ])
+        ->assertOk()
+        ->assertJsonPath('reply', 'Кандидат подходит: PHP подтверждён.')
+        ->assertJsonPath('action', 'none');
+
+    expect($advisor->calls[0]['message'])->toBe('Почему такая рекомендация?')
+        ->and($advisor->calls[0]['history'])->toHaveCount(1);
+});
+
+/*
+ * Решение голосом Анна только предлагает: страница переспрашивает, и ответ
+ * кандидату уходит обычными кнопками после «да». Сам совет ничего не отправляет.
+ */
+test('«принимаем» голосом — это предложение, а не отправка', function () {
+    [$vacancy, $interview, $employerUser] = reportReady(outcome: 'passed');
+    $interview->latestDecision->update(['outcome' => 'passed']);
+    fakeAdvisor('Отправить кандидату, что он принят? Скажите да или нет.', 'accept');
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.advise', [$vacancy, $interview]), ['message' => 'Принимаем его'])
+        ->assertJsonPath('action', 'accept')
+        ->assertJsonPath('can_approve', true)
+        ->assertJsonPath('recommended', 'passed')
+        ->assertJsonPath('awaits', true);
+
+    // ответ кандидату не ушёл
+    expect($interview->fresh()->isAnnounced())->toBeFalse();
+});
+
+test('чужой работодатель Анну о кандидате не спросит', function () {
+    [$vacancy, $interview] = reportReady();
+    fakeAdvisor();
+    $stranger = User::factory()->employer()->create();
+    makeEmployer($stranger);
+
+    $this->actingAs($stranger)
+        ->postJson(route('employer.ai.candidate.advise', [$vacancy, $interview]), ['message' => 'Расскажи'])
+        ->assertForbidden();
+});
+
+test('ответ Анны озвучивается для работодателя', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+
+    app()->instance(App\Services\Ai\SpeechSynthesizer::class, new class implements App\Services\Ai\SpeechSynthesizer
+    {
+        public function available(): bool
+        {
+            return true;
+        }
+
+        public function voice(): string
+        {
+            return 'Sulafat';
+        }
+
+        public function speak(string $text): array
+        {
+            return ['bytes' => 'RIFF-звук', 'mime' => 'audio/wav', 'tokens' => 1];
+        }
+    });
+
+    $this->actingAs($employerUser)
+        ->post(route('employer.ai.candidate.speak', [$vacancy, $interview]), ['text' => 'Кандидат подходит.'])
+        ->assertOk()
+        ->assertHeader('Content-Type', 'audio/wav');
+});
+
+test('голос работодателя распознаётся на языке его интерфейса', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+
+    $recognizer = new class implements App\Services\Ai\SpeechRecognizer
+    {
+        public ?string $language = 'не вызывали';
+
+        public function available(): bool
+        {
+            return true;
+        }
+
+        public function transcribe(AiInterview $interview, string $audio, string $mime, ?string $language = null): string
+        {
+            $this->language = $language;
+
+            return 'Принимаем его';
+        }
+    };
+    app()->instance(App\Services\Ai\SpeechRecognizer::class, $recognizer);
+
+    $wav = Illuminate\Http\UploadedFile::fake()->createWithContent(
+        'speech.wav',
+        'RIFF'.pack('V', 68).'WAVEfmt '.pack('VvvVVvv', 16, 1, 1, 16000, 32000, 2, 16).'data'.pack('V', 32).str_repeat("\0", 32),
+    );
+
+    $this->actingAs($employerUser)
+        ->post(route('employer.ai.candidate.listen', [$vacancy, $interview]), ['audio' => $wav], ['Accept' => 'application/json'])
+        ->assertOk()
+        ->assertJsonPath('text', 'Принимаем его');
+
+    expect($recognizer->language)->toBe('ru');
+});
+
+test('Анна говорит только по отчёту и решение лишь переспрашивает', function () {
+    [$vacancy, $interview] = reportReady();
+
+    Illuminate\Support\Facades\Http::fake(['*' => Illuminate\Support\Facades\Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['reply' => 'Кандидат знает Laravel.', 'action' => 'none'])],
+    ]]]])]);
+
+    $advisor = new App\Services\Ai\GeminiHiringAdvisor(
+        new App\Services\Ai\AiJournal(new App\Services\Ai\GeminiClient([
+            'key' => 'k', 'model' => 'gemini-3.5-flash-lite', 'model_scoring' => 'gemini-3.6-flash',
+            'model_vision' => 'gemini-3.6-flash', 'revision' => 'r', 'timeout' => 5, 'connect_timeout' => 3,
+        ])),
+        new App\Services\Security\InjectionGuard,
+    );
+
+    expect($advisor->advise($interview, [], 'Что с SQL?', 'ru'))
+        ->toBe(['reply' => 'Кандидат знает Laravel.', 'action' => 'none']);
+
+    Illuminate\Support\Facades\Http::assertSent(function ($request) {
+        $body = json_encode($request->data(), JSON_UNESCAPED_UNICODE);
+
+        return str_contains($body, 'Опирайся только на отчёт')
+            && str_contains($body, 'Сам ничего не отправляй')
+            && str_contains($body, 'ОТЧЁТ ПО КАНДИДАТУ')
+            // цитата из требований попала в отчёт для модели
+            && str_contains($body, 'Четыре года на Laravel в Алиф Банке');
+    });
+});
+
+// ==================== проверка теста со страницы работодателя ====================
+
+/*
+ * Кандидат отправил решения и на сайт не вернулся — проверку раньше никто не
+ * двигал, а Анна объясняла это так, будто проверки нет. Теперь её доводит до
+ * конца страница отчёта.
+ */
+test('страница отчёта сама доводит проверку теста до конца', function () {
+    [$vacancy, , $employerUser] = reportReady();
+
+    [$finished] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'test', 'analysis_status' => 'ready', 'documents_score' => 70,
+    ]);
+    $task = AiTestTask::create([
+        'ai_interview_id' => $finished->id, 'kind' => 'main', 'statement' => 'Задание',
+        'format' => 'case', 'reference_solution' => 'эталон', 'rubric' => [['point' => 'п', 'weight' => 1]],
+        'issued_at' => now(), 'deadline_at' => now()->addHour(),
+    ]);
+    AiTestSubmission::create(['ai_test_task_id' => $task->id, 'content' => 'решение', 'submitted_at' => now()]);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $finished]))
+        ->assertOk()
+        ->assertSee(__('ИИ проверяет тест и задания кандидата — это займёт около минуты. Страница обновится сама.'))
+        ->assertSee(trim(json_encode(route('employer.ai.candidate.pump', [$vacancy, $finished])), '"'), false);
+
+    app()->instance(App\Services\Ai\TaskExaminer::class, new class implements App\Services\Ai\TaskExaminer
+    {
+        public function available(): bool { return true; }
+
+        public function compose(AiInterview $interview, $criteria): array { return []; }
+
+        public function grade(AiTestTask $task, string $solution, int $part = 0): array
+        {
+            return ['score' => 75, 'review' => [], 'summary' => 'Хорошо.', 'executed' => false, 'execution' => []];
+        }
+    });
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.pump', [$vacancy, $finished]))
+        ->assertOk()
+        ->assertJsonPath('did', 'grade')
+        ->assertJsonPath('graded', true);
+
+    expect(AiTestSubmission::where('ai_test_task_id', $task->id)->sole()->score)->toBe(75);
+});
+
+test('чужой работодатель проверку не двигает', function () {
+    [$vacancy, $interview] = reportReady();
+    $stranger = User::factory()->employer()->create();
+    makeEmployer($stranger);
+
+    $this->actingAs($stranger)
+        ->postJson(route('employer.ai.candidate.pump', [$vacancy, $interview]))
+        ->assertForbidden();
+});
+
+test('Анна не говорит, что проверки нет, — говорит, что проверяет', function () {
+    [$vacancy, $interview] = reportReady();
+
+    Illuminate\Support\Facades\Http::fake(['*' => Illuminate\Support\Facades\Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['reply' => 'Проверяю прямо сейчас.', 'action' => 'none'])],
+    ]]]])]);
+
+    (new App\Services\Ai\GeminiHiringAdvisor(
+        new App\Services\Ai\AiJournal(new App\Services\Ai\GeminiClient([
+            'key' => 'k', 'model' => 'gemini-3.5-flash-lite', 'model_scoring' => 'gemini-3.6-flash',
+            'model_vision' => 'gemini-3.6-flash', 'revision' => 'r', 'timeout' => 5, 'connect_timeout' => 3,
+        ])),
+        new App\Services\Security\InjectionGuard,
+    ))->advise($interview, [], 'Что с тестом?', 'ru');
+
+    Illuminate\Support\Facades\Http::assertSent(fn ($request) => str_contains(
+        json_encode($request->data(), JSON_UNESCAPED_UNICODE),
+        'что такой функции нет — это неправда',
+    ));
+});
+
+test('подпись аватара переносится, а не вылезает за рамку', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee('.av-stage { display: flex; flex-wrap: wrap;', false)
+        ->assertSee('overflow-wrap: break-word', false)
+        // реплики подписаны: кто говорит
+        ->assertSee('ad-who', false);
 });

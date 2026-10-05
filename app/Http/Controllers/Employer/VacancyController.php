@@ -50,7 +50,7 @@ class VacancyController extends Controller
 
         $validated = $request->validate([
            'title' => 'required|string|max:255',
-           'description' => 'required|string|max:600',
+           'description' => 'required|string|max:'.Vacancy::DESCRIPTION_MAX,
            // колонка int: без верхней границы «зарплата-гигант» роняла сохранение (22003),
            // а gte не даёт указать верхнюю границу вилки ниже нижней
            'salary_from' => 'required|numeric|min:0|max:2000000000',
@@ -63,7 +63,7 @@ class VacancyController extends Controller
             // языки необязательны: многим вакансиям они не важны,
             // и пустое поле значит «не требуется», а не «не заполнено»
             'languages' => 'nullable|string|max:255',
-            'status' => 'required|string|max:255',
+            'status' => 'required|in:'.implode(',', Vacancy::STATUSES),
             'city_id' => 'required|exists:cities,id',
               ]);
         $validated['employer_id'] = $employer->id;
@@ -109,7 +109,7 @@ class VacancyController extends Controller
             'title' => 'required|string|max:255',
             // тот же предел, что и при создании: иначе вакансию с описанием
             // длиннее 255 нельзя было пересохранить после любой правки
-            'description' => 'required|string|max:600',
+            'description' => 'required|string|max:'.Vacancy::DESCRIPTION_MAX,
             // колонка int: без верхней границы «зарплата-гигант» роняла сохранение (22003),
             // а gte не даёт указать верхнюю границу вилки ниже нижней
             'salary_from' => 'required|numeric|min:0|max:2000000000',
@@ -122,7 +122,7 @@ class VacancyController extends Controller
             // языки необязательны: многим вакансиям они не важны,
             // и пустое поле значит «не требуется», а не «не заполнено»
             'languages' => 'nullable|string|max:255',
-            'status' => 'required|string|max:255',
+            'status' => 'required|in:'.implode(',', Vacancy::STATUSES),
             'city_id' => 'required|exists:cities,id',
 
         ]);
@@ -152,7 +152,7 @@ class VacancyController extends Controller
         if (! $employer) {
             throw new HttpResponseException(
                 redirect()->route('public.employers.create')
-                    ->with('error', 'Сначала заполните анкету работодателя.')
+                    ->with('error', __('Сначала заполните анкету работодателя.'))
             );
         }
 

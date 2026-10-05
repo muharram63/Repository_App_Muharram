@@ -100,7 +100,8 @@ class AiScreeningController extends Controller
         $validated = $request->validate([
             'level' => 'required|in:'.implode(',', array_keys(AiInterviewConfig::LEVELS)),
             'language' => 'required|in:'.implode(',', config('app.available_locales', ['ru'])),
-            'questions_count' => 'required|integer|min:3|max:20',
+            'questions_count' => 'required|integer|min:'.AiInterviewConfig::MIN_QUESTIONS
+                .'|max:'.AiInterviewConfig::MAX_QUESTIONS,
             'weight_documents' => 'required|integer|min:0|max:100',
             'weight_interview' => 'required|integer|min:0|max:100',
             'weight_test' => 'required|integer|min:0|max:100',
@@ -129,15 +130,15 @@ class AiScreeningController extends Controller
             $config->save();
 
             return back()
-                ->with('error', 'Настройки сохранены, но собеседование не включено: '.$problems[0])
+                ->with('error', __('Настройки сохранены, но собеседование не включено: :problem', ['problem' => $problems[0]]))
                 ->withInput();
         }
 
         $config->save();
 
         return back()->with('status', $config->enabled
-            ? 'Настройки сохранены, ИИ-собеседование включено.'
-            : 'Настройки сохранены.');
+            ? __('Настройки сохранены, ИИ-собеседование включено.')
+            : __('Настройки сохранены.'));
     }
 
     /**
@@ -147,26 +148,34 @@ class AiScreeningController extends Controller
      * поправить их руками, и затирать эту работу нельзя. Заменяются только
      * неподтверждённые предложения — они и есть черновик.
      */
-    public function suggestCriteria(Vacancy $vacancy)
+    public function suggestCriteria(Request $request, Vacancy $vacancy)
     {
         $this->authorizeVacancy($vacancy);
 
+        /*
+         * «Пересобрать по вакансии» — для критериев, которые уже запутались.
+         * Убираем всё, что предлагал ИИ, включая подтверждённое; свои критерии
+         * работодателя не трогаем. Кандидаты, уже прошедшие отбор, остаются
+         * оценёнными по старым критериям — их отчёты не переписываются.
+         */
+        if ($request->boolean('replace')) {
+            AiInterviewCriterion::where('vacancy_id', $vacancy->id)->where('source', 'ai')->delete();
+        }
+
         if (! $this->advisor->available()) {
-            return back()->with('error', 'ИИ недоступен: проверьте GEMINI_API_KEY в .env.');
+            return back()->with('error', __('ИИ недоступен: проверьте GEMINI_API_KEY в .env.'));
         }
 
         try {
             $suggested = $this->advisor->suggest($vacancy);
         } catch (AiInvalidAnswerException $e) {
-            return back()->with('error', 'Модель ответила негодно. Попробуйте ещё раз '
-                .'или добавьте критерии вручную.');
+            return back()->with('error', __('Модель ответила негодно. Попробуйте ещё раз или добавьте критерии вручную.'));
         } catch (AiUnavailableException $e) {
             return back()->with('error', $e->getMessage());
         }
 
         if ($suggested === []) {
-            return back()->with('error', 'Не удалось разобрать вакансию. '
-                .'Дополните описание или добавьте критерии вручную.');
+            return back()->with('error', __('Не удалось разобрать вакансию. Дополните описание или добавьте критерии вручную.'));
         }
 
         $existing = AiInterviewCriterion::where('vacancy_id', $vacancy->id)
@@ -194,8 +203,8 @@ class AiScreeningController extends Controller
         }
 
         return back()->with('status', $added > 0
-            ? 'ИИ предложил критериев: '.$added.'. Проверьте их и подтвердите.'
-            : 'Новых критериев не нашлось — все предложенные уже подтверждены.');
+            ? __('ИИ предложил критериев: :count. Проверьте их и подтвердите.', ['count' => $added])
+            : __('Новых критериев не нашлось — все предложенные уже подтверждены.'));
     }
 
     /**
@@ -261,7 +270,7 @@ class AiScreeningController extends Controller
             $saved++;
         }
 
-        return back()->with('status', 'Критериев сохранено: '.$saved.'.');
+        return back()->with('status', __('Критериев сохранено: :count.', ['count' => $saved]));
     }
 
     /**
@@ -287,7 +296,7 @@ class AiScreeningController extends Controller
             'position' => (int) AiInterviewCriterion::where('vacancy_id', $vacancy->id)->max('position') + 1,
         ]);
 
-        return back()->with('status', 'Критерий добавлен.');
+        return back()->with('status', __('Критерий добавлен.'));
     }
 
 
@@ -306,14 +315,14 @@ class AiScreeningController extends Controller
 
         if (! $criterion) {
             // критерий уже удалён — с открытой вкладки такое приходит легко
-            return back()->with('status', 'Критерий уже удалён.');
+            return back()->with('status', __('Критерий уже удалён.'));
         }
 
         $label = $criterion->label;
 
         $criterion->delete();
 
-        return back()->with('status', 'Критерий «'.$label.'» удалён.');
+        return back()->with('status', __('Критерий «:label» удалён.', ['label' => $label]));
     }
 
     /**
@@ -369,7 +378,7 @@ class AiScreeningController extends Controller
         if (! $employer) {
             throw new HttpResponseException(
                 redirect()->route('public.employers.create')
-                    ->with('error', 'Сначала заполните анкету работодателя.')
+                    ->with('error', __('Сначала заполните анкету работодателя.'))
             );
         }
 

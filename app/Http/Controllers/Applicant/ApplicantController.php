@@ -6,6 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Applicant;
 use Illuminate\Http\Request;
 
+/**
+ * Первое заполнение анкеты соискателя после регистрации.
+ *
+ * Правка анкеты живёт в ProfileController (applicant.profile.update), удаление —
+ * в настройках аккаунта и в админке.
+ */
 class ApplicantController extends Controller
 {
     /**
@@ -24,7 +30,7 @@ class ApplicantController extends Controller
         $user = $request->user();
 
         if ($user->role !== 'applicant') {
-            return back()->with('error', 'Анкету соискателя может заполнить только соискатель.');
+            return back()->with('error', __('Анкету соискателя может заполнить только соискатель.'));
         }
 
         $validated = $this->validateApplicant($request);
@@ -38,46 +44,7 @@ class ApplicantController extends Controller
         );
 
         return redirect()->route('applicant.dashboard')
-            ->with('status', 'Анкета сохранена.');
-    }
-
-    /**
-     * Обновление своей анкеты.
-     */
-    public function update(Request $request, Applicant $applicant)
-    {
-        // анкету правит только её владелец: админу доступны просмотр и удаление
-        abort_if($applicant->user_id !== auth()->id(), 403);
-
-        $applicant->update($this->validateApplicant($request));
-
-        return redirect()->route('applicant.dashboard')
-            ->with('status', 'Анкета обновлена.');
-    }
-
-    /**
-     * Удаление анкеты — владельцем или админом.
-     * Резюме и отклики уходят каскадом на уровне БД.
-     */
-    public function destroy(Applicant $applicant)
-    {
-        $this->authorizeOwner($applicant);
-
-        $applicant->delete();
-
-        return auth()->user()->role === 'admin'
-            ? redirect()->route('superadmin.applicants')->with('status', 'Анкета удалена.')
-            : redirect()->route('public.home')->with('status', 'Анкета удалена.');
-    }
-
-    /**
-     * Удалять анкету может её владелец или админ.
-     */
-    private function authorizeOwner(Applicant $applicant): void
-    {
-        $user = auth()->user();
-
-        abort_if(! $user || ($applicant->user_id !== $user->id && $user->role !== 'admin'), 403);
+            ->with('status', __('Анкета сохранена.'));
     }
 
     /**

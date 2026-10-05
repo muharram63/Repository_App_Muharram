@@ -88,7 +88,7 @@ class SkillCheckController extends Controller
 
         if ($until = SkillAttempt::cooldownUntil($applicant->id, $skill->id)) {
             return back()->with('error', sprintf(
-                'Следующая попытка по навыку «%s» будет доступна через %d мин.',
+                __('Следующая попытка по навыку «%s» будет доступна через %d мин.'),
                 $skill->name,
                 max(1, (int) ceil(now()->diffInSeconds($until, false) / 60)),
             ));
@@ -101,7 +101,7 @@ class SkillCheckController extends Controller
         }
 
         if (! $test) {
-            return back()->with('error', 'Не удалось составить задание. Попробуйте ещё раз.');
+            return back()->with('error', __('Не удалось составить задание. Попробуйте ещё раз.'));
         }
 
         $attempt = SkillAttempt::create([
@@ -147,14 +147,14 @@ class SkillCheckController extends Controller
     {
         $this->mine($attempt);
 
-        abort_if($attempt->finished_at !== null, 403, 'Эта попытка уже завершена.');
+        abort_if($attempt->finished_at !== null, 403, __('Эта попытка уже завершена.'));
 
         // ответ пришёл позже срока даже с учётом запаса — засчитывать нечего
         if ($attempt->expired()) {
             $attempt->closeExpired();
 
             return redirect()->route('applicant.skills.attempt', $attempt)
-                ->with('error', 'Время на задание вышло — попытка закрыта.');
+                ->with('error', __('Время на задание вышло — попытка закрыта.'));
         }
 
         $questions = $attempt->test->questions ?? [];
@@ -187,7 +187,7 @@ class SkillCheckController extends Controller
         ]);
 
         return redirect()->route('applicant.skills.attempt', $attempt)
-            ->with('status', 'Задание проверено.');
+            ->with('status', __('Задание проверено.'));
     }
 
     /**
@@ -327,6 +327,6 @@ class SkillCheckController extends Controller
         $applicant = auth()->user()->applicant;
 
         return $applicant ?: redirect()->route('public.applicants.create')
-            ->with('error', 'Сначала заполните анкету соискателя.');
+            ->with('error', __('Сначала заполните анкету соискателя.'));
     }
 }

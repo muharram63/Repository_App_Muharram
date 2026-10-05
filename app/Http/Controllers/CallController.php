@@ -40,7 +40,7 @@ class CallController extends Controller
             return response()->json(['declined' => true]);
         }
 
-        return back()->with('status', 'Звонок отклонён.');
+        return back()->with('status', __('Звонок отклонён.'));
     }
 
     /**
@@ -96,7 +96,7 @@ class CallController extends Controller
         $call = $invite && $invite->interview && $invite->interview->isRoomOpen()
             ? [
                 'id' => $invite->interview->id,
-                'caller' => $invite->user?->name ?? 'Собеседник',
+                'caller' => $invite->user?->name ?? __('Собеседник'),
                 'url' => route('public.interviews.show', $invite->interview),
                 'chatUrl' => route('public.chats.show', $invite->conversation_id),
             ]
@@ -130,7 +130,7 @@ class CallController extends Controller
 
         return [
             'id' => $missed->id,
-            'caller' => $missed->user?->name ?? 'Собеседник',
+            'caller' => $missed->user?->name ?? __('Собеседник'),
             'time' => $missed->created_at->format('d.m.Y H:i'),
             'chatUrl' => route('public.chats.show', $missed->conversation_id),
         ];

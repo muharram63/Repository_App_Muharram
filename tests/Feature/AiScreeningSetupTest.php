@@ -183,7 +183,7 @@ test('настройки сохраняются', function () {
         ->and($config->weight_interview)->toBe(50)
         ->and($config->threshold_accept)->toBe(75)
         ->and($config->response_sla)->toBe('в течение двух дней')
-        ->and($config->decidesItself())->toBeFalse()
+        ->and($config->remindsEmployer())->toBeFalse()
         ->and($config->enabled)->toBeFalse();
 });
 
@@ -658,7 +658,7 @@ test('новая вакансия открывается с рабочими з�
         ->and($config->weightsSum())->toBe(100)
         ->and($config->threshold_reject)->toBe(40)
         ->and($config->threshold_accept)->toBe(70)
-        ->and($config->questions_count)->toBe(5)
+        ->and($config->questions_count)->toBe(AiInterviewConfig::DEFAULT_QUESTIONS)
         ->and($config->test_time_limit_minutes)->toBe(30);
 
     // и это видно в полях формы, а не только в базе
@@ -745,7 +745,7 @@ test('дефолты не открывают дорогу мимо сервер�
 
     // веса и пороги хороши по умолчанию, но критерия нет — включить нельзя
     $this->actingAs($user)->patch(route('employer.ai.config', $vacancy), [
-        'level' => 'middle', 'language' => 'ru', 'questions_count' => 5,
+        'level' => 'middle', 'language' => 'ru', 'questions_count' => 10,
         'weight_documents' => 40, 'weight_interview' => 40, 'weight_test' => 20,
         'threshold_reject' => 40, 'threshold_accept' => 70,
         'test_time_limit_minutes' => 30, 'response_sla' => 'в течение 3 дней',
@@ -847,4 +847,131 @@ test('кнопка удаления не ссылается на чужую фо
     expect($html)->not->toContain('form="drop-')
         ->and($html)->not->toContain('id="drop-')
         ->and($html)->toContain('name="remove"');
+});
+
+/*
+ * Меньше шести вопросов собеседование не задаёт: первый — знакомство, ещё
+ * один-два — уточнения, и на требования вакансии при пяти оставалось два-три.
+ */
+test('меньше восьми вопросов поставить нельзя', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $this->actingAs($user)->patch(route('employer.ai.config', $vacancy), [
+        'level' => 'middle', 'language' => 'ru', 'questions_count' => 7,
+        'weight_documents' => 40, 'weight_interview' => 40, 'weight_test' => 20,
+        'threshold_reject' => 40, 'threshold_accept' => 70,
+        'test_time_limit_minutes' => 30, 'response_sla' => 'в течение 3 дней',
+        'decision_mode' => 'auto',
+    ])->assertSessionHasErrors('questions_count');
+
+    expect(AiInterviewConfig::MIN_QUESTIONS)->toBe(8)
+        ->and((new AiInterviewConfig)->questions_count)->toBe(12);
+});
+
+// ==================== принципы: профессия прежде обстоятельств ====================
+
+/** Ответ модели с заданными критериями — через настоящий разбор ответа. */
+function adviseWith(array $criteria): array
+{
+    Illuminate\Support\Facades\Http::fake(['*' => Illuminate\Support\Facades\Http::response([
+        'id' => 'int_1', 'model' => 'gemini-3.6-flash',
+        'usage' => ['total_input_tokens' => 10, 'total_output_tokens' => 10, 'total_thought_tokens' => 0],
+        'steps' => [['type' => 'model_output', 'content' => [['type' => 'text', 'text' => json_encode(['criteria' => $criteria], JSON_UNESCAPED_UNICODE)]]]],
+    ])]);
+
+    [$user, $vacancy] = screeningSetup();
+
+    return (new App\Services\Ai\GeminiCriteriaAdvisor(app(App\Services\Ai\AiJournal::class)))->suggest($vacancy);
+}
+
+/*
+ * Живой случай: у вакансии «programming» с навыками PHP и SQL единственным
+ * обязательным критерием вышли иностранные языки с весом сто.
+ */
+test('языки не становятся главным обязательным критерием вместо профессии', function () {
+    $rows = adviseWith([
+        ['label' => 'Иностранные языки', 'kind' => 'must', 'weight' => 100, 'basis' => 'languages', 'basis_quote' => 'английский, корейский'],
+        ['label' => 'Разработка на PHP', 'kind' => 'nice', 'weight' => 60, 'basis' => 'skills', 'basis_quote' => 'PHP'],
+        ['label' => 'Полная занятость', 'kind' => 'nice', 'weight' => 37, 'basis' => 'schedule'],
+    ]);
+
+    $byLabel = collect($rows)->keyBy('label');
+
+    // профессия стала обязательной и стоит первой
+    expect($rows[0]['label'])->toBe('Разработка на PHP')
+        ->and($byLabel['Разработка на PHP']['kind'])->toBe('must')
+        // язык весит не больше главного навыка
+        ->and($byLabel['Иностранные языки']['weight'])->toBeLessThanOrEqual(60)
+        ->and($byLabel['Разработка на PHP']['basis_quote'])->toBe('PHP');
+});
+
+test('без единого критерия о профессии обстоятельства обязательными не бывают', function () {
+    $rows = adviseWith([
+        ['label' => 'Английский язык', 'kind' => 'must', 'weight' => 80, 'basis' => 'languages'],
+        ['label' => 'Немецкий язык', 'kind' => 'must', 'weight' => 60, 'basis' => 'languages'],
+        ['label' => 'Готовность к графику', 'kind' => 'must', 'weight' => 40, 'basis' => 'schedule'],
+    ]);
+
+    expect(collect($rows)->where('kind', 'must'))->toBeEmpty();
+});
+
+test('промпт задаёт порядок важности и требует основу критерия', function () {
+    adviseWith([['label' => 'Разработка на PHP', 'kind' => 'must', 'weight' => 80, 'basis' => 'skills']]);
+
+    Illuminate\Support\Facades\Http::assertSent(function ($request) {
+        $body = json_encode($request->data(), JSON_UNESCAPED_UNICODE);
+
+        return str_contains($body, 'ПРИНЦИПЫ — ОТКУДА БРАТЬ КРИТЕРИИ, ПО ПОРЯДКУ ВАЖНОСТИ')
+            && str_contains($body, 'Языки — желательный критерий')
+            && str_contains($body, 'случайные наборы букв')
+            && str_contains($body, 'basis_quote');
+    });
+});
+
+test('у критерия видна его основа из вакансии', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'php', 'label' => 'Разработка на PHP',
+        'kind' => 'must', 'weight' => 80, 'source' => 'ai',
+        'basis' => 'skills', 'basis_quote' => 'PHP, SQL',
+    ]);
+
+    $this->actingAs($user)->get(route('employer.ai.show', $vacancy))
+        ->assertOk()
+        ->assertSee(__('основа:'))
+        ->assertSee(__('Навыки'))
+        ->assertSee('«PHP, SQL»', false)
+        ->assertSee(__('Пересобрать критерии по вакансии'));
+});
+
+test('пересборка убирает критерии ИИ, а свои критерии работодателя оставляет', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'langs', 'label' => 'Иностранные языки',
+        'kind' => 'must', 'weight' => 100, 'source' => 'ai', 'confirmed_at' => now(),
+    ]);
+    AiInterviewCriterion::create([
+        'vacancy_id' => $vacancy->id, 'key' => 'mine', 'label' => 'Мой критерий',
+        'kind' => 'nice', 'weight' => 20, 'source' => 'employer', 'confirmed_at' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('employer.ai.criteria.suggest', $vacancy), ['replace' => 1])
+        ->assertRedirect();
+
+    $labels = AiInterviewCriterion::where('vacancy_id', $vacancy->id)->pluck('label');
+
+    expect($labels)->toContain('Мой критерий')
+        ->and($labels)->not->toContain('Иностранные языки');
+});
+
+test('без критериев ИИ подбирает их сам при первом открытии', function () {
+    [$user, $vacancy] = screeningSetup();
+
+    $this->actingAs($user)->get(route('employer.ai.show', $vacancy))
+        ->assertOk()
+        ->assertSee(__('ИИ подбирает критерии по должности, навыкам и описанию вакансии — это несколько секунд…'))
+        ->assertSee("document.getElementById('scSuggest')", false);
 });

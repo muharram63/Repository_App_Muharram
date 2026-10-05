@@ -25,12 +25,12 @@ class AdminResponseController extends Controller
         $rows = $vacancyResponses->map(function (VacancyResponse $response) {
             return [
                 'type' => 'vacancy',
-                'type_label' => 'Отклик на вакансию',
-                'from_name' => $response->applicant?->user?->name ?? 'Соискатель удалён',
-                'from_role' => 'Соискатель',
+                'type_label' => __('Отклик на вакансию'),
+                'from_name' => $response->applicant?->user?->name ?? __('Соискатель удалён'),
+                'from_role' => __('Соискатель'),
                 'from_email' => $response->applicant?->user?->email,
                 'from_avatar' => $response->applicant?->user?->avatar,
-                'target_title' => $response->vacancy?->title ?? 'Вакансия удалена',
+                'target_title' => $response->vacancy?->title ?? __('Вакансия удалена'),
                 'target_sub' => $response->vacancy?->employer?->company_name,
                 'target_link' => $response->vacancy
                     ? route('superadmin.vacancy.show', $response->vacancy)
@@ -42,12 +42,12 @@ class AdminResponseController extends Controller
         })->concat($resumeResponses->map(function (ResumeResponse $response) {
             return [
                 'type' => 'resume',
-                'type_label' => 'Приглашение на резюме',
-                'from_name' => $response->employer?->company_name ?? 'Компания удалена',
-                'from_role' => 'Работодатель',
+                'type_label' => __('Приглашение на резюме'),
+                'from_name' => $response->employer?->company_name ?? __('Компания удалена'),
+                'from_role' => __('Работодатель'),
                 'from_email' => $response->employer?->email_company,
                 'from_avatar' => $response->employer?->user?->avatar,
-                'target_title' => $response->resume?->profession ?? 'Резюме удалено',
+                'target_title' => $response->resume?->profession ?? __('Резюме удалено'),
                 'target_sub' => $response->resume?->applicant?->user?->name,
                 'target_link' => $response->resume
                     ? route('superadmin.resumes.show', $response->resume)

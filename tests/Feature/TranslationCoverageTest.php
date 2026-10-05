@@ -23,7 +23,9 @@ function translatableStrings(): array
 
             $source = file_get_contents($file->getPathname());
 
-            foreach (["/__\(\s*'([^']*)'/u", '/__\(\s*"([^"]*)"/u'] as $pattern) {
+            // ::text('…') — тексты уведомлений: переводятся позже, на языке
+            // получателя, но словарь для них нужен тот же
+            foreach (["/__\(\s*'([^']*)'/u", '/__\(\s*"([^"]*)"/u', "/::text\(\s*'([^']*)'/u"] as $pattern) {
                 if (preg_match_all($pattern, $source, $matches)) {
                     foreach ($matches[1] as $key) {
                         $found[$key] = true;
@@ -221,3 +223,67 @@ test('образование как поле и как отрасль перев
         ->and(__('Обучение и курсы'))->toBe('Таълим ва курсҳо');
 });
 
+
+/*
+ * Ошибки проверки форм. Без lang/ru и lang/tg русский интерфейс (язык по
+ * умолчанию) и таджикский показывали вместо ошибки сырой ключ
+ * «validation.required».
+ */
+test('ошибки проверки форм переведены, а не показаны ключом', function (string $locale, string $expected) {
+    app()->setLocale($locale);
+
+    $message = __('validation.required', ['attribute' => __('validation.attributes.email')]);
+
+    expect($message)->not->toContain('validation.')
+        ->and($message)->toContain($expected);
+})->with([
+    ['ru', 'Электронная почта'],
+    ['tg', 'Почтаи электронӣ'],
+    // английские правила — из фреймворка, а название поля — наше: иначе
+    // подставлялось русское из запасного языка
+    ['en', 'The email field is required.'],
+]);
+
+test('страница входа показывает ошибку по-русски', function () {
+    $this->from('/login')->post('/login', ['email' => '', 'password' => ''])
+        ->assertSessionHasErrors('email');
+
+    expect(session('errors')->first('email'))->toContain('Заполните поле');
+});
+
+/*
+ * Уведомление пишется на языке получателя, а не того, чьё действие его
+ * вызвало: статус меняет работодатель, а читает соискатель.
+ */
+test('уведомление уходит на языке получателя', function () {
+    $user = App\Models\User::factory()->applicant()->create(['locale' => 'tg']);
+
+    app()->setLocale('ru');
+
+    $notification = App\Models\UserNotification::deliver(
+        $user->id,
+        'response_status',
+        App\Models\UserNotification::text('Статус вашего отклика изменён'),
+        App\Models\UserNotification::text(':title: :status', [
+            'title' => 'PHP',
+            'status' => App\Models\UserNotification::text('Отклик принят.'),
+        ]),
+    );
+
+    expect($notification->title)->toBe('Ҳолати дархости шумо тағйир ёфт')
+        ->and($notification->body)->toBe('PHP: '.__('Отклик принят.', [], 'tg'));
+});
+
+test('переключатель языка запоминает выбор в аккаунте', function () {
+    $user = App\Models\User::factory()->applicant()->create(['locale' => 'ru']);
+
+    $this->actingAs($user)->get(route('locale.switch', 'tg'));
+
+    expect($user->fresh()->locale)->toBe('tg');
+});
+
+test('сообщение после действия переводится', function () {
+    app()->setLocale('en');
+
+    expect(__('Отклик отправлен.'))->toBe('Application sent.');
+});

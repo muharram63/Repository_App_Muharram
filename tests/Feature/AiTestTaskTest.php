@@ -75,7 +75,7 @@ class FakeTaskExaminer implements TaskExaminer
         ];
     }
 
-    public function grade(AiTestTask $task, string $solution): array
+    public function grade(AiTestTask $task, string $solution, int $part = 0): array
     {
         $this->boom();
         $this->graded++;
@@ -667,14 +667,35 @@ function composedTaskAnswer(array $payload = []): array
         'id' => 'int_1',
         'model' => 'gemini-3.6-flash',
         'usage' => ['total_input_tokens' => 100, 'total_output_tokens' => 80, 'total_thought_tokens' => 0],
+        // ответ модели в нынешнем виде: тест и несколько практических заданий
         'steps' => [['type' => 'model_output', 'content' => [['type' => 'text', 'text' => json_encode($payload + [
-            'statement' => 'Напишите функцию нормализации телефона и объясните проверки.',
-            'format' => 'code',
-            'language' => 'PHP',
-            'reference_solution' => 'preg_replace и проверка длины',
-            'rubric' => [
-                ['point' => 'Убирает нецифровые символы', 'weight' => 60],
-                ['point' => 'Отбрасывает неверную длину', 'weight' => 40],
+            'quiz' => array_map(fn (int $i) => [
+                'question' => 'Как правильно хранить номер телефона клиента, вопрос '.$i.'?',
+                'options' => ['Только цифры', 'Как ввёл клиент', 'С пробелами', 'Без кода страны'],
+                'answer' => 0,
+                'explain' => 'Единый вид упрощает поиск.',
+            ], range(1, 6)),
+            'tasks' => [
+                [
+                    'statement' => 'Напишите функцию нормализации телефона и объясните проверки.',
+                    'format' => 'code',
+                    'language' => 'PHP',
+                    'reference_solution' => 'preg_replace и проверка длины',
+                    'rubric' => [
+                        ['point' => 'Убирает нецифровые символы', 'weight' => 60],
+                        ['point' => 'Отбрасывает неверную длину', 'weight' => 40],
+                    ],
+                ],
+                [
+                    'statement' => 'Опишите, как вы найдёте и исправите медленный запрос к базе в работающем сервисе.',
+                    'format' => 'case',
+                    'language' => '',
+                    'reference_solution' => 'EXPLAIN, индекс, проверка на копии',
+                    'rubric' => [
+                        ['point' => 'Ищет причину по плану запроса', 'weight' => 50],
+                        ['point' => 'Проверяет исправление до выкладки', 'weight' => 50],
+                    ],
+                ],
             ],
         ], JSON_UNESCAPED_UNICODE)]]]],
     ];
@@ -742,7 +763,7 @@ test('резюме не влияет на сложность, и об этом �
         ->toContain('не для сложности');
 });
 
-test('без разбора резюме составление обходится вакансией', function () {
+test('без разбора резюме задание опирается на поля резюме', function () {
     Http::fake(['*' => Http::response(composedTaskAnswer())]);
 
     [$vacancy] = makeAiVacancy();
@@ -756,7 +777,554 @@ test('без разбора резюме составление обходитс
         AiInterviewCriterion::where('vacancy_id', $vacancy->id)->confirmed()->get(),
     );
 
-    // блока про кандидата нет, но составление не падает
-    expect(lastPrompt())->not->toContain('КАНДИДАТ (для выбора')
+    // разбора нет — профиль берётся из полей самого резюме
+    expect(lastPrompt())->toContain('КАНДИДАТ (для выбора')
         ->and(lastPrompt())->toContain('ВАКАНСИЯ');
+});
+
+// ==================== брошенное задание ====================
+
+/*
+ * Кандидат, у которого вышло время, ничего не отправляет — ему уже нечего
+ * отправлять. Раньше попытку закрывала только отправка, и собеседование
+ * навсегда оставалось на стадии задания без решения.
+ */
+test('показ просроченного задания закрывает попытку и запускает решение', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    issuedTask($interview, ['deadline_at' => now()->subMinutes(10)]);
+
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertSee('Время на задание вышло', false);
+
+    $interview->refresh();
+
+    expect($interview->stage)->toBe('decision')
+        ->and($interview->test_score)->toBe(0)
+        ->and(AiTestSubmission::sole()->submitted_at)->toBeNull();
+
+    Queue::assertPushed(\App\Jobs\MakeHiringDecision::class);
+});
+
+test('повторный показ не плодит нулевых попыток', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    issuedTask($interview, ['deadline_at' => now()->subMinutes(10)]);
+
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview));
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview));
+
+    expect(AiTestSubmission::count())->toBe(1);
+    Queue::assertPushed(\App\Jobs\MakeHiringDecision::class, 1);
+});
+
+test('уборка закрывает задание того, кто не вернулся', function () {
+    Queue::fake();
+    [$interview] = taskReady();
+    issuedTask($interview, ['deadline_at' => now()->subMinutes(10)]);
+
+    // ещё идущее задание уборка не трогает
+    [$running] = taskReady();
+    issuedTask($running);
+
+    $this->artisan('ai:sweep')->assertSuccessful();
+
+    expect($interview->fresh()->stage)->toBe('decision')
+        ->and($running->fresh()->stage)->toBe('test')
+        ->and(AiTestSubmission::count())->toBe(1);
+
+    Queue::assertPushed(\App\Jobs\MakeHiringDecision::class, 1);
+});
+
+test('уборка и планировщик настроены', function () {
+    $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+        ->map(fn ($event) => $event->command)
+        ->implode("\n");
+
+    expect($events)->toContain('ai:sweep')
+        ->and($events)->toContain('queue:work');
+});
+
+// ==================== задание с нулевым весом ====================
+
+test('задание с нулевым весом не составляется и не выдаётся', function () {
+    Queue::fake();
+    [$interview, $user, $examiner] = taskReady(config: [
+        'weight_documents' => 50, 'weight_interview' => 50, 'weight_test' => 0,
+    ]);
+
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertSee('Тестового задания по этой вакансии нет', false)
+        ->assertDontSee('Тестовое задание готовится', false);
+
+    Queue::assertNotPushed(ComposeTestTask::class);
+    Queue::assertPushed(\App\Jobs\MakeHiringDecision::class);
+
+    expect($interview->fresh()->stage)->toBe('decision');
+});
+
+// ==================== язык задания ====================
+
+test('условие задания пишется на языке собеседования', function () {
+    [$interview] = taskReady(config: ['language' => 'tg']);
+
+    Http::fake(['*' => Http::response(taskGradeAnswer([
+        'statement' => 'Вазифа', 'format' => 'case', 'language' => '',
+        'reference_solution' => 'Ҳал', 'rubric' => [['point' => 'Нукта', 'weight' => 100]], 'minutes' => 30,
+    ]))]);
+
+    try {
+        realTaskExaminer()->compose($interview, collect());
+    } catch (\Throwable $e) {
+        // формат ответа здесь не важен — проверяем, что ушло в промпт
+    }
+
+    Http::assertSent(fn ($request) => str_contains(json_encode($request->data(), JSON_UNESCAPED_UNICODE), 'на таджикском языке'));
+});
+
+// ==================== задание готово заранее ====================
+
+/*
+ * Раньше задание начинали составлять, только когда кандидат открывал его
+ * страницу, и только через очередь. Теперь его готовят во время разговора.
+ */
+test('задание составляется во время разговора, а не когда кандидат пришёл', function () {
+    Queue::fake();
+    [$interview, $user, $examiner] = taskReady();
+    $interview->update(['stage' => 'interview']);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview))
+        ->assertOk()
+        ->assertJsonPath('status', 'ready');
+
+    $task = AiTestTask::sole();
+
+    // готово, но отсчёт не пошёл: время начнётся с первого показа
+    expect($examiner->composed)->toBe(1)
+        ->and($task->issued_at)->toBeNull()
+        ->and($task->deadline_at)->toBeNull()
+        ->and($interview->fresh()->stage)->toBe('interview');
+});
+
+test('пришедший на страницу кандидат сразу видит готовое задание', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    $interview->update(['stage' => 'interview']);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview));
+    $interview->update(['stage' => 'test']);
+
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertDontSee('Тестовое задание готовится', false)
+        ->assertSee('Напишите функцию нормализации телефона', false);
+
+    // очередь не понадобилась
+    Queue::assertNotPushed(ComposeTestTask::class);
+});
+
+test('повторная подготовка второго задания не составляет', function () {
+    Queue::fake();
+    [$interview, $user, $examiner] = taskReady();
+
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview));
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview))
+        ->assertJsonPath('status', 'ready');
+
+    expect($examiner->composed)->toBe(1)
+        ->and(AiTestTask::count())->toBe(1);
+});
+
+test('пока задание составляет другой, второй запрос не дублирует', function () {
+    Queue::fake();
+    [$interview, $user, $examiner] = taskReady();
+
+    $lock = Illuminate\Support\Facades\Cache::lock('compose-task-'.$interview->id, 300);
+    $lock->get();
+
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview))
+        ->assertJsonPath('status', 'busy');
+
+    $lock->release();
+
+    expect($examiner->composed)->toBe(0);
+});
+
+test('задание с нулевым весом не готовится и заранее', function () {
+    Queue::fake();
+    [$interview, $user, $examiner] = taskReady(config: [
+        'weight_documents' => 50, 'weight_interview' => 50, 'weight_test' => 0,
+    ]);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview))
+        ->assertJsonPath('status', 'skipped');
+
+    expect($examiner->composed)->toBe(0);
+});
+
+test('занятая модель — «попробуем позже», а не провал', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady(new FakeTaskExaminer(unavailable: 'Модель занята.'));
+
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview))
+        ->assertJsonPath('status', 'busy');
+
+    expect($interview->fresh()->requires_review)->toBeFalse();
+});
+
+/*
+ * Задание не вышло, пока кандидат ещё разговаривает: решение не запускается
+ * посреди беседы, а случается, когда беседа закончится.
+ */
+test('неудача заранее не обрывает разговор решением', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady(new FakeTaskExaminer(invalid: true));
+    $interview->update(['stage' => 'interview']);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.task.prepare', $interview))
+        ->assertJsonPath('status', 'failed');
+
+    expect($interview->fresh()->stage)->toBe('interview')
+        ->and($interview->fresh()->requires_review)->toBeTrue();
+
+    Queue::assertNotPushed(\App\Jobs\MakeHiringDecision::class);
+});
+
+test('чужое задание заранее не подготовить', function () {
+    Queue::fake();
+    [$interview] = taskReady();
+    $stranger = User::factory()->applicant()->create();
+    makeApplicant($stranger);
+
+    $this->actingAs($stranger)->postJson(route('applicant.ai.task.prepare', $interview))->assertForbidden();
+});
+
+test('страница разговора готовит задание в фоне, а страница задания — сама', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertSee(trim(json_encode(route('applicant.ai.task.prepare', $interview)), '"'), false);
+
+    $interview->update(['stage' => 'interview']);
+    AiTestTask::query()->delete();
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('prepareTask()', false);
+});
+
+// ==================== составление: быстро и по профессии ====================
+
+test('задание составляет быстрая модель, а проверяет сильная', function () {
+    $compose = App\Services\Ai\AiJournal::options('compose');
+
+    expect($compose['model'])->toBe(config('services.gemini.model_fallback'))
+        ->and($compose['thinking_level'])->toBe('low');
+});
+
+test('промпт требует задание строго по профессии', function () {
+    Http::fake(['*' => Http::response(composedTaskAnswer())]);
+
+    [$vacancy] = makeAiVacancy();
+    [$interview] = makeAiInterview($vacancy, ['consent_at' => now(), 'stage' => 'interview']);
+
+    realComposer()->compose($interview, AiInterviewCriterion::where('vacancy_id', $vacancy->id)->confirmed()->get());
+
+    expect(lastPrompt())->toContain('ТОЛЬКО ПО ПРОФЕССИИ')
+        ->and(lastPrompt())->toContain('логических')
+        ->and(lastPrompt())->toContain('PHP-разработчик');
+});
+
+// ==================== тест и несколько заданий ====================
+
+/** Тестовая часть, как её составляет модель теперь: тест и два задания. */
+function multiTask(AiInterview $interview, array $fields = []): AiTestTask
+{
+    return issuedTask($interview, $fields + [
+        'quiz' => [
+            ['question' => 'Где хранить номер?', 'options' => ['Цифрами', 'Как ввели', 'С пробелами', 'Нигде'], 'answer' => 0, 'explain' => 'Единый вид.'],
+            ['question' => 'Что делать с пустым номером?', 'options' => ['Сохранить', 'Отклонить', 'Заменить нулями', 'Игнорировать'], 'answer' => 1, 'explain' => 'Пустой номер — ошибка ввода.'],
+        ],
+        'parts' => [[
+            'statement' => 'Опишите, как найдёте медленный запрос в работающем сервисе.',
+            'format' => 'case', 'language' => null,
+            'reference_solution' => 'EXPLAIN и индекс',
+            'rubric' => [['point' => 'Смотрит план запроса', 'weight' => 100]],
+        ]],
+    ]);
+}
+
+/** Писатель решения без модели — для проверки шагов двигателя. */
+function silentWriter(): void
+{
+    app()->instance(App\Services\Ai\DecisionWriter::class, new class implements App\Services\Ai\DecisionWriter
+    {
+        public function available(): bool
+        {
+            return false;
+        }
+
+        public function write(AiInterview $interview, string $outcome, array $reasons, string $fallback): string
+        {
+            return $fallback;
+        }
+    });
+}
+
+test('составление возвращает тест и несколько заданий', function () {
+    Http::fake(['*' => Http::response(composedTaskAnswer())]);
+
+    [$vacancy] = makeAiVacancy();
+    [$interview] = makeAiInterview($vacancy, ['consent_at' => now(), 'stage' => 'interview']);
+
+    $task = realComposer()->compose($interview, AiInterviewCriterion::where('vacancy_id', $vacancy->id)->confirmed()->get());
+
+    expect($task['quiz'])->toHaveCount(6)
+        ->and($task['quiz'][0]['options'])->toHaveCount(4)
+        ->and($task['parts'])->toHaveCount(1)
+        ->and($task['statement'])->toContain('нормализации телефона')
+        ->and(lastPrompt())->toContain('тест из 6 вопросов')
+        ->and(lastPrompt())->toContain('2 практических задания');
+});
+
+test('страница показывает тест и все задания, но не верные ответы', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    multiTask($interview);
+
+    $html = $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertSee('Где хранить номер?')
+        ->assertSee('name="quiz[1]"', false)
+        ->assertSee('Опишите, как найдёте медленный запрос', false)
+        ->assertSee('name="parts[0]"', false)
+        ->getContent();
+
+    // ни пояснений, ни эталона на странице кандидата
+    expect($html)->not->toContain('Единый вид.')
+        ->and($html)->not->toContain('EXPLAIN и индекс');
+});
+
+test('ответы на тест и все задания сохраняются одной отправкой', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    multiTask($interview);
+
+    $this->actingAs($user)->post(route('applicant.ai.task.submit', $interview), [
+        'quiz' => [0 => 0, 1 => 3],
+        'solution' => 'preg_replace',
+        'parts' => ['Смотрю EXPLAIN'],
+    ])->assertSessionHas('status');
+
+    $submission = AiTestSubmission::sole();
+
+    expect($submission->content)->toBe('preg_replace')
+        ->and($submission->answers['quiz'])->toBe([0 => 0, 1 => 3])
+        ->and($submission->answers['parts'])->toBe(['Смотрю EXPLAIN']);
+});
+
+test('совсем пустая отправка не принимается', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    multiTask($interview);
+
+    $this->actingAs($user)->post(route('applicant.ai.task.submit', $interview), [
+        'solution' => '', 'parts' => [''],
+    ])->assertSessionHas('error');
+
+    expect(AiTestSubmission::count())->toBe(0);
+});
+
+test('тест проверяет код, задания — модель, каждое отдельно', function () {
+    Queue::fake();
+    [$interview, , $examiner] = taskReady(new FakeTaskExaminer(score: 80));
+    $task = multiTask($interview);
+
+    $submission = AiTestSubmission::create([
+        'ai_test_task_id' => $task->id,
+        'content' => 'решение 1',
+        'answers' => ['quiz' => [0, 2], 'parts' => ['решение 2']],
+        'submitted_at' => now(),
+    ]);
+
+    $grader = new App\Services\Ai\TestGrader($examiner);
+
+    // один вызов модели за шаг: первое задание, затем второе
+    expect($grader->step($submission))->toBe('progress')
+        ->and($examiner->graded)->toBe(1)
+        ->and($grader->step($submission->fresh()))->toBe('graded')
+        ->and($examiner->graded)->toBe(2);
+
+    $submission->refresh();
+
+    // тест: 1 из 2 = 50; практика: 80; итог 50·0,4 + 80·0,6 = 68
+    expect($submission->details['quiz']['correct'])->toBe(1)
+        ->and($submission->details['quiz']['score'])->toBe(50)
+        ->and($submission->score)->toBe(68)
+        ->and($interview->fresh()->test_score)->toBe(68)
+        ->and($interview->fresh()->stage)->toBe('decision');
+});
+
+test('пустое задание — ноль без обращения к модели', function () {
+    Queue::fake();
+    [$interview, , $examiner] = taskReady(new FakeTaskExaminer(score: 90));
+    $task = multiTask($interview);
+
+    $submission = AiTestSubmission::create([
+        'ai_test_task_id' => $task->id,
+        'content' => 'решение 1',
+        'answers' => ['quiz' => [0, 1], 'parts' => ['']],
+        'submitted_at' => now(),
+    ]);
+
+    (new App\Services\Ai\TestGrader($examiner))->gradeAll($submission);
+
+    expect($examiner->graded)->toBe(1)
+        ->and($submission->fresh()->details['parts'][1]['score'])->toBe(0);
+});
+
+// ==================== без очереди: двигатель собеседования ====================
+
+/*
+ * Раньше страница обещала «ИИ проверяет — до минуты» и стояла: проверку
+ * делала очередь, а обработчика не было. Теперь страница двигает её сама.
+ */
+test('без обработчика очереди проверка и решение идут шагами со страницы', function () {
+    [$interview, $user] = taskReady(new FakeTaskExaminer(score: 90));
+    silentWriter();
+    $interview->update(['documents_score' => 80]);
+    $task = issuedTask($interview);
+
+    AiTestSubmission::create([
+        'ai_test_task_id' => $task->id, 'content' => 'решение', 'submitted_at' => now(),
+    ]);
+
+    // проверка
+    $this->actingAs($user)->postJson(route('applicant.ai.pump', $interview))
+        ->assertOk()->assertJsonPath('did', 'grade')->assertJsonPath('graded', true);
+
+    // решение готово — но это рекомендация: кандидату его не показываем
+    $this->actingAs($user)->postJson(route('applicant.ai.pump', $interview))
+        ->assertJsonPath('did', 'decision')
+        ->assertJsonPath('decided', false);
+
+    expect($interview->fresh()->isDecided())->toBeTrue()
+        ->and($interview->fresh()->isAnnounced())->toBeFalse();
+});
+
+test('свежие задачи в очереди двигатель оставляет её обработчику', function () {
+    [$interview, $user, $examiner] = taskReady(new FakeTaskExaminer(score: 90));
+    $task = issuedTask($interview);
+    AiTestSubmission::create(['ai_test_task_id' => $task->id, 'content' => 'решение', 'submitted_at' => now()]);
+
+    config(['queue.default' => 'database']);
+    Illuminate\Support\Facades\DB::table('jobs')->insert([
+        'queue' => 'default', 'payload' => '{}', 'attempts' => 0,
+        'available_at' => now()->getTimestamp(), 'created_at' => now()->getTimestamp(),
+    ]);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.pump', $interview))
+        ->assertJsonPath('did', null);
+
+    expect($examiner->graded)->toBe(0);
+});
+
+test('чужое собеседование двигать нельзя', function () {
+    [$interview] = taskReady();
+    $stranger = User::factory()->applicant()->create();
+    makeApplicant($stranger);
+
+    $this->actingAs($stranger)->postJson(route('applicant.ai.pump', $interview))->assertForbidden();
+});
+
+// ==================== Анна прощается ====================
+
+test('после отправки Анна говорит, что собеседование закончено и когда ждать ответ', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady(config: ['response_sla' => 'в течение 24 часов']);
+    multiTask($interview);
+
+    $this->actingAs($user)->post(route('applicant.ai.task.submit', $interview), [
+        'quiz' => [0, 1], 'solution' => 'решение', 'parts' => ['ответ'],
+    ]);
+
+    $farewell = App\Models\AiInterviewTurn::where('ai_interview_id', $interview->id)->orderByDesc('position')->first();
+
+    expect($farewell->isClosing())->toBeTrue()
+        ->and($farewell->text)->toContain('собеседование закончено')
+        ->and($farewell->text)->toContain('в течение 24 часов');
+
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertSee(__('Собеседование закончено'))
+        ->assertSee($farewell->text)
+        ->assertSee(trim(json_encode(route('applicant.ai.pump', $interview)), '"'), false);
+});
+
+// ==================== финал для кандидата ====================
+
+test('после отправки — праздничная картинка, и никакого «смотреть ответ»', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    multiTask($interview);
+
+    $this->actingAs($user)->post(route('applicant.ai.task.submit', $interview), [
+        'quiz' => [0, 1], 'solution' => 'решение', 'parts' => ['ответ'],
+    ]);
+
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertSee('class="tk-finish"', false)
+        ->assertSee('tk-badge-check', false)
+        ->assertSee(__('Ваши ответы переданы на рассмотрение. Итог — принят ли вы на работу — придёт в уведомления в течение 24 часов. Эту страницу можно закрыть.'))
+        ->assertDontSee(__('Смотреть ответ'))
+        ->assertDontSee(route('applicant.ai.result', $interview), false);
+});
+
+test('список собеседований показывает процент и «ждём ответа» вместо итога', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    $interview->update(['stage' => 'done', 'outcome' => 'passed']);
+    App\Models\AiDecision::create([
+        'ai_interview_id' => $interview->id, 'round' => 1, 'outcome' => 'passed',
+        'reasons' => [], 'message_to_candidate' => 'Поздравляем',
+    ]);
+
+    $this->actingAs($user)->get(route('applicant.ai.index'))
+        ->assertOk()
+        ->assertSee('iv-percent', false)
+        ->assertSee(__('Вы прошли все шаги — ждём ответа, он придёт в уведомления'))
+        ->assertDontSee(__('Смотреть результат'));
+});
+
+// ==================== список: продолжить и довести до конца ====================
+
+test('кто не прошёл всё, видит процент и кнопку «Продолжить»', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    $interview->update(['stage' => 'interview']);
+
+    $this->actingAs($user)->get(route('applicant.ai.index'))
+        ->assertOk()
+        ->assertSee(__('Продолжить'))
+        ->assertSee(route('applicant.ai.interview', $interview), false)
+        ->assertDontSee(__('Вы прошли все шаги — ждём ответа, он придёт в уведомления'));
+});
+
+test('кто прошёл всё, видит 100% и «ждём ответа», а ИИ в фоне доводит проверку', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    $task = issuedTask($interview);
+    AiTestSubmission::create(['ai_test_task_id' => $task->id, 'content' => 'решение', 'submitted_at' => now()]);
+
+    $this->actingAs($user)->get(route('applicant.ai.index'))
+        ->assertOk()
+        ->assertSee('100%')
+        ->assertSee(__('Вы прошли все шаги — ждём ответа, он придёт в уведомления'))
+        // ИИ продолжает работу, пока открыт список
+        ->assertSee(trim(json_encode(route('applicant.ai.pump', $interview)), '"'), false);
 });

@@ -301,7 +301,11 @@ test('чужую озвучку не получить, даже зная адр�
         ->assertForbidden();
 });
 
-test('неготовая озвучка отдаёт 404, а состояние — pending', function () {
+/*
+ * Без обработчика очереди вопросы раньше не звучали никогда: озвучивала только
+ * очередь. Теперь первый же вопрос страницы «готов ли звук» озвучивает сам.
+ */
+test('неготовую озвучку страница получает, не дожидаясь очереди', function () {
     fakeVoice();
     [$interview, , $applicantUser] = makeAiInterview();
 
@@ -310,14 +314,53 @@ test('неготовая озвучка отдаёт 404, а состояние 
         'position' => 1, 'role' => 'ai', 'text' => 'вопрос', 'speech_status' => 'pending',
     ]);
 
+    // файла ещё нет
     $this->actingAs($applicantUser)
         ->get(route('applicant.ai.speech.turn', $turn))
         ->assertNotFound();
 
+    // вопрос о состоянии сам запускает озвучку
     $this->actingAs($applicantUser)
         ->getJson(route('applicant.ai.speech.status', $turn))
         ->assertOk()
+        ->assertJson(['status' => 'ready', 'url' => route('applicant.ai.speech.turn', $turn)]);
+
+    $this->actingAs($applicantUser)
+        ->get(route('applicant.ai.speech.turn', $turn))
+        ->assertOk();
+});
+
+test('реплику, которую уже озвучивают, второй раз не озвучивают', function () {
+    fakeVoice();
+    [$interview, , $applicantUser] = makeAiInterview();
+
+    $turn = AiInterviewTurn::create([
+        'ai_interview_id' => $interview->id,
+        'position' => 1, 'role' => 'ai', 'text' => 'вопрос', 'speech_status' => 'pending',
+    ]);
+
+    // очередь держит замок — страница не дублирует синтез, а ждёт
+    $lock = Illuminate\Support\Facades\Cache::lock('speech-turn-'.$turn->id, 120);
+    $lock->get();
+
+    $this->actingAs($applicantUser)
+        ->getJson(route('applicant.ai.speech.status', $turn))
         ->assertJson(['status' => 'pending', 'url' => null]);
+
+    $lock->release();
+});
+
+test('страница чата передаёт голосу язык собеседования', function () {
+    Illuminate\Support\Facades\Storage::fake('local');
+    [$vacancy] = makeAiVacancy(config: ['language' => 'tg']);
+    [$interview, , $user] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'interview', 'analysis_status' => 'ready',
+    ]);
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('const speechLang = "tg"', false)
+        ->assertSee('pickVoice', false);
 });
 
 test('состояние готовой озвучки отдаёт ссылку на файл', function () {

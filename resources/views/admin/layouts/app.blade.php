@@ -268,6 +268,7 @@
             <a class="nav-item" href="{{ route('superadmin.resumes') }}"><i class="fa-solid fa-file-lines"></i><span class="label">Резюме</span></a>
             <a class="nav-item" href="{{ route('superadmin.responses') }}"><i class="fa-solid fa-inbox"></i><span class="label">Отклики</span></a>
             <a class="nav-item" href="{{ route('superadmin.analytics') }}"><i class="fa-solid fa-chart-simple"></i><span class="label">Аналитика</span></a>
+            <a class="nav-item" href="{{ route('superadmin.ai') }}"><i class="fa-solid fa-robot"></i><span class="label">ИИ-собеседования</span></a>
             @php($newComplaints = \App\Models\Complaint::where('status', 'new')->count())
             <a class="nav-item" href="{{ route('superadmin.complaints') }}"><i class="fa-solid fa-flag"></i><span class="label">Жалобы</span><span data-live="nav-complaints" data-live-hide-zero style="margin-left:auto; background:#dc2626; color:#fff; font-size:11px; font-weight:700; border-radius:999px; padding:2px 7px;" @if(! $newComplaints) hidden @endif>{{ $newComplaints }}</span></a>
             @php($newAdminComments = \App\Models\AdminComment::whereIn('status', ['new', 'in_review'])->count())

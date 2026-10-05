@@ -15,6 +15,10 @@ class LocaleController extends Controller
 
         $request->session()->put('locale', $locale);
 
+        // Запоминаем и в аккаунте: на этом языке человеку пишутся уведомления,
+        // а их отправляет чужой запрос или очередь, где сессии нет.
+        $request->user()?->forceFill(['locale' => $locale])->save();
+
         return back();
     }
 }

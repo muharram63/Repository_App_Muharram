@@ -255,6 +255,20 @@ class AiJournal
                 'thinking_level' => 'medium',
                 'fallback' => $light,
             ],
+            /*
+             * Составление задания. Раньше шло на модели оценки с размышлением
+             * medium: она на бесплатном ключе дважды отвечала «перегружена», и
+             * только запасная lite составляла задание — за восемь секунд, но
+             * после двух неудач и очереди. Составлять — не оценивать: условие,
+             * эталон и рубрику lite пишет толково, а строгость нужна на проверке
+             * решения, и там по-прежнему сильная модель.
+             */
+            'compose' => [
+                'model' => $light,
+                'temperature' => 0.5,
+                'thinking_level' => 'low',
+                'fallback' => config('services.gemini.model_scoring'),
+            ],
             'vision' => [
                 'model' => config('services.gemini.model_vision'),
                 'temperature' => 0.1,

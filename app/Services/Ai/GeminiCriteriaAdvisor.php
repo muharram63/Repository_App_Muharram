@@ -77,6 +77,10 @@ class GeminiCriteriaAdvisor implements CriteriaAdvisor
             'criteria.*.description' => 'nullable|string|max:400',
             'criteria.*.kind' => 'required|in:must,nice',
             'criteria.*.weight' => 'required|integer|min:1|max:100',
+            // основа желательна, но её отсутствие — не повод забраковать ответ:
+            // без неё критерий считается взятым из описания
+            'criteria.*.basis' => 'nullable|in:'.implode(',', array_keys(AiInterviewCriterion::BASES)),
+            'criteria.*.basis_quote' => 'nullable|string|max:300',
         ];
     }
 
@@ -113,11 +117,13 @@ class GeminiCriteriaAdvisor implements CriteriaAdvisor
                 'description' => Str::limit(trim((string) ($row['description'] ?? '')), 400, ''),
                 'kind' => ($row['kind'] ?? 'must') === 'nice' ? 'nice' : 'must',
                 'weight' => max(1, min(100, (int) ($row['weight'] ?? 10))),
+                'basis' => array_key_exists($row['basis'] ?? '', AiInterviewCriterion::BASES) ? $row['basis'] : 'description',
+                'basis_quote' => Str::limit(trim((string) ($row['basis_quote'] ?? '')), 160, '') ?: null,
                 'position' => $position,
             ];
         }
 
-        return $this->capMustHaves($clean);
+        return $this->capMustHaves($this->professionFirst($clean));
     }
 
     /**
@@ -136,6 +142,64 @@ class GeminiCriteriaAdvisor implements CriteriaAdvisor
      * @param  array<int,array{kind:string,weight:int}>  $rows
      * @return array<int,array>
      */
+    /**
+     * Профессия прежде обстоятельств — проверяется кодом, а не только просьбой.
+     *
+     * Живой случай: вакансия «programming» с навыками PHP и SQL получила
+     * единственным обязательным критерием «знание иностранных языков» с весом
+     * сто, а про программирование — ничего. Поэтому:
+     *  — обязательный критерий о языках или графике становится желательным,
+     *    если рядом нет ни одного обязательного о самой профессии;
+     *  — нет ни одного обязательного о профессии, но есть желательный —
+     *    самый весомый из них становится обязательным;
+     *  — критерии о профессии идут первыми, и вес у них не ниже, чем у
+     *    критериев об обстоятельствах.
+     *
+     * @param  array<int,array>  $rows
+     * @return array<int,array>
+     */
+    private function professionFirst(array $rows): array
+    {
+        $professional = fn (array $row) => in_array($row['basis'], AiInterviewCriterion::PROFESSIONAL_BASES, true);
+
+        $hasProfessionalMust = collect($rows)->contains(fn ($row) => $professional($row) && $row['kind'] === 'must');
+
+        if (! $hasProfessionalMust) {
+            $best = collect($rows)->filter($professional)->sortByDesc('weight')->keys()->first();
+
+            if ($best !== null) {
+                $rows[$best]['kind'] = 'must';
+                $hasProfessionalMust = true;
+            }
+        }
+
+        // обстоятельства обязательными не бывают, пока профессия не проверяется вовсе
+        if ($hasProfessionalMust) {
+            $topProfessional = (int) collect($rows)->filter($professional)->max('weight');
+
+            foreach ($rows as $i => $row) {
+                if (! $professional($row)) {
+                    // язык или график не весят больше главного навыка
+                    $rows[$i]['weight'] = min($row['weight'], max(1, $topProfessional));
+                }
+            }
+        } else {
+            foreach ($rows as $i => $row) {
+                $rows[$i]['kind'] = $professional($row) ? $row['kind'] : 'nice';
+            }
+        }
+
+        // профессия — первой
+        usort($rows, fn ($a, $b) => [$professional($b), $b['kind'] === 'must', $b['weight']]
+            <=> [$professional($a), $a['kind'] === 'must', $a['weight']]);
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['position'] = $i;
+        }
+
+        return $rows;
+    }
+
     private function capMustHaves(array $rows): array
     {
         $mustKeys = collect($rows)
@@ -227,6 +291,27 @@ class GeminiCriteriaAdvisor implements CriteriaAdvisor
         кандидата на собеседовании. Их подтвердит работодатель, поэтому каждый критерий должен быть
         понятен человеку без пояснений.
 
+        ПРИНЦИПЫ — ОТКУДА БРАТЬ КРИТЕРИИ, ПО ПОРЯДКУ ВАЖНОСТИ:
+        1. Должность и ключевые навыки — суть работы. Из них главные критерии, и хотя бы один из
+           них обязательный. Для «programming» с навыками PHP, SQL это «Разработка на PHP» и
+           «Запросы к базе на SQL», а не языки и не график. Если описание короткое, раскрой
+           должность через её основные рабочие задачи — это тоже часть вакансии.
+        2. Опыт и обязанности из описания.
+        3. Языки — желательный критерий, кроме случаев, когда язык и есть работа (переводчик,
+           учитель языка, работа с иностранными клиентами — если это сказано в вакансии).
+           Список языков объединяй в один критерий, а не по критерию на язык.
+        4. Занятость и график — почти никогда не критерий собеседования: их не проверить
+           вопросом. Добавляй, только если вакансия делает на них упор.
+        Критерий о языке или графике никогда не весит больше главного профессионального.
+
+        В поле навыков бывают опечатки и случайные наборы букв (например, «vbdyufvd»). Такое
+        пропускай — это не навык.
+
+        basis — откуда критерий: title (должность), skills (навыки), description (описание),
+        experience (опыт), languages (языки), schedule (занятость и график). basis_quote — слова
+        из вакансии, на которых он основан, например «PHP, SQL». Работодатель увидит это рядом
+        с критерием, поэтому выдумывать основу нельзя.
+
         ЖЁСТКИЕ ПРАВИЛА:
         - От 3 до {$max} критериев. Меньше трёх — оценка выйдет грубой, больше восьми человек уже не
           проверяет глазами.
@@ -234,8 +319,8 @@ class GeminiCriteriaAdvisor implements CriteriaAdvisor
           «стрессоустойчивость», «ответственность» — не критерии: по ним нельзя задать вопрос и
           нельзя проверить ответ. Годится «умение объяснить технический выбор нетехническому
           заказчику», «работа с чужим кодом без документации», «расчёт сметы по неполным данным».
-        - Критерии берутся из текста вакансии, а не из общих представлений о профессии. Если
-          требование в вакансии не названо, не выдумывай его.
+        - Критерии берутся из вакансии: её должности, навыков, описания. Не добавляй требований,
+          которых в ней нет, — кроме основных задач самой должности, если описание пустое.
         - kind = must — без этого работать нельзя, требование обязательное. Подпись: «{$must}».
           kind = nice — полезно, но не решает. Подпись: «{$nice}».
           Обязательных не больше четырёх: когда обязательно всё, отбор превращается в лотерею.
@@ -268,8 +353,14 @@ class GeminiCriteriaAdvisor implements CriteriaAdvisor
                             'description' => ['type' => 'string', 'description' => 'Что проверяем, одна-две фразы'],
                             'kind' => ['type' => 'string', 'enum' => ['must', 'nice']],
                             'weight' => ['type' => 'integer', 'description' => 'Важность от 1 до 100'],
+                            'basis' => [
+                                'type' => 'string',
+                                'enum' => array_keys(AiInterviewCriterion::BASES),
+                                'description' => 'Из какого поля вакансии взят критерий',
+                            ],
+                            'basis_quote' => ['type' => 'string', 'description' => 'Слова из вакансии, на которых он основан'],
                         ],
-                        'required' => ['label', 'kind', 'weight'],
+                        'required' => ['label', 'kind', 'weight', 'basis'],
                     ],
                 ],
             ],

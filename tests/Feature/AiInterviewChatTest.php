@@ -170,12 +170,22 @@ test('без согласия в чат не попасть', function () {
         ->assertRedirect(route('applicant.ai.interview', $interview));
 });
 
-test('пока разбор не готов, чат отправляет к документам', function () {
+/*
+ * Разговор не ждёт разбора документов: пока тот идёт, ИИ спрашивает по резюме
+ * и специальности, а на странице сказано, что разбор подключится по ходу.
+ */
+test('пока разбор идёт, чат уже открыт и задаёт вопросы', function () {
+    Queue::fake();
     [$interview, $user] = chatReady();
-    $interview->update(['analysis_status' => 'pending']);
+    $interview->update(['analysis_status' => 'pending', 'analysis_started_at' => now(), 'analysis' => null]);
 
     $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
-        ->assertRedirect(route('applicant.ai.documents', $interview));
+        ->assertOk()
+        ->assertSee(__('ИИ ещё разбирает ваши документы — пока вопросы идут по резюме и вашей специальности, а разбор подключится по ходу разговора.'));
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
+        ->assertOk()
+        ->assertJsonStructure(['question' => ['id', 'text']]);
 });
 
 test('после разбора кандидата ведут прямо в чат', function () {
@@ -268,7 +278,12 @@ test('двойная отправка одного ответа не прохо�
     ])->assertStatus(422);
 });
 
-test('разговор заканчивается по счёту вопросов, заданному работодателем', function () {
+/*
+ * Конец разговора — после ОТВЕТА на последний вопрос. Раньше счёт шёл по
+ * заданным вопросам: третий вопрос появлялся и тут же закрывал разговор,
+ * ответить на него было нельзя.
+ */
+test('разговор заканчивается после ответа на последний заказанный вопрос', function () {
     Queue::fake();
     [$interview, $user] = chatReady(config: ['questions_count' => 3]);
 
@@ -277,13 +292,31 @@ test('разговор заканчивается по счёту вопросо
     $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 1'])
         ->assertJsonPath('done', false);
 
+    // третий вопрос задан — и на него можно ответить
     $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 2'])
-        ->assertJsonPath('done', true);
+        ->assertJsonPath('done', false)
+        ->assertJsonPath('asked', 3);
 
-    expect($interview->fresh()->stage)->toBe('test');
+    expect($interview->fresh()->stage)->toBe('interview');
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 3'])
+        ->assertJsonPath('done', true)
+        ->assertJsonMissingPath('question')
+        ->assertJsonPath('next_url', route('applicant.ai.interview', $interview));
+
+    expect($interview->fresh()->stage)->toBe('test')
+        // на каждый заданный вопрос есть ответ, а последней звучит завершение
+        ->and($interview->turns()->questions()->count())->toBe(3)
+        ->and($interview->turns()->where('role', 'candidate')->count())->toBe(3)
+        ->and($interview->turns()->reorder('position', 'desc')->first()->isClosing())->toBeTrue();
 });
 
-test('раннее «мне всё ясно» не обрывает разговор на первом вопросе', function () {
+/*
+ * «Хватит» модели разговор не обрывает: число вопросов — договорённость с
+ * работодателем. Раньше done принимался после половины, и при пяти
+ * заказанных вопросах разговор заканчивался на третьем ответе.
+ */
+test('модель не может закончить разговор раньше заказанного числа вопросов', function () {
     Queue::fake();
     // модель говорит done с самого начала, а работодатель заказал шесть вопросов
     [$interview, $user] = chatReady(new FakeInterviewer(done: true), ['questions_count' => 6]);
@@ -291,14 +324,20 @@ test('раннее «мне всё ясно» не обрывает разгов
     $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
         ->assertJsonPath('done', false);
 
-    expect($interview->fresh()->stage)->toBe('interview');
-
-    // и только после половины заказанных вопросов «хватит» принимается
-    for ($i = 0; $i < 2; $i++) {
-        $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ']);
+    for ($i = 1; $i <= 5; $i++) {
+        $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ '.$i])
+            ->assertJsonPath('done', false);
     }
 
-    expect($interview->fresh()->stage)->toBe('test');
+    expect($interview->fresh()->stage)->toBe('interview');
+
+    // шестой ответ — на шестой вопрос, и только он заканчивает разговор
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 6'])
+        ->assertJsonPath('done', true);
+
+    expect($interview->fresh()->stage)->toBe('test')
+        ->and($interview->turns()->questions()->count())->toBe(6)
+        ->and($interview->turns()->where('role', 'candidate')->count())->toBe(6);
 });
 
 test('прогресс сохраняется: вернувшийся кандидат видит весь разговор', function () {
@@ -777,4 +816,458 @@ test('второй ответ подряд принимается: послед�
     }
 
     expect($interview->turns()->where('role', 'candidate')->count())->toBe(3);
+});
+
+/*
+ * Задание с нулевым весом в итог не входит: после разговора кандидата ведут
+ * не к заданию, а сразу к решению.
+ */
+test('при нулевом весе задания разговор ведёт прямо к решению', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(config: [
+        'questions_count' => 2,
+        'weight_documents' => 50, 'weight_interview' => 50, 'weight_test' => 0,
+    ]);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview));
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 1']);
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 2'])
+        ->assertJsonPath('done', true);
+
+    expect($interview->fresh()->stage)->toBe('decision');
+    Queue::assertPushed(\App\Jobs\MakeHiringDecision::class);
+});
+
+/*
+ * Ответ на уже отвеченный вопрос не записывается второй раз, даже если
+ * страница не прислала номер вопроса.
+ */
+test('второй ответ на тот же вопрос не записывается', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(new FakeInterviewer(unavailable: 'занято'));
+
+    // вопрос есть, ответ на него уже записан, а следующий вопрос не пришёл
+    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 1, 'role' => 'ai', 'text' => 'Вопрос?']);
+    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 2, 'role' => 'candidate', 'text' => 'ответ']);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ещё раз'])
+        ->assertStatus(422);
+
+    expect($interview->turns()->where('role', 'candidate')->count())->toBe(1);
+});
+
+
+// ==================== сбой модели посреди разговора ====================
+
+/*
+ * Ответ сохранён, а следующий вопрос не пришёл. Раньше это был тупик:
+ * страница возвращала текст в поле, повтор получал «уже отправлен», и
+ * следующий вопрос не задавался никогда — даже после перезагрузки.
+ */
+test('после сбоя модели разговор продолжается с сохранённого ответа', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview));
+
+    app()->instance(Interviewer::class, new FakeInterviewer(unavailable: 'Модель занята.'));
+
+    // страница узнаёт, что ответ записан, и не будет его повторять
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'мой ответ'])
+        ->assertStatus(503)
+        ->assertJsonPath('saved', true);
+
+    // повтор того же ответа просит продолжить, а не пишет второй
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'мой ответ'])
+        ->assertStatus(422)
+        ->assertJsonPath('resume', true);
+
+    // модель снова доступна — «продолжить» задаёт следующий вопрос
+    app()->instance(Interviewer::class, new FakeInterviewer);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
+        ->assertOk()
+        ->assertJsonPath('done', false)
+        ->assertJsonStructure(['question' => ['id', 'text']]);
+
+    expect($interview->turns()->where('role', 'candidate')->count())->toBe(1)
+        ->and($interview->turns()->where('role', 'ai')->count())->toBe(2);
+});
+
+test('страница чата сама просит вопрос, если последняя реплика — ответ кандидата', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee("lastMessage.dataset.who === 'me'", false)
+        ->assertSee('chResumeBtn', false);
+});
+
+/*
+ * Модель дважды не смогла вести разговор: кандидата передают человеку — и
+ * сразу запускают решение, иначе работодателю нечего было бы решать.
+ */
+test('передача человеку посреди разговора запускает решение', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(new FakeInterviewer(invalid: true));
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
+        ->assertStatus(503)
+        ->assertJsonPath('handover', true);
+
+    expect($interview->fresh()->stage)->toBe('decision');
+    Queue::assertPushed(\App\Jobs\MakeHiringDecision::class);
+});
+
+test('пограничный дораунд не заканчивается без новых вопросов', function () {
+    Queue::fake();
+    // модель всё время говорит «хватит»
+    [$interview, $user] = chatReady(new FakeInterviewer(done: true), ['questions_count' => 3]);
+
+    // основной круг пройден: три вопроса и три ответа
+    for ($i = 1; $i <= 3; $i++) {
+        AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => $i * 2 - 1, 'role' => 'ai', 'text' => 'В'.$i]);
+        AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => $i * 2, 'role' => 'candidate', 'text' => 'О'.$i]);
+    }
+
+    $interview->update(['follow_up_round' => 1]);
+
+    // половина дораунда ещё не пройдена — продолжаем спрашивать
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
+        ->assertJsonPath('done', false);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'уточнение'])
+        ->assertJsonPath('done', false);
+});
+
+test('финальная панель чата ведёт дальше, а не обещает «готовится»', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertDontSee('эта часть ещё готовится', false)
+        ->assertSee(route('applicant.ai.interview', $interview), false);
+});
+
+// ==================== вопросы по специальности кандидата ====================
+
+/*
+ * Разговор начинается до разбора документов, поэтому собеседующий опирается
+ * на резюме: спрашивает по специальности кандидата, а не только по вакансии.
+ */
+test('без разбора вопросы строятся по резюме и специальности кандидата', function () {
+    [$interview, , , $criteria] = chatReady();
+    $interview->update(['analysis_status' => 'pending', 'analysis' => null]);
+
+    Http::fake(['*' => Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['text' => 'Здравствуйте! Расскажите о себе.', 'kind' => 'technical'])],
+    ]]]])]);
+
+    realInterviewer()->nextQuestion($interview->fresh(), $criteria);
+
+    Http::assertSent(function ($request) {
+        $prompt = $request['system_instruction'];
+
+        // makeResume() даёт «PHP-разработчик», «Backend», 3 года
+        return str_contains($prompt, 'КАНДИДАТ (из резюме)')
+            && str_contains($prompt, 'PHP-разработчик')
+            && str_contains($prompt, 'Backend')
+            && str_contains($prompt, 'по его специальности')
+            && str_contains($prompt, 'Документы кандидата ещё разбираются');
+    });
+});
+
+test('готовый разбор резюме вытесняет сырые поля резюме', function () {
+    [$interview] = chatReady();
+
+    $interview->update(['analysis' => ['resume' => [
+        'profession' => 'Бухгалтер', 'experience_years' => 7, 'skills' => ['1С', 'МСФО'],
+    ]]]);
+
+    expect($interview->fresh()->candidateProfile())
+        ->toMatchArray(['Профессия' => 'Бухгалтер', 'Навыки' => '1С, МСФО']);
+});
+
+test('собеседующий знает, сколько вопросов задать, и не повторяется', function () {
+    [$interview, , , $criteria] = chatReady(config: ['questions_count' => 10]);
+
+    Http::fake(['*' => Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['text' => 'Здравствуйте! Расскажите о себе.', 'kind' => 'technical'])],
+    ]]]])]);
+
+    realInterviewer()->nextQuestion($interview->fresh(), $criteria);
+
+    Http::assertSent(function ($request) {
+        $prompt = $request['system_instruction'];
+
+        return str_contains($prompt, 'Всего 10 вопросов')
+            && str_contains($prompt, 'разговор не закончится раньше')
+            && str_contains($prompt, 'Не повторяй уже заданное');
+    });
+});
+
+// ==================== голосовой режим ====================
+
+class FakeRecognizer implements App\Services\Ai\SpeechRecognizer
+{
+    public ?string $sawMime = null;
+
+    public function __construct(
+        private readonly string $text = 'Я пять лет работаю бухгалтером в 1С.',
+        private readonly bool $available = true,
+        private readonly ?string $unavailable = null,
+    ) {
+    }
+
+    public function available(): bool
+    {
+        return $this->available;
+    }
+
+    public function transcribe(AiInterview $interview, string $audio, string $mime, ?string $language = null): string
+    {
+        if ($this->unavailable) {
+            throw new AiUnavailableException($this->unavailable, 20);
+        }
+
+        $this->sawMime = $mime;
+
+        return $this->text;
+    }
+}
+
+function voiceAnswer(): Illuminate\Http\UploadedFile
+{
+    // минимальный WAV: заголовок и немного тишины
+    return Illuminate\Http\UploadedFile::fake()->createWithContent(
+        'answer.wav',
+        'RIFF'.pack('V', 36 + 32).'WAVEfmt '.pack('VvvVVvv', 16, 1, 1, 16000, 32000, 2, 16).'data'.pack('V', 32).str_repeat("\0", 32),
+    );
+}
+
+test('устный ответ превращается в текст и не отправляется сам по себе', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+    app()->instance(App\Services\Ai\SpeechRecognizer::class, $recognizer = new FakeRecognizer);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview));
+
+    $this->actingAs($user)
+        ->post(route('applicant.ai.chat.transcribe', $interview), ['audio' => voiceAnswer()], ['Accept' => 'application/json'])
+        ->assertOk()
+        ->assertJsonPath('text', 'Я пять лет работаю бухгалтером в 1С.');
+
+    // расшифровка — только текст для поля ответа; ответа в разговоре ещё нет
+    expect($interview->turns()->where('role', 'candidate')->count())->toBe(0)
+        ->and($recognizer->sawMime)->toBe('audio/wav');
+});
+
+test('не звук распознаванию не отдаётся', function () {
+    [$interview, $user] = chatReady();
+    app()->instance(App\Services\Ai\SpeechRecognizer::class, new FakeRecognizer);
+
+    $this->actingAs($user)
+        ->post(route('applicant.ai.chat.transcribe', $interview), [
+            'audio' => Illuminate\Http\UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
+        ], ['Accept' => 'application/json'])
+        ->assertStatus(422);
+});
+
+test('занятая модель распознавания честно отвечает 503, а не падает', function () {
+    [$interview, $user] = chatReady();
+    app()->instance(App\Services\Ai\SpeechRecognizer::class, new FakeRecognizer(unavailable: 'Модель занята.'));
+
+    $this->actingAs($user)
+        ->post(route('applicant.ai.chat.transcribe', $interview), ['audio' => voiceAnswer()], ['Accept' => 'application/json'])
+        ->assertStatus(503)
+        ->assertJsonPath('error', 'Модель занята.');
+});
+
+test('чужой разговор голосом не распознать', function () {
+    [$interview] = chatReady();
+    $stranger = User::factory()->applicant()->create();
+    makeApplicant($stranger);
+
+    $this->actingAs($stranger)
+        ->post(route('applicant.ai.chat.transcribe', $interview), ['audio' => voiceAnswer()], ['Accept' => 'application/json'])
+        ->assertForbidden();
+});
+
+test('страница чата предлагает голосовой режим', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('id="chVoiceToggle"', false)
+        // адрес лежит в скрипте через @json — слэши там экранированы
+        ->assertSee(trim(json_encode(route('applicant.ai.chat.transcribe', $interview)), '"'), false)
+        // после вопроса микрофон включается сам
+        ->assertSee('onEnd: questionSpoken', false);
+});
+
+test('собеседующий пишет реплики для произнесения вслух', function () {
+    [$interview, , , $criteria] = chatReady();
+
+    Http::fake(['*' => Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['text' => 'Здравствуйте!', 'kind' => 'technical'])],
+    ]]]])]);
+
+    realInterviewer()->nextQuestion($interview->fresh(), $criteria);
+
+    Http::assertSent(fn ($request) => str_contains($request['system_instruction'], 'ПРОИЗНОСЯТСЯ ВСЛУХ'));
+});
+
+test('распознавание отдаёт модели запись вложением и не хранит её', function () {
+    [$interview] = chatReady();
+
+    Http::fake(['*' => Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['text' => 'Работаю бухгалтером.'])],
+    ]]]])]);
+
+    $recognizer = new App\Services\Ai\GeminiRecognizer(new AiJournal(new GeminiClient([
+        'key' => 'k', 'model' => 'gemini-3.5-flash-lite', 'model_scoring' => 'gemini-3.6-flash',
+        'model_vision' => 'gemini-3.6-flash', 'revision' => 'r', 'timeout' => 5, 'connect_timeout' => 3,
+    ])));
+
+    expect($recognizer->transcribe($interview, 'RIFF-звук', 'audio/wav'))->toBe('Работаю бухгалтером.');
+
+    Http::assertSent(fn ($request) => str_contains(json_encode($request->data()), 'audio\/wav'));
+
+    // в журнале — только отметка о вложении, без самой записи
+    $logged = App\Models\AiInteraction::where('purpose', 'answer_transcribe')->sole();
+    expect($logged->request)->not->toContain(base64_encode('RIFF-звук'));
+});
+
+test('голос по умолчанию — тёплый Sulafat', function () {
+    expect(config('services.gemini.tts_voice'))->toBe('Sulafat');
+})->skip(fn () => env('GEMINI_TTS_VOICE') !== null, 'голос задан в .env');
+
+// ==================== Анна сама завершает разговор ====================
+
+test('после последнего ответа Анна говорит, что дальше задание и когда ждать ответа', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(config: ['questions_count' => 3, 'response_sla' => 'в течение 24 часов', 'test_time_limit_minutes' => 30]);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview));
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 1']);
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 2']);
+
+    $response = $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ 3'])
+        ->assertJsonPath('done', true)
+        ->assertJsonPath('next_url', route('applicant.ai.interview', $interview));
+
+    $closing = $response->json('closing');
+
+    expect($closing['text'])->toContain('тестовое задание')
+        ->and($closing['text'])->toContain('30 минут')
+        ->and($closing['text'])->toContain('в течение 24 часов')
+        // произносится так же, как вопросы
+        ->and($closing['speech_state_url'])->toBe(route('applicant.ai.speech.status', $closing['id']));
+
+    $turn = AiInterviewTurn::find($closing['id']);
+
+    expect($turn->isClosing())->toBeTrue()
+        // это не вопрос: в счёт не идёт и подписи вида не имеет
+        ->and($interview->turns()->questions()->count())->toBe(3)
+        ->and($turn->questionKindLabel())->toBeNull()
+        ->and($interview->fresh()->stage)->toBe('test');
+});
+
+test('без тестового задания Анна сразу говорит о сроке ответа', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(config: [
+        'questions_count' => 1,
+        'weight_documents' => 50, 'weight_interview' => 50, 'weight_test' => 0,
+    ]);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview));
+    $text = $this->actingAs($user)->postJson(route('applicant.ai.chat.answer', $interview), ['text' => 'ответ'])
+        ->json('closing.text');
+
+    expect($text)->not->toContain('тестовое задание')
+        ->and($text)->toContain('подготовлю ответ');
+});
+
+test('завершение звучит на языке собеседования', function () {
+    [$interview] = chatReady(config: ['language' => 'en', 'response_sla' => 'в течение 24 часов']);
+
+    expect($interview->fresh()->closingRemark(true))
+        ->toContain('test assignment')
+        ->toContain('within 24 hours');
+});
+
+test('после дораунда разговор продолжается новым вопросом, а не застревает на завершении', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(config: ['questions_count' => 1]);
+
+    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 1, 'role' => 'ai', 'text' => 'Вопрос?']);
+    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 2, 'role' => 'candidate', 'text' => 'Ответ']);
+    AiInterviewTurn::create([
+        'ai_interview_id' => $interview->id, 'position' => 3, 'role' => 'ai',
+        'text' => 'Спасибо, переходим к заданию.', 'question_kind' => AiInterviewTurn::KIND_CLOSING,
+    ]);
+
+    $interview->update(['follow_up_round' => 1]);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
+        ->assertOk()
+        ->assertJsonStructure(['question' => ['id', 'text']]);
+});
+
+// ==================== только по делу и без счёта вопросов ====================
+
+test('собеседующий говорит только по делу и не считает вопросы вслух', function () {
+    [$interview, , , $criteria] = chatReady();
+
+    Http::fake(['*' => Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['text' => 'Здравствуйте!', 'kind' => 'technical'])],
+    ]]]])]);
+
+    realInterviewer()->nextQuestion($interview->fresh(), $criteria);
+
+    Http::assertSent(function ($request) {
+        $prompt = $request['system_instruction'];
+
+        return str_contains($prompt, 'ТОЛЬКО ПО ДЕЛУ')
+            && str_contains($prompt, 'Никогда не говори, сколько вопросов')
+            && str_contains($prompt, 'Не прощайся и не подводи итогов')
+            && ! str_contains($prompt, 'Говори, сколько осталось');
+    });
+});
+
+// ==================== выбор, как отвечать ====================
+
+test('новый разговор начинается голосом, а текст — запасной вариант', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('id="chStart"', false)
+        ->assertSee(__('Собеседование проходит голосом'))
+        ->assertSee(__('Начать собеседование'))
+        ->assertSee(__('Лучше отвечу текстом'));
+});
+
+test('вернувшийся кандидат продолжает голосом без повторного выбора', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 1, 'role' => 'ai', 'text' => 'Вопрос?']);
+
+    // голос включается сам, если кандидат отвечал голосом раньше
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee("localStorage.getItem(PREF) === 'on' && !document.getElementById('chStart')", false);
+});
+
+test('начатый разговор выбора не предлагает', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 1, 'role' => 'ai', 'text' => 'Вопрос?']);
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertDontSee('id="chStart"', false);
 });

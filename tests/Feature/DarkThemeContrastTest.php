@@ -74,8 +74,9 @@ test('страницы кабинета не перебивают токены �
 });
 
 test('общие поверхности задают цвет текста сами, а не наследуют его', function () {
-    foreach (['applicant', 'employer'] as $cabinet) {
-        $css = file_get_contents(resource_path('views/'.$cabinet.'/partials/css.blade.php'));
+    // оформление у обоих кабинетов общее — один файл
+    foreach (['cabinet'] as $cabinet) {
+        $css = file_get_contents(resource_path('views/partials/cabinet-css.blade.php'));
 
         // комментарии убираем: внутри встречается «body{color}», и поиск
         // закрывающей скобки обрывался бы на нём
@@ -134,5 +135,12 @@ test('итог проверки навыков красится токенами
 
             expect(true)->toBeFalse($page.':'.($number + 1).' — '.trim($line));
         }
+    }
+});
+
+test('кабинеты соискателя и работодателя берут оформление из одного файла', function () {
+    foreach (['applicant', 'employer'] as $cabinet) {
+        expect(file_get_contents(resource_path('views/'.$cabinet.'/partials/css.blade.php')))
+            ->toContain("@include('partials.cabinet-css')");
     }
 });

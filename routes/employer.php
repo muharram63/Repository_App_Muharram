@@ -36,13 +36,32 @@ Route::prefix('ai-screening')->name('ai.')->group(function () {
         ->whereNumber('vacancy')->whereNumber('interview')->name('candidate');
     Route::get('{vacancy}/candidates/{interview}/export', [$report, 'export'])
         ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.export');
+    Route::get('{vacancy}/candidates/{interview}/documents/{document}', [$report, 'document'])
+        ->whereNumber('vacancy')->whereNumber('interview')->whereNumber('document')
+        ->name('candidate.document');
+    // Обсуждение кандидата с ИИ — голосом или текстом. Каждая реплика —
+    // обращение к модели, поэтому частота ограничена.
+    Route::middleware('throttle:30,1')->group(function () use ($report) {
+        Route::post('{vacancy}/candidates/{interview}/advise', [$report, 'advise'])
+            ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.advise');
+        Route::post('{vacancy}/candidates/{interview}/speak', [$report, 'speak'])
+            ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.speak');
+        Route::post('{vacancy}/candidates/{interview}/listen', [$report, 'listen'])
+            ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.listen');
+        // проверка теста и подготовка рекомендации — со страницы отчёта
+        Route::post('{vacancy}/candidates/{interview}/pump', [$report, 'pump'])
+            ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.pump');
+    });
+
+    Route::post('{vacancy}/candidates/{interview}/approve', [$report, 'approve'])
+        ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.approve');
     Route::post('{vacancy}/candidates/{interview}/override', [$report, 'override'])
         ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.override');
     Route::delete('{vacancy}/candidates/{interview}', [$report, 'purge'])
         ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.purge');
 });
 
-// сюда же позже добавите отклики:
+// отклики соискателей на вакансии работодателя
 Route::get('responses', [\App\Http\Controllers\Employer\ResponseController::class, 'index'])->name('responses.index');
 
 

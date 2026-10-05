@@ -50,6 +50,15 @@ class AiInterviewTurn extends Model
      * Виды вопросов. clarifying — уточнение по расплывчатому ответу,
      * follow_up — дополнительный вопрос в пограничном дораунде.
      */
+    /**
+     * Заключительная реплика: Анна подводит черту и говорит, что дальше.
+     *
+     * Это не вопрос — на неё не отвечают, она не входит в счёт вопросов и не
+     * оценивается. Хранится в разговоре, чтобы её можно было озвучить и чтобы
+     * в отчёте было видно, что кандидату сказали напоследок.
+     */
+    public const KIND_CLOSING = 'closing';
+
     public const QUESTION_KINDS = [
         'technical' => 'Технический',
         'behavioral' => 'Поведенческий',
@@ -142,9 +151,24 @@ class AiInterviewTurn extends Model
         return $this->score / $this->max_score;
     }
 
+    public function isClosing(): bool
+    {
+        return $this->role === self::ROLE_AI && $this->question_kind === self::KIND_CLOSING;
+    }
+
+    /**
+     * Только вопросы ИИ — без заключительных реплик.
+     */
+    public function scopeQuestions($query)
+    {
+        return $query->where('role', self::ROLE_AI)
+            ->where(fn ($q) => $q->whereNull('question_kind')->orWhere('question_kind', '!=', self::KIND_CLOSING));
+    }
+
     public function questionKindLabel(): ?string
     {
-        if (! $this->question_kind) {
+        // у завершения подписи нет: это не вопрос
+        if (! $this->question_kind || $this->isClosing()) {
             return null;
         }
 

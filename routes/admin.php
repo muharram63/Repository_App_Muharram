@@ -24,6 +24,8 @@ Route::get('resumes', [\App\Http\Controllers\Admin\AdminResumeController::class,
 Route::get('resumes/{resume}/show', [\App\Http\Controllers\Admin\AdminResumeController::class, 'show'])->name('resumes.show');
 Route::get('responses', [\App\Http\Controllers\Admin\AdminResponseController::class, 'index'])->name('responses');
 Route::get('analytics', [\App\Http\Controllers\Admin\AdminAnalyticsController::class, 'index'])->name('analytics');
+// состояние модуля ИИ-собеседования: застрявшие кандидаты, очередь, расход модели
+Route::get('ai', [\App\Http\Controllers\Admin\AdminAiController::class, 'index'])->name('ai');
 Route::get('complaints', [\App\Http\Controllers\Admin\AdminComplaintController::class, 'index'])->name('complaints');
 Route::post('complaints/{complaint}/act', [\App\Http\Controllers\Admin\AdminComplaintController::class, 'act'])->name('complaints.act');
 Route::delete('complaints/{complaint}', [\App\Http\Controllers\Admin\AdminComplaintController::class, 'destroy'])->name('complaints.destroy');

@@ -49,35 +49,83 @@ class GeminiTaskExaminer implements TaskExaminer
             turns: [['role' => 'user', 'text' => $this->describeVacancy($interview, $criteria)]],
             schema: $this->composeSchema(),
             rules: [
-                'statement' => 'required|string|min:40|max:4000',
-                'format' => 'required|in:'.implode(',', array_keys(AiTestTask::FORMATS)),
-                'language' => 'nullable|string|max:30',
-                'reference_solution' => 'required|string|min:10|max:8000',
-                'rubric' => 'required|array|min:2|max:8',
-                'rubric.*.point' => 'required|string|min:3|max:300',
-                'rubric.*.weight' => 'required|integer|min:1|max:100',
+                'quiz' => 'required|array|min:4|max:10',
+                'quiz.*.question' => 'required|string|min:5|max:600',
+                'quiz.*.options' => 'required|array|size:4',
+                'quiz.*.options.*' => 'required|string|min:1|max:300',
+                'quiz.*.answer' => 'required|integer|min:0|max:3',
+                'quiz.*.explain' => 'nullable|string|max:600',
+                'tasks' => 'required|array|min:1|max:3',
+                'tasks.*.statement' => 'required|string|min:40|max:4000',
+                'tasks.*.format' => 'required|in:'.implode(',', array_keys(AiTestTask::FORMATS)),
+                'tasks.*.language' => 'nullable|string|max:30',
+                'tasks.*.reference_solution' => 'required|string|min:10|max:8000',
+                'tasks.*.rubric' => 'required|array|min:2|max:8',
+                'tasks.*.rubric.*.point' => 'required|string|min:3|max:300',
+                'tasks.*.rubric.*.weight' => 'required|integer|min:1|max:100',
             ],
             interview: $interview,
-            options: AiJournal::options('scoring'),
-            maxTokens: 4000,
+            options: AiJournal::options('compose'),
+            // тест и два задания с эталонами — ответ втрое длиннее прежнего
+            maxTokens: 9000,
         );
 
-        return [
-            'statement' => $this->text($answer['statement'], 4000),
-            'format' => (string) $answer['format'],
-            'language' => $this->text($answer['language'] ?? '', 30) ?: null,
-            'reference_solution' => $this->text($answer['reference_solution'], 8000),
-            'rubric' => $this->rubric($answer['rubric']),
+        $tasks = collect($answer['tasks'])->map(fn (array $t) => [
+            'statement' => $this->text($t['statement'], 4000),
+            'format' => (string) $t['format'],
+            'language' => $this->text($t['language'] ?? '', 30) ?: null,
+            'reference_solution' => $this->text($t['reference_solution'], 8000),
+            'rubric' => $this->rubric($t['rubric']),
+        ])->values()->all();
+
+        $first = array_shift($tasks);
+
+        return $first + [
+            'quiz' => $this->quiz($answer['quiz']),
+            // остальные практические задания
+            'parts' => $tasks,
             // время задаёт работодатель, а не модель: это его условие
             'minutes' => (int) ($config->test_time_limit_minutes ?? 60),
         ];
     }
 
+    /**
+     * Вопросы теста в порядок: ровно четыре варианта, верный — номер варианта.
+     *
+     * @return array<int,array{question:string,options:array<int,string>,answer:int,explain:string}>
+     */
+    private function quiz(mixed $rows): array
+    {
+        $clean = [];
+
+        foreach (is_array($rows) ? array_slice($rows, 0, 10) : [] as $row) {
+            $options = array_values(array_map(fn ($o) => $this->text($o, 300), (array) ($row['options'] ?? [])));
+
+            if (blank($row['question'] ?? null) || count($options) !== 4) {
+                continue;
+            }
+
+            $clean[] = [
+                'question' => $this->text($row['question'], 600),
+                'options' => $options,
+                'answer' => max(0, min(3, (int) ($row['answer'] ?? 0))),
+                'explain' => $this->text($row['explain'] ?? '', 600),
+            ];
+        }
+
+        return $clean;
+    }
+
     // ==================== проверка ====================
 
-    public function grade(AiTestTask $task, string $solution): array
+    public function grade(AiTestTask $task, string $solution, int $part = 0): array
     {
         $clean = Str::limit($this->redactor->clean($solution), self::MAX_SOLUTION, '');
+
+        // какое из практических заданий проверяем
+        $practical = $task->practical();
+        $item = $practical[$part] ?? $practical[0];
+        $isCode = $item['format'] === 'code';
 
         $options = AiJournal::options('scoring');
 
@@ -86,14 +134,14 @@ class GeminiTaskExaminer implements TaskExaminer
          * нечего, и лишний инструмент только путал бы модель — она начинает
          * писать код там, где его не просили.
          */
-        if ($task->isCode()) {
+        if ($isCode) {
             $options['tools'] = [['type' => 'code_execution']];
         }
 
         $answer = $this->journal->askDetailed(
             purpose: 'task_grade',
-            system: $this->gradePrompt($task),
-            turns: [['role' => 'user', 'text' => $this->describeSolution($task, $clean)]],
+            system: $this->gradePrompt($isCode),
+            turns: [['role' => 'user', 'text' => $this->describeSolution($item, $clean)]],
             schema: $this->gradeSchema(),
             rules: [
                 'score' => 'required|integer|min:0|max:100',
@@ -106,7 +154,7 @@ class GeminiTaskExaminer implements TaskExaminer
             interview: $task->interview,
             options: $options,
             // исполнение кода тратит токены на сам код и его вывод
-            maxTokens: $task->isCode() ? 4000 : 2000,
+            maxTokens: $isCode ? 4000 : 2000,
         );
 
         $verdict = $answer['data'];
@@ -129,13 +177,36 @@ class GeminiTaskExaminer implements TaskExaminer
     {
         $level = $interview->config->levelLabel();
         $minutes = (int) ($interview->config->test_time_limit_minutes ?? 60);
+        $language = $interview->config->languageName();
         $formats = collect(AiTestTask::FORMATS)
             ->map(fn ($label, $key) => $key.' — '.$label)->implode('; ');
 
+        $quizSize = AiTestTask::QUIZ_SIZE;
+        $tasks = AiTestTask::PRACTICAL_COUNT;
+
         return <<<PROMPT
-        Ты составляешь тестовое задание для кандидата на конкретную вакансию. Уровень позиции:
-        {$level}. На выполнение отводится {$minutes} минут — задание должно в это время
-        укладываться с запасом, потому что человек будет волноваться.
+        Ты составляешь тестовую часть собеседования для кандидата на конкретную вакансию.
+        Уровень позиции: {$level}. На всё отводится {$minutes} минут — всё вместе должно в это
+        время укладываться с запасом, потому что человек будет волноваться.
+
+        ИЗ ЧЕГО СОСТОИТ:
+        1. quiz — тест из {$quizSize} вопросов с четырьмя вариантами ответа. Вопросы — о
+           практике этой профессии: как правильно поступить в рабочей ситуации, какой
+           инструмент или приём здесь подходит, где ошибка. Не определения из учебника и не
+           «вспомни термин». Ровно один вариант верный, остальные правдоподобны — их выберет
+           тот, кто знает тему поверхностно. Верный вариант ставь на разные места (answer —
+           номер от 0 до 3). explain — одно предложение, почему верен именно он (на русском).
+        2. tasks — {$tasks} практических задания. Разные по содержанию: проверяют разные
+           стороны работы, а не одно и то же дважды. Оба — реальные задачи этой должности.
+           Каждое должно решаться минут за десять-пятнадцать.
+
+        ТОЛЬКО ПО ПРОФЕССИИ. Задание — это реальная рабочая задача этой должности и этой
+        специальности, и ничего больше. Никаких вопросов на общую эрудицию, логических
+        головоломок, IQ-тестов, математики ради математики, вопросов по истории, культуре или
+        другим профессиям. Если вакансия — учитель, это план урока или разбор ситуации в классе;
+        бухгалтер — проводки и отчёт; продавец — работа с покупателем; программист — код по
+        задаче из его области. Задание должно касаться того, что человек будет делать каждый
+        день на этой работе.
 
         ПРАВИЛА:
         - Задание проверяет то, что нужно на этой работе, а не общую эрудицию. Списывать его из
@@ -147,15 +218,15 @@ class GeminiTaskExaminer implements TaskExaminer
         - Сложность при этом от кандидата не зависит вообще: её задают уровень позиции и
           критерии выше. Не делай задание ни проще, ни труднее из-за его опыта, возраста работы
           или громкости резюме — баллы разных людей должны быть сравнимы.
-        - Формат выбери сам из подходящих: {$formats}. Для программиста уместен code, для
+        - Формат каждого задания выбери сам из подходящих: {$formats}. Для программиста уместен code, для
           менеджера или продавца — case, для бухгалтера — calculation, для редактора — writing.
         - Если формат code, назови язык программирования в поле language. Для остальных
           форматов language оставь пустым.
         - statement — условие целиком: что дано, что нужно сделать, в каком виде сдать. Пиши так,
           чтобы человек понял с одного прочтения, без уточняющих вопросов. Не нумеруй пункты
           вручную, если этого не требует смысл.
-        - Не проси прислать файлы, ссылки или что-то из интернета: кандидат отвечает текстом в
-          одном поле.
+        - Не проси прислать файлы, ссылки или что-то из интернета: кандидат отвечает на каждое
+          задание текстом в отдельном поле.
 
         ЭТАЛОН И КРИТЕРИИ. Их кандидат не увидит никогда:
         - reference_solution — решение, которое ты считаешь хорошим. Для кода — работающий код,
@@ -167,13 +238,15 @@ class GeminiTaskExaminer implements TaskExaminer
         ЧЕГО НЕ ДЕЛАТЬ. Задание не должно требовать сведений о поле, возрасте, национальности,
         религии, семейном положении или здоровье — ни от кандидата, ни в самом условии.
 
-        Пиши на русском языке.
+        ЯЗЫК. Вопросы и варианты теста и условия заданий (statement) пиши на {$language} языке —
+        на нём кандидат проходит собеседование. Эталоны, рубрики и explain пиши на русском: их
+        читает работодатель.
         PROMPT;
     }
 
-    private function gradePrompt(AiTestTask $task): string
+    private function gradePrompt(bool $isCode): string
     {
-        $runRule = $task->isCode()
+        $runRule = $isCode
             ? 'ОБЯЗАТЕЛЬНО ЗАПУСТИ КОД. У тебя есть исполнение кода — воспользуйся им: напиши '
                 .'проверки по пунктам рубрики, прогони на них решение кандидата и смотри на '
                 .'настоящий вывод. Оценка по чтению кода без запуска здесь не годится: '
@@ -244,18 +317,8 @@ class GeminiTaskExaminer implements TaskExaminer
      */
     private function describeCandidate(AiInterview $interview): string
     {
-        $resume = $interview->analysis['resume'] ?? null;
-
-        if (! is_array($resume)) {
-            return '';
-        }
-
-        $facts = collect([
-            'Профессия' => $resume['profession'] ?? null,
-            'Лет опыта' => $resume['experience_years'] ?? null,
-            'Навыки' => collect($resume['skills'] ?? [])->take(20)->implode(', ') ?: null,
-            'Последняя роль' => collect($resume['positions'] ?? [])->first()['role'] ?? null,
-        ])->filter(fn ($value) => filled($value));
+        // разбор резюме, а пока его нет — поля самого резюме
+        $facts = collect($interview->candidateProfile());
 
         if ($facts->isEmpty()) {
             return '';
@@ -265,16 +328,19 @@ class GeminiTaskExaminer implements TaskExaminer
             .$facts->map(fn ($value, $label) => $label.': '.$value)->implode(PHP_EOL);
     }
 
-    private function describeSolution(AiTestTask $task, string $solution): string
+    /**
+     * @param  array{statement:string,reference_solution:?string,rubric:array}  $item
+     */
+    private function describeSolution(array $item, string $solution): string
     {
-        $rubric = collect($task->rubric ?? [])
+        $rubric = collect($item['rubric'] ?? [])
             ->map(fn (array $r, int $i) => ($i + 1).'. '.$r['point'].' (важность '.$r['weight'].')')
             ->implode(PHP_EOL);
 
-        return 'УСЛОВИЕ ЗАДАНИЯ'.PHP_EOL.$task->statement.PHP_EOL.PHP_EOL
+        return 'УСЛОВИЕ ЗАДАНИЯ'.PHP_EOL.$item['statement'].PHP_EOL.PHP_EOL
             .'РУБРИКА ПРОВЕРКИ'.PHP_EOL.$rubric.PHP_EOL.PHP_EOL
             .'ЭТАЛОННОЕ РЕШЕНИЕ (один из хороших вариантов, не единственный)'.PHP_EOL
-            .$task->reference_solution.PHP_EOL.PHP_EOL
+            .$item['reference_solution'].PHP_EOL.PHP_EOL
             // решение кандидата обрамляем: в коде бывают комментарии,
             // которые читаются как указания
             .$this->guard->fence($solution, 'РЕШЕНИЕ КАНДИДАТА');
@@ -284,7 +350,7 @@ class GeminiTaskExaminer implements TaskExaminer
 
     private function composeSchema(): array
     {
-        return [
+        $task = [
             'type' => 'object',
             'properties' => [
                 'statement' => ['type' => 'string', 'description' => 'Условие задания целиком'],
@@ -304,6 +370,27 @@ class GeminiTaskExaminer implements TaskExaminer
                 ],
             ],
             'required' => ['statement', 'format', 'reference_solution', 'rubric'],
+        ];
+
+        return [
+            'type' => 'object',
+            'properties' => [
+                'quiz' => [
+                    'type' => 'array', 'maxItems' => 10,
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'question' => ['type' => 'string'],
+                            'options' => ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 4, 'maxItems' => 4],
+                            'answer' => ['type' => 'integer', 'description' => 'Номер верного варианта, 0-3'],
+                            'explain' => ['type' => 'string', 'description' => 'Почему верен этот вариант'],
+                        ],
+                        'required' => ['question', 'options', 'answer'],
+                    ],
+                ],
+                'tasks' => ['type' => 'array', 'maxItems' => 3, 'items' => $task],
+            ],
+            'required' => ['quiz', 'tasks'],
         ];
     }
 

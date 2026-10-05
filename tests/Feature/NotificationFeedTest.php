@@ -97,3 +97,45 @@ test('a scheduled interview reaches the applicant inbox', function () {
 
     expect(UserNotification::where('user_id', $applicantUser->id)->where('type', 'interview')->count())->toBe(1);
 });
+
+// ==================== звук и всплывающее сообщение ====================
+
+test('счётчик отдаёт последнее непрочитанное уведомление для всплывающей карточки', function () {
+    $user = App\Models\User::factory()->applicant()->create();
+
+    App\Models\UserNotification::deliver($user->id, 'response_status', 'Вы прошли отбор', 'Поздравляем!', '/applicant/ai-interview');
+
+    $note = App\Models\UserNotification::where('user_id', $user->id)->sole();
+
+    $this->actingAs($user)->getJson(route('public.notifications.count'))
+        ->assertOk()
+        ->assertJsonPath('unread', 1)
+        ->assertJsonPath('latest.id', $note->id)
+        ->assertJsonPath('latest.title', 'Вы прошли отбор')
+        ->assertJsonPath('latest.url', route('public.notifications.open', $note));
+});
+
+test('без непрочитанных карточке показывать нечего', function () {
+    $user = App\Models\User::factory()->applicant()->create();
+
+    $this->actingAs($user)->getJson(route('public.notifications.count'))
+        ->assertOk()
+        ->assertJsonPath('latest', null);
+});
+
+test('звук уведомлений есть и на страницах ИИ-собеседования, где нет колокольчика', function () {
+    Illuminate\Support\Facades\Queue::fake();
+    Illuminate\Support\Facades\Storage::fake('local');
+    [$vacancy, , $employerUser] = makeAiVacancy();
+    [$interview, , $applicantUser] = makeAiInterview($vacancy, ['consent_at' => now(), 'stage' => 'interview', 'analysis_status' => 'ready']);
+
+    $this->actingAs($applicantUser)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('id="naToast"', false);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee('id="naToast"', false)
+        // обсуждение с Анной включает голос само
+        ->assertSee('if (engine) { switchVoice(true); }', false);
+});

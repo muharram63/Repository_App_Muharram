@@ -115,6 +115,8 @@ class BuildRequirementMatrix implements ShouldQueue
             throw $e;
         }
 
+        $wasWaiting = in_array($interview->stage, ['consent', 'documents'], true);
+
         $this->saveChecks($interview, $criteria, $matrix['checks']);
 
         $checks = $interview->requirementChecks()->get();
@@ -146,7 +148,11 @@ class BuildRequirementMatrix implements ShouldQueue
                 : []),
         ]);
 
-        $this->notify($interview);
+        // Кандидату пишем, только если он ещё ждёт разбора. Обычно он уже
+        // в разговоре — разбор просто подключается к следующим вопросам.
+        if ($wasWaiting) {
+            $this->notify($interview);
+        }
     }
 
     /**
@@ -230,6 +236,28 @@ class BuildRequirementMatrix implements ShouldQueue
      */
     private function giveUp(AiInterview $interview, string $reason): void
     {
+        /*
+         * Кандидат уже разговаривает с ИИ — собеседование не обрываем.
+         *
+         * Разговор начинается, не дожидаясь разбора. Если разбор не удался,
+         * незачем обрывать человека на полуслове: он доходит до конца, а
+         * решение без разобранных документов само уйдёт работодателю на
+         * ручную проверку — и работодатель получит уведомление тогда же.
+         */
+        if (! in_array($interview->stage, ['consent', 'documents'], true)) {
+            $interview->update([
+                'analysis_status' => 'failed',
+                'analysed_at' => now(),
+            ]);
+
+            Log::warning('Сверка требований не удалась во время собеседования', [
+                'interview' => $interview->id,
+                'reason' => $reason,
+            ]);
+
+            return;
+        }
+
         $interview->update([
             'analysis_status' => 'failed',
             'analysed_at' => now(),
@@ -246,9 +274,13 @@ class BuildRequirementMatrix implements ShouldQueue
         UserNotification::deliver(
             $interview->vacancy?->employer?->user_id,
             'interview',
-            'Кандидат ждёт ручной проверки',
-            'По вакансии «'.($interview->vacancy?->title ?? '—').'» не удалось разобрать документы: '.$reason,
-            route('employer.ai.show', $interview->vacancy_id),
+            UserNotification::text('Кандидат ждёт ручной проверки'),
+            UserNotification::text('По вакансии «:title» не удалось разобрать документы: :reason', [
+                'title' => $interview->vacancy?->title ?? '—',
+                'reason' => $reason,
+            ]),
+            // в отчёт по кандидату: решать надо там, а не в настройках вакансии
+            route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]),
         );
     }
 
@@ -260,8 +292,8 @@ class BuildRequirementMatrix implements ShouldQueue
         UserNotification::deliver(
             $interview->applicant?->user_id,
             'interview',
-            'Документы разобраны',
-            'Собеседование по вакансии «'.($interview->vacancy?->title ?? '—').'» готово начаться.',
+            UserNotification::text('Документы разобраны'),
+            UserNotification::text('Собеседование по вакансии «:title» готово начаться.', ['title' => $interview->vacancy?->title ?? '—']),
             route('applicant.ai.interview', $interview),
         );
     }

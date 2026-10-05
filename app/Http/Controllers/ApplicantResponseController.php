@@ -17,18 +17,18 @@ class ApplicantResponseController extends Controller
         $user = auth()->user();
 
         if ($user->role !== 'applicant') {
-            return back()->with('error', 'Откликаться на вакансии могут только соискатели.');
+            return back()->with('error', __('Откликаться на вакансии могут только соискатели.'));
         }
 
         $applicant = $user->applicant;
 
         if (! $applicant) {
             return redirect()->route('public.applicants.create')
-                ->with('error', 'Сначала заполните анкету соискателя.');
+                ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
         if ($vacancy->status !== 'active') {
-            return back()->with('error', 'Эта вакансия больше не принимает отклики.');
+            return back()->with('error', __('Эта вакансия больше не принимает отклики.'));
         }
 
         $validated = $request->validate([
@@ -41,16 +41,25 @@ class ApplicantResponseController extends Controller
         );
 
         if (! $response->wasRecentlyCreated) {
-            return back()->with('status', 'Вы уже откликались на эту вакансию.');
+            return back()->with('status', __('Вы уже откликались на эту вакансию.'));
         }
+
+        /*
+         * Кандидат отзывал отклик, а собеседование по вакансии у него уже
+         * было: привязываем его к новому отклику. Иначе решение ставило бы
+         * статус «в никуда», а новый отклик так и висел необработанным.
+         */
+        \App\Models\AiInterview::where('vacancy_id', $vacancy->id)
+            ->where('applicant_id', $applicant->id)
+            ->update(['vacancy_response_id' => $response->id]);
 
         // уведомление получают обе стороны: работодателю — новое,
         // соискателю — отметка о собственном действии, уже прочитанная
         UserNotification::deliver(
             $vacancy->employer?->user_id,
             'response',
-            'Новый отклик на вакансию',
-            $user->name.' откликнулся на «'.$vacancy->title.'»',
+            UserNotification::text('Новый отклик на вакансию'),
+            UserNotification::text(':name откликнулся на «:title»', ['name' => $user->name, 'title' => $vacancy->title]),
             route('public.responses.index'),
             'mail_responses',
         );
@@ -58,8 +67,11 @@ class ApplicantResponseController extends Controller
         UserNotification::deliver(
             $user->id,
             'response',
-            'Вы откликнулись на вакансию',
-            '«'.$vacancy->title.'» · '.($vacancy->employer?->company_name ?? 'компания'),
+            UserNotification::text('Вы откликнулись на вакансию'),
+            UserNotification::text('«:title» · :company', [
+                'title' => $vacancy->title,
+                'company' => $vacancy->employer?->company_name ?? UserNotification::text('компания'),
+            ]),
             route('public.responses.index'),
             'mail_responses',
             read: true,
@@ -86,16 +98,16 @@ class ApplicantResponseController extends Controller
             UserNotification::deliver(
                 $user->id,
                 'interview',
-                'По этой вакансии собеседование проводит ИИ',
-                '«'.$vacancy->title.'» — нужно дать согласие и загрузить документы',
+                UserNotification::text('По этой вакансии собеседование проводит ИИ'),
+                UserNotification::text('«:title» — нужно дать согласие и загрузить документы', ['title' => $vacancy->title]),
                 route('applicant.ai.start', $vacancy),
             );
 
             return redirect()->route('applicant.ai.start', $vacancy)
-                ->with('status', 'Отклик отправлен. По этой вакансии собеседование проводит ИИ.');
+                ->with('status', __('Отклик отправлен. По этой вакансии собеседование проводит ИИ.'));
         }
 
-        return back()->with('status', 'Отклик отправлен.');
+        return back()->with('status', __('Отклик отправлен.'));
     }
 
     /**
@@ -136,13 +148,16 @@ class ApplicantResponseController extends Controller
         UserNotification::deliver(
             $vacancyResponse->applicant?->user_id,
             'response_status',
-            'Статус вашего отклика изменён',
-            ($vacancyResponse->vacancy?->title ?? 'Вакансия').': '.$labels[$validated['status']],
+            UserNotification::text('Статус вашего отклика изменён'),
+            UserNotification::text(':title: :status', [
+                'title' => $vacancyResponse->vacancy?->title ?? UserNotification::text('Вакансия'),
+                'status' => UserNotification::text($labels[$validated['status']]),
+            ]),
             route('public.responses.index'),
             'mail_responses',
         );
 
-        return back()->with('status', $labels[$validated['status']]);
+        return back()->with('status', __($labels[$validated['status']]));
     }
 
     /**
@@ -158,6 +173,6 @@ class ApplicantResponseController extends Controller
             ->where('vacancy_id', $vacancy->id)
             ->delete();
 
-        return back()->with('status', 'Отклик отозван.');
+        return back()->with('status', __('Отклик отозван.'));
     }
 }

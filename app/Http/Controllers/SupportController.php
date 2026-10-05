@@ -54,12 +54,12 @@ class SupportController extends Controller
             ->count();
 
         if ($lastDay >= AdminComment::DAILY_LIMIT) {
-            return back()->with('error', 'Вы отправили слишком много обращений за сутки. Попробуйте завтра.');
+            return back()->with('error', __('Вы отправили слишком много обращений за сутки. Попробуйте завтра.'));
         }
 
         AdminComment::create($validated + ['user_id' => $user->id]);
 
-        return back()->with('status', 'Обращение отправлено. Администратор ответит в этом же разделе.');
+        return back()->with('status', __('Обращение отправлено. Администратор ответит в этом же разделе.'));
     }
 
     /**
@@ -70,12 +70,12 @@ class SupportController extends Controller
         abort_if($comment->user_id !== $request->user()->id, 403);
 
         if (! $comment->canBeWithdrawn()) {
-            return back()->with('error', 'Обращение уже в работе — отозвать его нельзя.');
+            return back()->with('error', __('Обращение уже в работе — отозвать его нельзя.'));
         }
 
         $comment->delete();
 
-        return back()->with('status', 'Обращение отозвано.');
+        return back()->with('status', __('Обращение отозвано.'));
     }
 
     /**

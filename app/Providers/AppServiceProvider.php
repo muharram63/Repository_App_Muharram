@@ -75,6 +75,19 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Ai\GeminiDecisionWriter::class,
         );
 
+        // Распознавание устных ответов — для голосового режима там, где
+        // браузер не распознаёт речь сам.
+        $this->app->bind(
+            \App\Services\Ai\SpeechRecognizer::class,
+            \App\Services\Ai\GeminiRecognizer::class,
+        );
+
+        // Анна обсуждает кандидата с работодателем — голосом или текстом.
+        $this->app->bind(
+            \App\Services\Ai\HiringAdvisor::class,
+            \App\Services\Ai\GeminiHiringAdvisor::class,
+        );
+
         // Озвучка вопросов на ИИ-собеседовании. Настройки передаём явно:
         // синтез умеет выключаться отдельно от остального Gemini, и знать
         // об этом должна реализация, а не вызывающий код.
@@ -92,6 +105,29 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        /*
+         * Напоминания работодателям о кандидатах, ждущих ответа больше суток.
+         *
+         * Обычно их отправляет планировщик (ai:sweep), но он запущен не всегда,
+         * а кандидат после собеседования на сайт может и не заходить. Поэтому
+         * проверяем и после обычных запросов к сайту — уже отданных клиенту,
+         * не чаще раза в пять минут. Это один лёгкий запрос к базе.
+         */
+        $this->app->terminating(function () {
+            if ($this->app->runningUnitTests() || $this->app->runningInConsole()) {
+                return;
+            }
+
+            try {
+                if (\Illuminate\Support\Facades\Cache::add('ai-release-overdue', true, now()->addMinutes(5))) {
+                    app(\App\Services\Scoring\DecisionRelease::class)->remindOverdue();
+                }
+            } catch (\Throwable $e) {
+                // проверка — подстраховка: её сбой не должен ломать ответ сайта
+                report($e);
+            }
+        });
+
         // дефолтная разметка у Laravel рассчитана на Tailwind, у проекта своя вёрстка
         Paginator::defaultView('vendor.pagination.site');
         Paginator::defaultSimpleView('vendor.pagination.site');

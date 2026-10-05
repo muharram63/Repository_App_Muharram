@@ -26,9 +26,35 @@ class AiInterviewCriterion extends Model
         'kind',
         'weight',
         'source',
+        'basis',
+        'basis_quote',
         'confirmed_at',
         'position',
     ];
+
+    /**
+     * Из какого поля вакансии вырос критерий — по порядку важности.
+     *
+     * Профессия и навыки — суть работы; языки и график — обстоятельства.
+     * Порядок нужен и человеку, и коду: обязательным критерием в первую
+     * очередь становится то, без чего эту работу не сделать.
+     */
+    public const BASES = [
+        'title' => 'Должность',
+        'skills' => 'Навыки',
+        'description' => 'Описание',
+        'experience' => 'Опыт',
+        'languages' => 'Языки',
+        'schedule' => 'Занятость и график',
+    ];
+
+    /** Основы, которые говорят о самой профессии. */
+    public const PROFESSIONAL_BASES = ['title', 'skills', 'description', 'experience'];
+
+    public function basisLabel(): ?string
+    {
+        return $this->basis ? __(self::BASES[$this->basis] ?? $this->basis) : null;
+    }
 
     protected $casts = [
         'confirmed_at' => 'datetime',

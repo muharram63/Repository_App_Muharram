@@ -33,6 +33,9 @@ class AiDecision extends Model
         'overridden_at',
         'override_outcome',
         'override_note',
+        'override_message',
+        'released_at',
+        'release_source',
     ];
 
     protected $casts = [
@@ -44,8 +47,10 @@ class AiDecision extends Model
         'reasons' => 'encrypted:array',
         'message_to_candidate' => 'encrypted',
         'override_note' => 'encrypted',
+        'override_message' => 'encrypted',
         'requires_manual_review' => 'boolean',
         'overridden_at' => 'datetime',
+        'released_at' => 'datetime',
     ];
 
     protected $attributes = [
@@ -86,6 +91,15 @@ class AiDecision extends Model
         return $this->belongsTo(User::class, 'overridden_by');
     }
 
+    /**
+     * Ответ отправлен кандидату. До этого решение — рекомендация, которую
+     * видит только работодатель.
+     */
+    public function isReleased(): bool
+    {
+        return $this->released_at !== null;
+    }
+
     public function isOverridden(): bool
     {
         return $this->overridden_at !== null;
@@ -108,6 +122,20 @@ class AiDecision extends Model
     public function announced(): bool
     {
         return in_array($this->effectiveOutcome(), ['passed', 'rejected'], true);
+    }
+
+    /**
+     * Что сейчас сказано кандидату.
+     *
+     * Изменил решение работодатель — его письмо, иначе письмо ИИ. Без этого
+     * кандидат видел новый исход рядом со старым письмом: «Прошёл отбор» и
+     * «к сожалению, мы остановились на других кандидатах».
+     */
+    public function candidateMessage(): ?string
+    {
+        return $this->isOverridden() && $this->override_message
+            ? $this->override_message
+            : $this->message_to_candidate;
     }
 
     public function outcomeLabel(): string

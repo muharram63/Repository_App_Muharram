@@ -17,7 +17,7 @@ class ResponseController extends Controller
 
         if (! $applicant) {
             return redirect()->route('public.applicants.create')
-                ->with('error', 'Сначала заполните анкету соискателя.');
+                ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
         $responses = ResumeResponse::with('employer.user', 'employer.city', 'employer.industry', 'resume')

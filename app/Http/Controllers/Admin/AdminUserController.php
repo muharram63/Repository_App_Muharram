@@ -104,17 +104,17 @@ class AdminUserController extends Controller
         ]);
 
         if ($user->id === auth()->id()) {
-            return back()->with('error', 'Собственный статус менять нельзя.');
+            return back()->with('error', __('Собственный статус менять нельзя.'));
         }
 
         if ($user->role === 'admin' && $validated['status'] !== 'active') {
-            return back()->with('error', 'Администратора заблокировать нельзя.');
+            return back()->with('error', __('Администратора заблокировать нельзя.'));
         }
 
         $user->status = $validated['status'];
         $user->save();
 
-        return redirect()->route('superadmin.users')->with('status', 'Статус пользователя обновлён.');
+        return redirect()->route('superadmin.users')->with('status', __('Статус пользователя обновлён.'));
     }
 
     /**
@@ -130,14 +130,14 @@ class AdminUserController extends Controller
         ]);
 
         if (User::where('role', 'admin')->count() <= 1) {
-            return back()->with('error', 'Вы единственный администратор — снять с себя роль нельзя.');
+            return back()->with('error', __('Вы единственный администратор — снять с себя роль нельзя.'));
         }
 
         $user->role = $validated['role'];
         $user->save();
 
         return redirect()->route('dashboard')
-            ->with('status', 'Вы больше не администратор.');
+            ->with('status', __('Вы больше не администратор.'));
     }
 
     /**
@@ -146,15 +146,15 @@ class AdminUserController extends Controller
     public function destroy(User $user)
     {
         if ($user->id === auth()->id()) {
-            return back()->with('error', 'Нельзя удалить собственный аккаунт.');
+            return back()->with('error', __('Нельзя удалить собственный аккаунт.'));
         }
 
         if ($user->role === 'admin' && User::where('role', 'admin')->count() <= 1) {
-            return back()->with('error', 'Это последний администратор — удалять нельзя.');
+            return back()->with('error', __('Это последний администратор — удалять нельзя.'));
         }
 
         $user->delete();
 
-        return redirect()->route('superadmin.users')->with('status', 'Пользователь удалён.');
+        return redirect()->route('superadmin.users')->with('status', __('Пользователь удалён.'));
     }
 }

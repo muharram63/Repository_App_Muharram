@@ -28,7 +28,7 @@ class ResumeController extends Controller
 
         if (! $applicant) {
             return redirect()->route('public.applicants.create')
-                ->with('error', 'Сначала заполните анкету соискателя.');
+                ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
         return view('applicant.pages.resumes.create', [
@@ -43,7 +43,7 @@ class ResumeController extends Controller
 
         if (! $applicant) {
             return redirect()->route('public.applicants.create')
-                ->with('error', 'Сначала заполните анкету соискателя.');
+                ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
         $validated = $this->validateResume($request);
@@ -53,7 +53,7 @@ class ResumeController extends Controller
         Resume::create($validated);
 
         return redirect()->route('applicant.resume.index')
-            ->with('status', 'Резюме опубликовано.');
+            ->with('status', __('Резюме опубликовано.'));
     }
 
     public function show(Resume $resume)
@@ -85,7 +85,7 @@ class ResumeController extends Controller
         $resume->update($this->handleDocuments($request, $this->validateResume($request), $resume));
 
         return redirect()->route('applicant.resume.index')
-            ->with('status', 'Резюме обновлено.');
+            ->with('status', __('Резюме обновлено.'));
     }
 
     public function destroy(Resume $resume)
@@ -95,7 +95,7 @@ class ResumeController extends Controller
         $resume->delete();
 
         return redirect()->route('applicant.resume.index')
-            ->with('status', 'Резюме удалено.');
+            ->with('status', __('Резюме удалено.'));
     }
 
     /**

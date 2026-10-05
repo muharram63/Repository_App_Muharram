@@ -29,19 +29,19 @@ class ComplaintController extends Controller
             ->count();
 
         if ($lastDay >= 10) {
-            return back()->with('error', 'Вы отправили слишком много жалоб за сутки. Попробуйте завтра.');
+            return back()->with('error', __('Вы отправили слишком много жалоб за сутки. Попробуйте завтра.'));
         }
 
         $ownerId = Complaint::ownerId($validated['target_type'], (int) $validated['target_id']);
 
         // объекта нет — жаловаться не на что
         if ($ownerId === null) {
-            return back()->with('error', 'Объект жалобы не найден.');
+            return back()->with('error', __('Объект жалобы не найден.'));
         }
 
         // на своё имущество и на самого себя жалоб не принимаем
         if ($ownerId === $request->user()->id) {
-            return back()->with('error', 'Нельзя пожаловаться на собственный объект.');
+            return back()->with('error', __('Нельзя пожаловаться на собственный объект.'));
         }
 
         $exists = Complaint::where('user_id', $request->user()->id)
@@ -51,7 +51,7 @@ class ComplaintController extends Controller
             ->exists();
 
         if ($exists) {
-            return back()->with('status', 'Вы уже отправляли жалобу на этот объект — она в работе.');
+            return back()->with('status', __('Вы уже отправляли жалобу на этот объект — она в работе.'));
         }
 
         $complaint = Complaint::create($validated + ['user_id' => $request->user()->id]);
@@ -63,18 +63,20 @@ class ComplaintController extends Controller
             'action' => 'complaint_received',
             'subject' => $complaint->targetTitle(),
             'reason' => $complaint->reasonLabel(),
-            'comment' => 'Проверьте объект. Когда устраните замечание, отметьте жалобу исправленной.',
+            'comment' => __('Проверьте объект. Когда устраните замечание, отметьте жалобу исправленной.'),
         ]);
 
         UserNotification::deliver(
             $ownerId,
             'complaint',
-            'На ваш объект пожаловались',
-            'Причина: '.$complaint->reasonLabel().'. Отметьте замечание исправленным в разделе «Жалобы».',
+            UserNotification::text('На ваш объект пожаловались'),
+            UserNotification::text('Причина: :reason. Отметьте замечание исправленным в разделе «Жалобы».', [
+                'reason' => UserNotification::text(Complaint::REASONS[$complaint->reason] ?? (string) $complaint->reason),
+            ]),
             Complaint::cabinetUrl(User::find($ownerId)),
         );
 
-        return back()->with('status', 'Жалоба отправлена. Владелец объекта получил уведомление.');
+        return back()->with('status', __('Жалоба отправлена. Владелец объекта получил уведомление.'));
     }
 
     /**
@@ -86,7 +88,7 @@ class ComplaintController extends Controller
         abort_if($complaint->ownerUserId() !== $request->user()->id, 403);
 
         if (! $complaint->ownerCanSetStatus()) {
-            return back()->with('error', 'Жалобу на вас как на пользователя рассматривает модератор.');
+            return back()->with('error', __('Жалобу на вас как на пользователя рассматривает модератор.'));
         }
 
         $validated = $request->validate([
@@ -115,16 +117,19 @@ class ComplaintController extends Controller
         UserNotification::deliver(
             $complaint->user_id,
             'complaint_status',
-            'Ответ по вашей жалобе',
-            $complaint->targetTitle().': '.$complaint->statusLabel(),
+            UserNotification::text('Ответ по вашей жалобе'),
+            UserNotification::text(':title: :status', [
+                'title' => $complaint->targetTitle(),
+                'status' => UserNotification::text(Complaint::STATUSES[$complaint->status] ?? (string) $complaint->status),
+            ]),
             Complaint::cabinetUrl(User::find($complaint->user_id)),
         );
 
         $messages = [
-            'new' => 'Жалоба возвращена в новые.',
-            'in_review' => 'Жалоба взята в работу.',
-            'resolved' => 'Замечание отмечено исправленным.',
-            'rejected' => 'Жалоба отклонена.',
+            'new' => __('Жалоба возвращена в новые.'),
+            'in_review' => __('Жалоба взята в работу.'),
+            'resolved' => __('Замечание отмечено исправленным.'),
+            'rejected' => __('Жалоба отклонена.'),
         ];
 
         return back()->with('status', $messages[$status]);
@@ -138,11 +143,11 @@ class ComplaintController extends Controller
         abort_if($complaint->user_id !== $request->user()->id, 403);
 
         if ($complaint->status !== 'new') {
-            return back()->with('error', 'Жалоба уже в работе — отозвать её нельзя.');
+            return back()->with('error', __('Жалоба уже в работе — отозвать её нельзя.'));
         }
 
         $complaint->delete();
 
-        return back()->with('status', 'Жалоба отозвана.');
+        return back()->with('status', __('Жалоба отозвана.'));
     }
 }

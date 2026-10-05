@@ -45,19 +45,11 @@ class SynthesizeTurnSpeech implements ShouldQueue
             return;
         }
 
-        if (! $library->available()) {
-            $turn->update(['speech_status' => 'failed']);
-
-            return;
-        }
-
         try {
-            $made = $library->make($turn->text, $turn->interview);
+            $library->voiceTurn($turn);
         } catch (AiUnavailableException $e) {
-            // последняя попытка исчерпана — отдаём страницу браузерному голосу
             if ($this->attempts() >= $this->tries) {
                 $turn->update(['speech_status' => 'failed']);
-
                 Log::info('Озвучка вопроса не удалась, страница прочитает сама', [
                     'turn' => $turn->id,
                     'error' => $e->getMessage(),
@@ -68,18 +60,8 @@ class SynthesizeTurnSpeech implements ShouldQueue
 
             throw $e;
         }
-
-        $turn->update([
-            'speech_status' => 'ready',
-            'speech_path' => $made['path'],
-            'speech_voice' => config('services.gemini.tts_voice'),
-            'speech_ms' => $made['ms'],
-        ]);
     }
 
-    /**
-     * Очередь сдалась окончательно — вопрос остаётся, голос берёт браузер.
-     */
     public function failed(?\Throwable $e): void
     {
         AiInterviewTurn::whereKey($this->turnId)->update(['speech_status' => 'failed']);

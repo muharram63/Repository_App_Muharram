@@ -362,7 +362,7 @@ test('зависший разбор можно запустить заново',
 
     $this->actingAs($applicantUser)
         ->post(route('applicant.ai.proceed', $interview))
-        ->assertRedirect(route('applicant.ai.documents', $interview));
+        ->assertRedirect(route('applicant.ai.chat', $interview));
 
     expect(Queue::pushedJobs())->not->toBe([]);
 });

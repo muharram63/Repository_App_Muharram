@@ -44,6 +44,16 @@ return [
      */
     'jitsi' => [
         'domain' => env('JITSI_DOMAIN', 'meet.ffmuc.net'),
+
+        /*
+         * Встраивать ли встречу в страницу сайта.
+         *
+         * auto — спросить сервер (App\Support\VideoRoom): многие публичные
+         * серверы, и meet.ffmuc.net тоже, запрещают показ себя внутри чужих
+         * сайтов, и тогда комната открывается в новой вкладке. always — свой
+         * сервер, настроенный под этот сайт. never — всегда новая вкладка.
+         */
+        'embed' => env('JITSI_EMBED', 'auto'),
     ],
 
     /*
@@ -123,7 +133,14 @@ return [
          */
         'tts_enabled' => filter_var(env('GEMINI_TTS_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
         'tts_model' => env('GEMINI_TTS_MODEL', 'gemini-3.8-flash-lite-tts'),
-        'tts_voice' => env('GEMINI_TTS_VOICE', 'Kore'),
+        /*
+         * Sulafat — «тёплый» женский голос: ассистента зовут Анна, и разговор
+         * должен звучать как беседа, а не объявление. Прежний Kore — «твёрдый»,
+         * для собеседования строговат. Манеру речи текстом задать нельзя:
+         * проверено — flash-lite-tts читает такое указание вслух вместе с
+         * репликой, поэтому мягкость даёт только сам голос.
+         */
+        'tts_voice' => env('GEMINI_TTS_VOICE', 'Sulafat'),
         // синтез длиннее обычного ответа: длинный вопрос упирался бы
         // в прежние 60 секунд
         'tts_timeout' => (int) env('GEMINI_TTS_TIMEOUT', 90),

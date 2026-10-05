@@ -16,7 +16,7 @@ class ProfileController extends Controller
 
         if (! $applicant) {
             return redirect()->route('public.applicants.create')
-                ->with('error', 'Сначала заполните анкету соискателя.');
+                ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
         $validated = $request->validate([
@@ -58,7 +58,7 @@ class ProfileController extends Controller
         ]);
 
         return redirect()->route('applicant.dashboard')
-            ->with('status', 'Профиль обновлён.');
+            ->with('status', __('Профиль обновлён.'));
     }
 
     public function profile()
@@ -68,7 +68,7 @@ class ProfileController extends Controller
 
         if (! $applicant) {
             return redirect()->route('public.applicants.create')
-                ->with('error', 'Сначала заполните анкету соискателя.');
+                ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
         $resumes = $applicant->resume()->withCount('responses')->get();

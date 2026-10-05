@@ -87,7 +87,7 @@ class InterviewController extends Controller
         $employer = $user->employer;
 
         if ($user->role !== 'employer' || ! $employer) {
-            return back()->with('error', 'Назначать собеседования могут только работодатели.');
+            return back()->with('error', __('Назначать собеседования могут только работодатели.'));
         }
 
         $validated = $request->validate([
@@ -144,13 +144,13 @@ class InterviewController extends Controller
         UserNotification::deliver(
             $interview->applicant?->user_id,
             'interview',
-            'Вас пригласили на собеседование',
+            UserNotification::text('Вас пригласили на собеседование'),
             $employer->company_name.' · '.$interview->scheduled_at->format('d.m.Y H:i'),
             route('public.interviews.show', $interview),
         );
 
         return redirect()->route('public.interviews.show', $interview)
-            ->with('status', 'Собеседование назначено. Соискатель увидит приглашение в разделе «Собеседования».');
+            ->with('status', __('Собеседование назначено. Соискатель увидит приглашение в разделе «Собеседования».'));
     }
 
     /**
@@ -189,16 +189,46 @@ class InterviewController extends Controller
         $allowed = $isEmployer ? ['canceled', 'finished'] : ['confirmed', 'declined'];
 
         if (! in_array($validated['status'], $allowed, true)) {
-            return back()->with('error', 'Такое действие для вас недоступно.');
+            return back()->with('error', __('Такое действие для вас недоступно.'));
         }
 
         $interview->update(['status' => $validated['status']]);
 
+        /*
+         * Вторая сторона узнаёт о решении.
+         *
+         * Раньше уведомление уходило только при назначении встречи. Соискатель
+         * отклонял её — работодатель приходил в пустую комнату; работодатель
+         * отменял — соискатель ждал назначенного часа.
+         */
+        $interview->loadMissing('employer', 'applicant.user');
+
+        $recipient = $isEmployer ? $interview->applicant?->user_id : $interview->employer?->user_id;
+        $who = $isEmployer
+            ? ($interview->employer?->company_name ?? $user->name)
+            : $user->name;
+
+        UserNotification::deliver(
+            $recipient,
+            'interview',
+            UserNotification::text(match ($validated['status']) {
+                'confirmed' => 'Участие в собеседовании подтверждено',
+                'declined' => 'Приглашение на собеседование отклонено',
+                'canceled' => 'Собеседование отменено',
+                default => 'Собеседование завершено',
+            }),
+            UserNotification::text(':name · :date', [
+                'name' => $who,
+                'date' => $interview->scheduled_at->format('d.m.Y H:i'),
+            ]),
+            route('public.interviews.show', $interview),
+        );
+
         $labels = [
-            'confirmed' => 'Вы подтвердили участие.',
-            'declined' => 'Вы отклонили приглашение.',
-            'canceled' => 'Собеседование отменено.',
-            'finished' => 'Собеседование отмечено завершённым.',
+            'confirmed' => __('Вы подтвердили участие.'),
+            'declined' => __('Вы отклонили приглашение.'),
+            'canceled' => __('Собеседование отменено.'),
+            'finished' => __('Собеседование отмечено завершённым.'),
         ];
 
         return back()->with('status', $labels[$validated['status']]);

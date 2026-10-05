@@ -30,7 +30,7 @@ class AdminAnalyticsController extends Controller
             $date = now()->copy()->startOfMonth()->subMonths($back);
 
             return [
-                'label' => $this->monthNames[(int) $date->format('n')],
+                'label' => __($this->monthNames[(int) $date->format('n')]),
                 'year' => $date->format('Y'),
                 'start' => $date->copy(),
                 'end' => $date->copy()->endOfMonth(),

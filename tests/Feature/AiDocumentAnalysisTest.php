@@ -381,7 +381,10 @@ test('сбой сверки зовёт человека, а не отказыв�
         ->and($interview->latestDecision)->toBeNull();
 
     // а работодателю сказано, что кандидат ждёт
-    expect(UserNotification::where('title', 'Кандидат ждёт ручной проверки')->exists())->toBeTrue();
+    // ведёт прямо в отчёт по кандидату, где и принимается решение,
+    // а не в настройки вакансии
+    expect(UserNotification::where('title', 'Кандидат ждёт ручной проверки')->value('url'))
+        ->toBe(route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]));
 });
 
 test('снятые работодателем критерии переводят дело на человека', function () {
@@ -800,8 +803,9 @@ test('стадию до собеседования двигает разбор, 
 
     (new BuildRequirementMatrix($interview->id))->handle($auditor);
 
+    // согласие и документы пройдены, разговор впереди — 20%
     expect($interview->fresh()->stage)->toBe('interview')
-        ->and($interview->fresh()->progress())->toBe(40);
+        ->and($interview->fresh()->progress())->toBe(20);
 });
 
 test('пересчёт документов не откатывает кандидата назад по стадиям', function () {
@@ -813,4 +817,36 @@ test('пересчёт документов не откатывает канди
     (new BuildRequirementMatrix($interview->id))->handle($auditor);
 
     expect($interview->fresh()->stage)->toBe('test');
+});
+
+// ==================== разбор во время разговора ====================
+
+/*
+ * Кандидат уже разговаривает с ИИ, а разбор в фоне не удался. Разговор не
+ * обрываем: собеседование доходит до конца, а решение без документов само
+ * уйдёт работодателю на ручную проверку.
+ */
+test('сбой разбора во время разговора собеседование не обрывает', function () {
+    [$interview] = analysisReady();
+    $interview->update(['stage' => 'interview', 'analysis_status' => 'pending']);
+
+    (new BuildRequirementMatrix($interview->id))->handle(new FakeAuditor(invalid: true));
+
+    $interview->refresh();
+
+    expect($interview->analysis_status)->toBe('failed')
+        ->and($interview->stage)->toBe('interview')
+        ->and($interview->outcome)->toBeNull()
+        ->and($interview->requires_review)->toBeFalse();
+});
+
+test('готовый разбор во время разговора не дёргает кандидата уведомлением', function () {
+    [$interview, $user] = analysisReady();
+    $interview->update(['stage' => 'interview', 'analysis_status' => 'pending']);
+
+    (new BuildRequirementMatrix($interview->id))->handle(new FakeAuditor);
+
+    expect($interview->fresh()->analysis_status)->toBe('ready')
+        ->and($interview->fresh()->stage)->toBe('interview')
+        ->and(UserNotification::where('user_id', $user->id)->where('title', 'Документы разобраны')->exists())->toBeFalse();
 });

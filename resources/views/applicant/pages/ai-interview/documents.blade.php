@@ -140,12 +140,14 @@
                                     @endif
                                 </div>
                             </div>
+                            @unless($interview->documentsLocked())
                             <form method="POST"
                                   action="{{ route('applicant.ai.documents.destroy', [$interview, $document]) }}">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="dc-btn dc-btn-danger">{{ __('Удалить') }}</button>
                             </form>
+                            @endunless
                         </div>
                     @endforeach
                 @endif
@@ -178,6 +180,10 @@
             @if($analysisRunning)
                 <div class="dc-note">
                     {{ __('Документы отправлены на разбор. Добавить ещё можно будет, если разбор не удастся.') }}
+                </div>
+            @elseif($interview->documentsLocked())
+                <div class="dc-note">
+                    {{ __('Документы уже разобраны и учтены в оценке — менять их больше нельзя.') }}
                 </div>
             @elseif($documents->count() < $maxDocuments)
                 <form class="dc-panel" method="POST"
@@ -215,7 +221,24 @@
                 </div>
             @endif
 
-            @if($interview->analysisStalled())
+            @if(! in_array($interview->stage, ['consent', 'documents'], true))
+                {{-- Разговор уже начат: разбор идёт в фоне и ждать его не нужно. --}}
+                <div class="dc-panel">
+                    <h2>{{ __('Собеседование уже идёт') }}</h2>
+                    <p class="dc-hint">
+                        @if($interview->analysisRunning())
+                            {{ __('ИИ разбирает документы в фоне и учтёт их в следующих вопросах.') }}
+                        @else
+                            {{ __('Документы приняты. Продолжайте собеседование.') }}
+                        @endif
+                    </p>
+                    <div class="dc-row">
+                        <a class="dc-btn" href="{{ route('applicant.ai.interview', $interview) }}">
+                            {{ __('К собеседованию') }}
+                        </a>
+                    </div>
+                </div>
+            @elseif($interview->analysisStalled())
                 {{-- Разбор помечен идущим, но не двигается. Молчать нельзя:
                      страница иначе перезагружалась бы вечно и повторяла
                      «занимает до минуты». --}}
@@ -292,7 +315,7 @@
                     @csrf
                     <h2>{{ __('Готовы продолжить?') }}</h2>
                     <p class="dc-hint">
-                        {{ __('Дальше ИИ разберёт документы и начнёт собеседование. Вернуться и добавить документ можно будет и позже.') }}
+                        {{ __('Собеседование начнётся сразу: ИИ задаст вопросы по вашей специальности, а документы разберёт параллельно и учтёт их по ходу разговора.') }}
                     </p>
                     <div class="dc-row">
                         <button type="submit" class="dc-btn">{{ __('Перейти к собеседованию') }}</button>
@@ -306,7 +329,7 @@
     </main>
 </div>
 
-@if($interview->analysis_status === 'pending' && ! $interview->analysisStalled())
+@if($interview->analysisRunning() && in_array($interview->stage, ['consent', 'documents'], true))
     <script>
         // Пока разбор идёт, страница переспрашивает сервер. Раз в пять секунд:
         // разбор занимает около минуты, и чаще дёргать незачем. Зависший разбор

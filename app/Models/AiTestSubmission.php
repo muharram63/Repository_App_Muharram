@@ -16,6 +16,8 @@ class AiTestSubmission extends Model
     protected $fillable = [
         'ai_test_task_id',
         'content',
+        'answers',
+        'details',
         'files',
         'execution',
         'score',
@@ -28,6 +30,8 @@ class AiTestSubmission extends Model
         // решение кандидата — его интеллектуальный труд и персональные данные
         'content' => 'encrypted',
         'review' => 'encrypted:array',
+        'answers' => 'encrypted:array',
+        'details' => 'encrypted:array',
         // технический вывод запуска, персональных данных не содержит
         'files' => 'array',
         'execution' => 'array',

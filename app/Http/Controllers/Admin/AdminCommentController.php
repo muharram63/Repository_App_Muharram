@@ -80,12 +80,12 @@ class AdminCommentController extends Controller
         UserNotification::deliver(
             $comment->user_id,
             'admin_reply',
-            'Ответ администратора',
+            UserNotification::text('Ответ администратора'),
             \Illuminate\Support\Str::limit($validated['reply'], 120),
             AdminComment::cabinetUrl($comment->user),
         );
 
-        return back()->with('status', 'Ответ отправлен.');
+        return back()->with('status', __('Ответ отправлен.'));
     }
 
     /**
@@ -102,13 +102,13 @@ class AdminCommentController extends Controller
 
         $comment->update(['status' => $validated['status']]);
 
-        return back()->with('status', 'Статус обращения обновлён: '.$comment->statusLabel().'.');
+        return back()->with('status', __('Статус обращения обновлён: :status.', ['status' => $comment->statusLabel()]));
     }
 
     public function destroy(AdminComment $comment)
     {
         $comment->delete();
 
-        return back()->with('status', 'Обращение удалено.');
+        return back()->with('status', __('Обращение удалено.'));
     }
 }

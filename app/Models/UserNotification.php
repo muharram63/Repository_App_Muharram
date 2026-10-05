@@ -55,11 +55,48 @@ class UserNotification extends Model
      * $setting — ключ настройки, которым пользователь может это отключить.
      * Имя deliver, а не push: push у Eloquent уже занят.
      */
+    /**
+     * Текст уведомления, который переводится на язык получателя.
+     *
+     * Уведомление пишется в момент чужого действия — работодатель меняет
+     * статус, очередь объявляет решение, — и язык текущего запроса здесь не
+     * язык того, кто будет читать. Раньше всё уходило по-русски: человек с
+     * таджикским интерфейсом получал русские уведомления. Поэтому вызывающий
+     * код передаёт ключ словаря и подстановки, а переводит deliver() — на язык
+     * получателя.
+     *
+     * @return array{0:string,1:array<string,string>}
+     */
+    public static function text(string $key, array $replace = []): array
+    {
+        return [$key, $replace];
+    }
+
+    /**
+     * Строка или ключ из text() — в готовый текст на нужном языке.
+     */
+    private static function resolve(string|array|null $text, string $locale): ?string
+    {
+        if (is_array($text)) {
+            [$key, $replace] = $text + [1 => []];
+
+            // подстановки тоже могут быть ключами: статус, причина жалобы
+            $replace = array_map(
+                fn ($value) => is_array($value) ? self::resolve($value, $locale) : $value,
+                $replace,
+            );
+
+            return __($key, $replace, $locale);
+        }
+
+        return $text;
+    }
+
     public static function deliver(
         ?int $userId,
         string $type,
-        string $title,
-        ?string $body = null,
+        string|array $title,
+        string|array|null $body = null,
         ?string $url = null,
         ?string $setting = null,
         bool $collapse = false,
@@ -79,6 +116,13 @@ class UserNotification extends Model
         if ($setting && ! $user->setting($setting)) {
             return null;
         }
+
+        $locale = in_array($user->locale, config('app.available_locales', ['ru']), true)
+            ? $user->locale
+            : config('app.locale');
+
+        $title = (string) self::resolve($title, $locale);
+        $body = self::resolve($body, $locale);
 
         // склейка: пока прошлое такое же уведомление не прочитано, обновляем его,
         // иначе переписка на полсотни реплик забивает весь ящик.

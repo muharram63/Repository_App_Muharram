@@ -90,7 +90,8 @@
         }
         .sc-sum { font-size: 13px; color: var(--gray-500); }
         .sc-sum b { color: var(--ink); }
-    </style>
+            .sc-chip-basis { background: var(--wash-good, #DCFCE7); color: var(--ink-good, #15803D); white-space: normal; }
+</style>
 </head>
 <body>
 <div class="app">
@@ -130,6 +131,7 @@
                  который появляется и исчезает, пересчитывать было бы нечего:
                  работодатель, исправивший веса, не увидел бы, что исправил. --}}
             <div id="scReady" class="sc-note {{ $ready ? 'sc-good' : 'sc-warn' }}"
+                 data-min-gap="{{ \App\Models\AiInterviewConfig::MIN_THRESHOLD_GAP }}"
                  data-title-ready="{{ __('Все условия выполнены — собеседование можно включить.') }}"
                  data-title-blocked="{{ __('Пока собеседование включить нельзя:') }}">
                 <b data-ready-title>
@@ -141,7 +143,7 @@
                     @foreach($checklist as $item)
                         <li data-check="{{ $item['key'] }}" class="{{ $item['met'] ? 'is-met' : '' }}">
                             <span class="sc-mark" aria-hidden="true"></span>
-                            <span>{{ __($item['text']) }}@if($item['key'] === 'weights') ({{ __('сейчас') }}
+                            <span>{{ $item['text'] }}@if($item['key'] === 'weights') ({{ __('сейчас') }}
                                 <b data-sum>{{ $config->weightsSum() }}</b>)@endif</span>
                         </li>
                     @endforeach
@@ -156,21 +158,47 @@
                 </p>
 
                 <div class="sc-row">
-                    <form method="POST" action="{{ route('employer.ai.criteria.suggest', $vacancy) }}">
+                    <form method="POST" action="{{ route('employer.ai.criteria.suggest', $vacancy) }}" id="scSuggest">
                         @csrf
                         <button type="submit" class="sc-btn" @disabled(! $aiAvailable)>
                             {{ __('Предложить критерии через ИИ') }}
                         </button>
                     </form>
+
+                    {{-- критерии уже запутались — собрать заново по самой вакансии --}}
+                    @if($criteria->where('source', 'ai')->isNotEmpty())
+                        <form method="POST" action="{{ route('employer.ai.criteria.suggest', $vacancy) }}"
+                              data-confirm="{{ __('Убрать все критерии, предложенные ИИ, и собрать их заново по должности, навыкам и описанию вакансии? Ваши собственные критерии останутся.') }}"
+                              onsubmit="return confirm(this.dataset.confirm)">
+                            @csrf
+                            <input type="hidden" name="replace" value="1">
+                            <button type="submit" class="sc-btn sc-btn-ghost" @disabled(! $aiAvailable)>
+                                ↻ {{ __('Пересобрать критерии по вакансии') }}
+                            </button>
+                        </form>
+                    @endif
                     @unless($aiAvailable)
                         <span class="sc-hint">{{ __('ИИ недоступен — добавьте критерии вручную.') }}</span>
                     @endunless
                 </div>
 
                 @if($criteria->isEmpty())
-                    <div class="sc-empty">
-                        {{ __('Критериев пока нет. Попросите ИИ предложить их по описанию вакансии или добавьте свой ниже.') }}
+                    <div class="sc-empty" id="scAuto">
+                        @if($aiAvailable)
+                            ⏳ {{ __('ИИ подбирает критерии по должности, навыкам и описанию вакансии — это несколько секунд…') }}
+                        @else
+                            {{ __('Критериев пока нет. Попросите ИИ предложить их по описанию вакансии или добавьте свой ниже.') }}
+                        @endif
                     </div>
+                    @if($aiAvailable && ! session('error'))
+                        <script>
+                            // критериев нет — ИИ подбирает их сам при первом открытии
+                            document.addEventListener('DOMContentLoaded', function () {
+                                const form = document.getElementById('scSuggest');
+                                if (form) { form.submit(); }
+                            });
+                        </script>
+                    @endif
                 @else
                     @php
                         $confirmedWeight = $criteria->whereNotNull('confirmed_at')->sum('weight');
@@ -227,6 +255,12 @@
                                     <span class="sc-chip {{ $criterion->source === 'ai' ? 'sc-chip-ai' : '' }}">
                                         {{ __(\App\Models\AiInterviewCriterion::SOURCES[$criterion->source] ?? $criterion->source) }}
                                     </span>
+                                    {{-- откуда критерий: видно, на чём из вакансии он основан --}}
+                                    @if($criterion->basis)
+                                        <span class="sc-chip sc-chip-basis" title="{{ __('На чём из вакансии основан критерий') }}">
+                                            {{ __('основа:') }} {{ $criterion->basisLabel() }}@if($criterion->basis_quote) — «{{ $criterion->basis_quote }}»@endif
+                                        </span>
+                                    @endif
 
                                     @unless($criterion->isConfirmed())
                                         <span class="sc-chip sc-chip-pending">{{ __('не подтверждён') }}</span>
@@ -335,8 +369,16 @@
 
                     <div class="sc-field">
                         <label for="questions_count">{{ __('Сколько вопросов') }}</label>
-                        <input id="questions_count" type="number" name="questions_count" min="3" max="20"
+                        <input id="questions_count" type="number" name="questions_count"
+                               min="{{ \App\Models\AiInterviewConfig::MIN_QUESTIONS }}"
+                               max="{{ \App\Models\AiInterviewConfig::MAX_QUESTIONS }}"
                                value="{{ old('questions_count', $config->questions_count) }}">
+                        <span class="sc-hint">
+                            {{ __('От :min до :max. Первый вопрос — знакомство, остальные — по требованиям вакансии и опыту кандидата.', [
+                                'min' => \App\Models\AiInterviewConfig::MIN_QUESTIONS,
+                                'max' => \App\Models\AiInterviewConfig::MAX_QUESTIONS,
+                            ]) }}
+                        </span>
                     </div>
 
                     <div class="sc-field">
@@ -481,7 +523,13 @@
             const okWeights = sum === 100;
             const low = number(reject);
             const high = number(accept);
-            const okThresholds = low < high && low >= 0 && high <= 100;
+            /*
+             * Тот же зазор, что требует сервер. Раньше здесь было «приём выше
+             * отказа», и при разнице в пять баллов галочка зеленела, а
+             * сохранение всё равно не включало собеседование.
+             */
+            const minGap = box ? parseInt(box.dataset.minGap, 10) || 0 : 0;
+            const okThresholds = high - low >= minGap && low >= 0 && high <= 100;
 
             mark(rows.weights, okWeights);
             mark(rows.thresholds, okThresholds);

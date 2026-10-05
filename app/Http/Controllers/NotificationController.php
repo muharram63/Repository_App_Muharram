@@ -53,7 +53,7 @@ class NotificationController extends Controller
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
-        return back()->with('status', 'Уведомления отмечены прочитанными.');
+        return back()->with('status', __('Уведомления отмечены прочитанными.'));
     }
 
     /**
@@ -61,8 +61,21 @@ class NotificationController extends Controller
      */
     public function unreadCount(Request $request)
     {
+        // последнее непрочитанное — для всплывающего сообщения со звуком
+        $latest = UserNotification::where('user_id', $request->user()->id)
+            ->whereNull('read_at')
+            ->latest('id')
+            ->first();
+
         return response()->json([
             'unread' => $request->user()->unreadNotificationsCount(),
+            'latest' => $latest ? [
+                'id' => $latest->id,
+                'title' => $latest->title,
+                'body' => \Illuminate\Support\Str::limit((string) $latest->body, 140),
+                'icon' => $latest->icon(),
+                'url' => route('public.notifications.open', $latest),
+            ] : null,
         ]);
     }
 

@@ -51,14 +51,16 @@ class AiInterviewConfig extends Model
         'enabled' => false,
         'level' => 'middle',
         'language' => 'ru',
-        'questions_count' => 5,
+        'questions_count' => self::DEFAULT_QUESTIONS,
         'weight_documents' => 40,
         'weight_interview' => 40,
         'weight_test' => 20,
         'threshold_reject' => 40,
         'threshold_accept' => 70,
         'test_time_limit_minutes' => 30,
-        'response_sla' => 'в течение 3 дней',
+        // Анна произносит это в конце разговора: «ответ вы получите в течение
+        // 24 часов». Решение считается сразу, срок — с запасом на проверку
+        'response_sla' => 'в течение 24 часов',
         'decision_mode' => 'auto',
     ];
 
@@ -72,6 +74,19 @@ class AiInterviewConfig extends Model
         'threshold_accept' => 'integer',
         'test_time_limit_minutes' => 'integer',
     ];
+
+    /**
+     * Сколько вопросов задаёт ИИ.
+     *
+     * Меньше шести не бывает: первый вопрос — знакомство, ещё один-два уходят на
+     * уточнения расплывчатых ответов, и при пяти на требования вакансии
+     * оставалось два-три вопроса — оценке не на чем было стоять.
+     */
+    public const MIN_QUESTIONS = 8;
+
+    public const DEFAULT_QUESTIONS = 12;
+
+    public const MAX_QUESTIONS = 20;
 
     /**
      * Уровень позиции: от него зависит глубина вопросов и сложность задания.
@@ -91,8 +106,9 @@ class AiInterviewConfig extends Model
      * посмотреть на десяток решений прежде чем отдать их автоматике.
      */
     public const MODES = [
-        'auto' => 'ИИ решает сам',
-        'advisory' => 'ИИ советует, решает человек',
+        // ответ кандидату в обоих режимах уходит только с разрешения работодателя
+        'auto' => 'ИИ советуется с вами и напоминает, если кандидат ждёт ответа больше суток',
+        'advisory' => 'ИИ советуется с вами, без напоминаний',
     ];
 
     /**
@@ -178,9 +194,53 @@ class AiInterviewConfig extends Model
         return (int) $this->threshold_accept < self::WEAK_ACCEPT;
     }
 
-    public function decidesItself(): bool
+    /**
+     * Напоминать ли работодателю о кандидатах, ждущих ответа.
+     *
+     * Раньше режим «auto» означал, что ИИ через сутки отвечает кандидату сам.
+     * Теперь ответ без разрешения работодателя не уходит ни в каком режиме.
+     */
+    public function remindsEmployer(): bool
     {
         return $this->decision_mode === 'auto';
+    }
+
+    /**
+     * Нужно ли тестовое задание вообще.
+     *
+     * Нулевой вес значит, что задание в итог не входит. Раньше его всё равно
+     * составляли и выдавали: кандидат полчаса решал то, что ни на что не
+     * влияет, а составление и проверка тратили квоту модели.
+     */
+    public function needsTest(): bool
+    {
+        return (int) $this->weight_test > 0;
+    }
+
+    /**
+     * Языки, на которых модель говорит с кандидатом, — в виде, пригодном для
+     * промпта («Пиши на … языке»). Одно место на всех: собеседующего,
+     * составителя задания и автора письма с решением.
+     */
+    public const LANGUAGE_NAMES = [
+        'ru' => 'русском',
+        'en' => 'английском',
+        'tg' => 'таджикском',
+    ];
+
+    public function languageName(): string
+    {
+        return self::LANGUAGE_NAMES[$this->language] ?? self::LANGUAGE_NAMES['ru'];
+    }
+
+    /**
+     * Язык кандидата как локаль приложения — для шаблонных текстов.
+     */
+    public function candidateLocale(): string
+    {
+        return array_key_exists((string) $this->language, self::LANGUAGE_NAMES)
+            ? (string) $this->language
+            : 'ru';
     }
 
     /**
@@ -234,18 +294,17 @@ class AiInterviewConfig extends Model
             [
                 'key' => 'weights',
                 'met' => $this->weightsAreValid(),
-                'text' => 'Сумма весов документов, собеседования и задания равна 100',
-                'problem' => 'Веса документов, собеседования и задания должны в сумме давать 100 '
-                    .'(сейчас '.$sum.').',
+                'text' => __('Сумма весов документов, собеседования и задания равна 100'),
+                'problem' => __('Веса документов, собеседования и задания должны в сумме давать 100 (сейчас :sum).', ['sum' => $sum]),
             ],
             [
                 'key' => 'thresholds',
                 'met' => $this->thresholdsAreValid(),
-                'text' => 'Между порогами есть пограничная зона — не меньше '
-                    .self::MIN_THRESHOLD_GAP.' баллов',
-                'problem' => 'Порог приёма должен быть выше порога отказа не меньше чем на '
-                    .self::MIN_THRESHOLD_GAP.' баллов (сейчас разница '.$this->thresholdGap()
-                    .'), и оба — от 0 до 100.',
+                'text' => __('Между порогами есть пограничная зона — не меньше :gap баллов', ['gap' => self::MIN_THRESHOLD_GAP]),
+                'problem' => __('Порог приёма должен быть выше порога отказа не меньше чем на :gap баллов (сейчас разница :now), и оба — от 0 до 100.', [
+                    'gap' => self::MIN_THRESHOLD_GAP,
+                    'now' => $this->thresholdGap(),
+                ]),
             ],
             [
                 /*
@@ -257,9 +316,8 @@ class AiInterviewConfig extends Model
                  */
                 'key' => 'criteria',
                 'met' => $this->confirmedMustCount() > 0,
-                'text' => 'Подтверждён хотя бы один обязательный критерий',
-                'problem' => 'Нужен хотя бы один подтверждённый обязательный критерий: '
-                    .'иначе отказывать придётся только по баллу.',
+                'text' => __('Подтверждён хотя бы один обязательный критерий'),
+                'problem' => __('Нужен хотя бы один подтверждённый обязательный критерий: иначе отказывать придётся только по баллу.'),
             ],
         ];
     }

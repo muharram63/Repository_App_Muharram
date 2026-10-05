@@ -68,7 +68,7 @@
 
                 {{-- Только текст решения. Ни баллов, ни разбора по критериям:
                      внутренние цифры адресованы работодателю. --}}
-                <div class="rs-message">{{ $decision->message_to_candidate }}</div>
+                <div class="rs-message">{{ $decision->candidateMessage() }}</div>
             </div>
 
             <div class="rs-panel">

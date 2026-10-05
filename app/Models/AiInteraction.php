@@ -55,6 +55,8 @@ class AiInteraction extends Model
         'task_grade' => 'Проверка задания',
         'decision_summary' => 'Текст решения кандидату',
         'speech_synthesis' => 'Озвучка вопроса',
+        'answer_transcribe' => 'Распознавание устного ответа',
+        'employer_advice' => 'Разговор с работодателем о кандидате',
     ];
 
     /**

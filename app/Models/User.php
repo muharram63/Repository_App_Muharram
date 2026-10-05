@@ -102,6 +102,18 @@ class User extends Authenticatable
         static::creating(function (User $user) {
             $user->date_register = $user->date_register ?: now()->toDateString();
         });
+
+        /*
+         * Каскад базы удалит анкету, вакансии и ИИ-собеседования, но не файлы
+         * документов, которые кандидаты к ним прикладывали. Стираем их сами —
+         * и как кандидата, и собеседования по вакансиям работодателя. Срабатывает
+         * для любого удаления: самим пользователем и администратором.
+         */
+        static::deleting(function (User $user) {
+            AiInterview::eraseWhere(fn ($query) => $query
+                ->whereHas('applicant', fn ($q) => $q->where('user_id', $user->id))
+                ->orWhereHas('vacancy.employer', fn ($q) => $q->where('user_id', $user->id)));
+        });
     }
 
     /**

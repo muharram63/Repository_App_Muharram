@@ -63,7 +63,49 @@
                 <div class="cr-note cr-bad">{{ session('error') }}</div>
             @endif
 
-            @include('employer.pages.ai-screening._report')
+            @include('employer.pages.ai-screening._report', ['withFileLinks' => true])
+
+            @php
+                $mainTask = $interview->testTasks->firstWhere('kind', 'main');
+                $sent = $mainTask?->submissions->sortByDesc('id')->first();
+                $checking = $interview->candidateFinished() && ! $interview->latestDecision;
+            @endphp
+
+            @if($checking)
+                {{-- кандидат всё прошёл, а проверка ещё идёт: доводим её отсюда --}}
+                <div class="cr-note" id="crChecking" style="background:var(--wash-warn,#FEF3C7); color:var(--ink-warn,#92400E)">
+                    ⏳ {{ $sent && ! $sent->isGraded()
+                        ? __('ИИ проверяет тест и задания кандидата — это займёт около минуты. Страница обновится сама.')
+                        : __('ИИ готовит рекомендацию по кандидату — страница обновится сама.') }}
+                </div>
+                <script>
+                    (function () {
+                        const url = @json(route('employer.ai.candidate.pump', [$vacancy, $interview]));
+                        const token = @json(csrf_token());
+                        let tries = 60;
+
+                        function step() {
+                            if (--tries < 0) { return; }
+
+                            fetch(url, {
+                                method: 'POST',
+                                headers: {'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+                            })
+                                .then(function (r) { return r.ok ? r.json() : null; })
+                                .then(function (data) {
+                                    if (data && data.ready) { window.location.reload(); return; }
+                                    setTimeout(step, data && data.did && data.did !== 'busy' ? 800 : 5000);
+                                })
+                                .catch(function () { setTimeout(step, 6000); });
+                        }
+
+                        step();
+                    })();
+                </script>
+            @endif
+
+            {{-- обсуждение кандидата с Анной — голосом или текстом --}}
+            @include('employer.pages.ai-screening._advisor')
 
             {{-- ==================== действия работодателя ==================== --}}
             <div class="cr-actions">
@@ -72,7 +114,25 @@
                     {{ __('Последнее слово за вами. Прежнее решение никуда не денется: в отчёте останется видно и что посчитал ИИ, и что решили вы.') }}
                 </p>
 
-                <form method="POST" action="{{ route('employer.ai.candidate.override', [$vacancy, $interview]) }}"
+                {{-- ИИ советуется: согласны — один щелчок, и кандидат получает ответ --}}
+                @php $pending = $interview->latestDecision && ! $interview->latestDecision->isReleased(); @endphp
+                @if($pending && in_array($interview->latestDecision->outcome, ['passed', 'rejected'], true))
+                    <form method="POST" id="crApprove" action="{{ route('employer.ai.candidate.approve', [$vacancy, $interview]) }}"
+                          style="margin-bottom:12px">
+                        @csrf
+                        <button type="submit" class="cr-btn">
+                            ✓ {{ __('Согласен с ИИ:') }} {{ $interview->latestDecision->outcomeLabel() }} — {{ __('отправить ответ кандидату') }}
+                        </button>
+                    </form>
+                    <p class="cr-hint">{{ __('Не согласны — выберите другой итог ниже: кандидат получит ваш ответ.') }}</p>
+                @endif
+
+                @unless($interview->awaitsEmployer())
+                    <p class="cr-hint">
+                        {{ __('Собеседование ещё идёт. Решить можно будет, когда оно закончится или когда система передаст кандидата вам на проверку.') }}
+                    </p>
+                @else
+                <form method="POST" id="crOverride" action="{{ route('employer.ai.candidate.override', [$vacancy, $interview]) }}"
                       style="display:flex; flex-direction:column; gap:10px;">
                     @csrf
                     <div class="cr-row">
@@ -90,9 +150,12 @@
                         </div>
                     </div>
                     <div>
-                        <button type="submit" class="cr-btn">{{ __('Изменить решение') }}</button>
+                        <button type="submit" class="cr-btn">
+                            {{ $interview->latestDecision ? __('Изменить решение') : __('Принять решение') }}
+                        </button>
                     </div>
                 </form>
+                @endunless
             </div>
 
             <div class="cr-actions">
