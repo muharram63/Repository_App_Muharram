@@ -58,4 +58,39 @@ class MasterReviewController extends Controller
         return redirect()->to(route('public.orders.show', $order).'#review')
             ->with('status', $review->wasRecentlyCreated ? __('Спасибо за отзыв! Он поможет другим выбрать мастера.') : __('Отзыв обновлён.'));
     }
+
+    /**
+     * Ответ мастера на отзыв о нём. Публичный, виден под отзывом; его можно
+     * исправить. Заказчику — уведомление.
+     */
+    public function reply(Request $request, MasterReview $review)
+    {
+        abort_unless($review->canBeRepliedBy($request->user()), 404);
+
+        $data = $request->validate([
+            'master_reply' => 'required|string|min:2|max:1000',
+        ], [
+            'master_reply.required' => __('Напишите ответ.'),
+        ]);
+
+        $first = $review->master_reply === null;
+
+        $review->update([
+            'master_reply' => trim($data['master_reply']),
+            'replied_at' => now(),
+        ]);
+
+        if ($first) {
+            UserNotification::deliver(
+                $review->user_id,
+                'order',
+                UserNotification::text('Мастер ответил на ваш отзыв'),
+                Str::limit($review->master_reply, 140),
+                route('public.masters.show', $review->applicant_id).'#review-'.$review->id,
+            );
+        }
+
+        return redirect()->to(route('public.masters.show', $review->applicant_id).'#review-'.$review->id)
+            ->with('status', $first ? __('Ответ опубликован под отзывом.') : __('Ответ обновлён.'));
+    }
 }

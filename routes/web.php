@@ -166,6 +166,8 @@ Route::middleware('auth')->group(function () {
         Route::patch('/orders/{order}/reassign', [\App\Http\Controllers\UrgentOrderController::class, 'reassign'])->whereNumber('order')->name('public.orders.reassign');
 
         // отзыв заказчика о мастере после выполненной заявки
+        Route::post('/reviews/{review}/reply', [\App\Http\Controllers\MasterReviewController::class, 'reply'])
+            ->whereNumber('review')->middleware('throttle:10,1')->name('public.reviews.reply');
         Route::post('/orders/{order}/review', [\App\Http\Controllers\MasterReviewController::class, 'store'])
             ->whereNumber('order')->middleware('throttle:10,1')->name('public.orders.review');
 

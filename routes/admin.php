@@ -9,6 +9,8 @@ Route::get('/', [\App\Http\Controllers\Admin\AdminDashboardController::class, 'i
 
 Route::resource('categories' , AdminCategoryController::class);
 Route::resource('cities' , AdminCityController::class);
+// объединить дубль города с правильной записью
+Route::post('cities/{city}/merge', [AdminCityController::class, 'merge'])->name('cities.merge');
 Route::resource('industries' , AdminIndustryController::class);
 
 Route::get('users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index'])->name('users');

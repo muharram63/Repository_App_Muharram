@@ -31,6 +31,23 @@
         .ms-works { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 22px 24px; }
         .ms-empty { text-align: center; padding: 30px 10px; color: var(--text-muted); }
         .ms-avg { color: #F59E0B; }
+        .ms-reply { margin: 10px 0 0 14px; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 10px 10px 0; }
+        .ms-reply b { color: var(--accent-text); font-size: 13.5px; }
+        .ms-reply p { margin-top: 4px; }
+        .ms-reply-form { margin-top: 10px; }
+        .ms-reply-form summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--accent); }
+        .ms-reply-form form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+        .ms-reply-form textarea {
+            width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+            background: var(--surface); color: var(--text); font: inherit; font-size: 15px; resize: vertical;
+        }
+        .ms-reply-form .ms-btn { align-self: flex-start; }
+        .ms-reply-error { color: #DC2626; font-size: 13px; font-weight: 600; }
+        @media (max-width: 640px) {
+            .ms-reply { margin-left: 6px; }
+            .ms-reply-form textarea { font-size: 16px; }
+            .ms-reply-form .ms-btn { align-self: stretch; }
+        }
         .ms-review { padding: 14px 0; border-top: 1px solid var(--border); }
         .ms-review:first-of-type { border-top: 0; padding-top: 2px; }
         .ms-review-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
@@ -119,7 +136,7 @@
             <div class="ms-works" id="reviews" style="margin-top:22px;">
                 <h2>{{ __('Отзывы заказчиков') }} @if($ratingCount) · <span class="ms-avg">★ {{ \App\Models\MasterReview::formatAverage((float) $ratingAvg) }}</span>@endif</h2>
                 @forelse($reviews as $review)
-                    <article class="ms-review">
+                    <article class="ms-review" id="review-{{ $review->id }}">
                         <div class="ms-review-head">
                             <span class="ms-review-stars" aria-label="{{ __('Оценка :n из 5', ['n' => $review->rating]) }}">{{ \App\Models\MasterReview::stars($review->rating) }}</span>
                             <b>{{ $review->authorName() }}</b>
@@ -132,6 +149,31 @@
                             <p>{{ $review->comment }}</p>
                         @else
                             <p class="ms-review-meta">{{ $review->ratingLabel() }}</p>
+                        @endif
+
+                        @if($review->master_reply)
+                            <div class="ms-reply">
+                                <b>{{ __('Ответ мастера') }}</b>
+                                <span class="ms-review-meta">· {{ $review->replied_at?->format('d.m.Y') }}</span>
+                                <p>{{ $review->master_reply }}</p>
+                            </div>
+                        @endif
+
+                        {{-- ответить или исправить ответ может только сам мастер --}}
+                        @if($isOwner)
+                            <details class="ms-reply-form" @if($errors->has('master_reply') && old('review_id') == $review->id) open @endif>
+                                <summary>{{ $review->master_reply ? __('Изменить ответ') : '↩ '.__('Ответить на отзыв') }}</summary>
+                                <form method="POST" action="{{ route('public.reviews.reply', $review) }}">
+                                    @csrf
+                                    <input type="hidden" name="review_id" value="{{ $review->id }}">
+                                    @if($errors->has('master_reply') && old('review_id') == $review->id)
+                                        <div class="ms-reply-error">{{ $errors->first('master_reply') }}</div>
+                                    @endif
+                                    <textarea name="master_reply" maxlength="1000" required
+                                              placeholder="{{ __('Поблагодарите или спокойно объясните, как было. Ответ увидят все, кто откроет ваш профиль.') }}">{{ old('review_id') == $review->id ? old('master_reply') : $review->master_reply }}</textarea>
+                                    <button type="submit" class="ms-btn primary">{{ $review->master_reply ? __('Сохранить ответ') : __('Опубликовать ответ') }}</button>
+                                </form>
+                            </details>
                         @endif
                     </article>
                 @empty

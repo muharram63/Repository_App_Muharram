@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\City;
+use App\Services\Cities\CityDirectory;
 use Illuminate\Http\Request;
 
 class AdminCityController extends Controller
@@ -18,8 +19,17 @@ class AdminCityController extends Controller
            $query->where(function ($query) use ($search) {
                $query->where('country', 'like', '%' . $search . '%')->orWhere('region', 'like', '%' . $search . '%');
            });
-        })->get();
-        return view('admin.pages.cities.index' , compact('cities'));
+        })->orderBy('region')->get();
+
+        $directory = app(CityDirectory::class);
+
+        return view('admin.pages.cities.index', [
+            'cities' => $cities,
+            // возможные дубли: тот же город, записанный иначе
+            'duplicates' => $directory->duplicates(),
+            'usage' => $cities->mapWithKeys(fn (City $city) => [$city->id => $directory->usage($city)]),
+            'allCities' => City::orderBy('region')->get(),
+        ]);
     }
 
 
@@ -38,8 +48,8 @@ class AdminCityController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-        'country' => 'required|string|max:255',
-        'region' => 'required|string|max:255',
+            'country' => 'required|string|max:255',
+            'region' => ['required', 'string', 'max:255', $this->notDuplicate()],
         ]);
         City::create($validated);
         return redirect()->route('superadmin.cities.index');
@@ -69,10 +79,51 @@ class AdminCityController extends Controller
     {
         $validated = $request->validate([
             'country' => 'required|string|max:255',
-            'region' => 'required|string|max:255',
+            'region' => ['required', 'string', 'max:255', $this->notDuplicate($city->id)],
         ]);
         $city->update($validated);
         return redirect()->route('superadmin.cities.index');
+    }
+
+    /**
+     * Объединить дубль с правильной записью: компании, вакансии и заявки
+     * переходят на выбранный город, дубль удаляется.
+     */
+    public function merge(Request $request, City $city, CityDirectory $directory)
+    {
+        $data = $request->validate([
+            'into' => 'required|integer|exists:cities,id|different:city_id',
+        ], [
+            'into.required' => 'Выберите, с каким городом объединить.',
+        ]);
+
+        $target = City::findOrFail($data['into']);
+
+        if ($target->is($city)) {
+            return back()->with('error', 'Нельзя объединить город с самим собой.');
+        }
+
+        $moved = $directory->merge($city, $target);
+
+        return redirect()->route('superadmin.cities.index')->with('status', sprintf(
+            '«%s» объединён с «%s»: перенесено компаний — %d, вакансий — %d, заявок — %d.',
+            $city->region, $target->region, $moved['employers'], $moved['vacancies'], $moved['urgent_orders'],
+        ));
+    }
+
+    /**
+     * Правило: такого города ещё нет — в том числе в другом написании
+     * («Кулоб» и «Хатлонская область, город Куляб»).
+     */
+    private function notDuplicate(?int $exceptId = null): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($exceptId) {
+            $existing = app(CityDirectory::class)->existing((string) $value, $exceptId);
+
+            if ($existing) {
+                $fail("Такой город уже есть: «{$existing->region}». Используйте его, а не создавайте второй.");
+            }
+        };
     }
 
     /**

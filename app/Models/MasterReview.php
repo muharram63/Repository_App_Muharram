@@ -27,11 +27,20 @@ class MasterReview extends Model
         'user_id',
         'rating',
         'comment',
+        'master_reply',
+        'replied_at',
     ];
 
     protected $casts = [
         'rating' => 'integer',
+        'replied_at' => 'datetime',
     ];
+
+    /** Отвечает на отзыв только тот мастер, о котором он. */
+    public function canBeRepliedBy(?User $user): bool
+    {
+        return $user !== null && $user->applicant !== null && $user->applicant->id === $this->applicant_id;
+    }
 
     public function order()
     {

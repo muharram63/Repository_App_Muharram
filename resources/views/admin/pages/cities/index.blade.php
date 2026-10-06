@@ -40,6 +40,13 @@
             border-color: #1656D6;
             box-shadow: 0 4px 12px rgba(22, 86, 214, 0.15);
         }
+        .city-dup { margin-top: 6px; display: inline-block; padding: 3px 9px; border-radius: 6px; background: #fff7ed; color: #c2410c; font-size: 12px; font-weight: 600; }
+        .city-merge { display: inline-block; vertical-align: top; }
+        .city-merge summary { cursor: pointer; list-style: none; border-radius: 6px; font-weight: 500; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; padding: 6px 12px; font-size: 13px; }
+        .city-merge summary::-webkit-details-marker { display: none; }
+        .city-merge form { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+        .city-merge select { padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; max-width: 280px; }
+        .city-merge button { padding: 5px 10px; border-radius: 6px; border: 0; background: #1656D6; color: #fff; font-size: 13px; cursor: pointer; }
         .pill:hover:not(:checked) {
             background: #f8fafc;
             border-color: #cbd5e1;
@@ -79,12 +86,44 @@
 
                             <td style="color: #64748b;">{{$loop->iteration}}</td>
                             <td style="font-weight: 600; color: #1e293b;">{{$city->country}}</td>
-                            <td style="color: #64748b;">{{$city->region}}</td>
+                            <td style="color: #64748b;">
+                                {{$city->region}}
+                                @php
+                                    $used = $usage[$city->id] ?? [];
+                                    $twins = $duplicates->get($city->id, collect());
+                                @endphp
+                                <div style="font-size:12px; color:#94a3b8; margin-top:3px;">
+                                    компаний — {{ $used['employers'] ?? 0 }}, вакансий — {{ $used['vacancies'] ?? 0 }}, заявок — {{ $used['urgent_orders'] ?? 0 }}
+                                </div>
+                                @if($twins->isNotEmpty())
+                                    <div class="city-dup">
+                                        ⚠ Возможный дубль: {{ $twins->pluck('region')->map(fn ($r) => '«'.$r.'»')->implode(', ') }}
+                                    </div>
+                                @endif
+                            </td>
                             <td>
                                 <div class="d-inline-flex gap-2">
                                     <a href="{{ route('superadmin.cities.edit',$city) }}" class="btn btn-sm d-inline-flex align-items-center" style="border-radius: 6px; font-weight: 500; background-color: #fef8e6; color: #b45309; border: 1px solid #fde68a; padding: 6px 12px;">
                                         <i class="fa fa-edit me-1"></i> Изменить
                                     </a>
+                                    {{-- объединить дубль: всё привязанное переходит на выбранный город --}}
+                                    <details class="city-merge" @if($twins->isNotEmpty()) open @endif>
+                                        <summary>Объединить с…</summary>
+                                        <form action="{{ route('superadmin.cities.merge', $city) }}" method="post"
+                                              data-confirm="Объединить «{{ $city->region }}» с выбранным городом? Компании, вакансии и заявки перейдут на него, а эта запись будет удалена."
+                                              onsubmit="return confirm(this.dataset.confirm)">
+                                            @csrf
+                                            <input type="hidden" name="city_id" value="{{ $city->id }}">
+                                            <select name="into" required>
+                                                <option value="">— выберите правильную запись —</option>
+                                                @foreach($allCities as $other)
+                                                    @continue($other->is($city))
+                                                    <option value="{{ $other->id }}" @selected($twins->contains('id', $other->id) && $twins->count() === 1)>{{ $other->region }}</option>
+                                                @endforeach
+                                            </select>
+                                            <button type="submit">Объединить</button>
+                                        </form>
+                                    </details>
                                     <form action="{{ route('superadmin.cities.destroy',$city) }}" method="post" style="display:inline-block;">
                                         @csrf
                                         @method('DELETE')

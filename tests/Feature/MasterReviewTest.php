@@ -188,3 +188,73 @@ test('имя автора сокращается до имени и инициа
     expect(MasterReview::stars(4))->toBe('★★★★☆')
         ->and(MasterReview::formatAverage(4.666))->toBe('4,7');
 });
+
+// ==================== ответ мастера ====================
+
+test('мастер отвечает на отзыв — ответ виден в профиле, заказчику уведомление', function () {
+    [$owner, $order, $masterUser, $master] = doneOrder();
+    $this->actingAs($owner)->post(route('public.orders.review', $order), ['rating' => 2, 'comment' => 'Опоздал на час']);
+    $review = MasterReview::sole();
+    UserNotification::query()->delete();
+
+    $this->actingAs($masterUser)->post(route('public.reviews.reply', $review), ['master_reply' => 'Заказчик сам перенёс время, но извините за неудобство.'])
+        ->assertRedirect(route('public.masters.show', $master).'#review-'.$review->id);
+
+    expect($review->fresh()->master_reply)->toBe('Заказчик сам перенёс время, но извините за неудобство.')
+        ->and($review->fresh()->replied_at)->not->toBeNull()
+        ->and(UserNotification::where('user_id', $owner->id)->sole()->title)->toBe('Мастер ответил на ваш отзыв');
+
+    auth()->logout();
+    $this->get(route('public.masters.show', $master))
+        ->assertSee(__('Ответ мастера'))
+        ->assertSee('Заказчик сам перенёс время, но извините за неудобство.')
+        ->assertDontSee(__('Ответить на отзыв'));
+
+    // заказчик видит ответ и на странице заявки
+    $this->actingAs($owner)->get(route('public.orders.show', $order))->assertSee('Заказчик сам перенёс время');
+});
+
+test('ответ можно исправить, повторного уведомления нет', function () {
+    [$owner, $order, $masterUser] = doneOrder();
+    $this->actingAs($owner)->post(route('public.orders.review', $order), ['rating' => 5]);
+    $review = MasterReview::sole();
+
+    $this->actingAs($masterUser)->post(route('public.reviews.reply', $review), ['master_reply' => 'Спасибо!']);
+    $this->actingAs($masterUser)->post(route('public.reviews.reply', $review), ['master_reply' => 'Спасибо, обращайтесь!']);
+
+    expect($review->fresh()->master_reply)->toBe('Спасибо, обращайтесь!')
+        ->and(UserNotification::where('user_id', $owner->id)->where('title', 'Мастер ответил на ваш отзыв')->count())->toBe(1);
+});
+
+test('отвечать может только мастер, о котором отзыв', function () {
+    [$owner, $order] = doneOrder();
+    $this->actingAs($owner)->post(route('public.orders.review', $order), ['rating' => 1]);
+    $review = MasterReview::sole();
+    [$otherMaster] = feedMaster(name: 'Другой');
+
+    $this->actingAs($owner)->post(route('public.reviews.reply', $review), ['master_reply' => 'Я заказчик'])->assertNotFound();
+    $this->actingAs($otherMaster)->post(route('public.reviews.reply', $review), ['master_reply' => 'Я чужой мастер'])->assertNotFound();
+
+    expect($review->fresh()->master_reply)->toBeNull();
+});
+
+test('пустой ответ не принимается', function () {
+    [$owner, $order, $masterUser] = doneOrder();
+    $this->actingAs($owner)->post(route('public.orders.review', $order), ['rating' => 3]);
+
+    $this->actingAs($masterUser)->post(route('public.reviews.reply', MasterReview::sole()), ['master_reply' => ''])
+        ->assertSessionHasErrors('master_reply');
+});
+
+test('мастер видит в своём профиле форму ответа, а на странице заявки — ссылку на неё', function () {
+    [$owner, $order, $masterUser, $master] = doneOrder();
+    $this->actingAs($owner)->post(route('public.orders.review', $order), ['rating' => 4]);
+    $review = MasterReview::sole();
+
+    $this->actingAs($masterUser)->get(route('public.masters.show', $master))
+        ->assertSee(route('public.reviews.reply', $review), false)
+        ->assertSee(__('Ответить на отзыв'));
+
+    $this->actingAs($masterUser)->get(route('public.orders.show', $order))
+        ->assertSee(route('public.masters.show', $master).'#review-'.$review->id, false);
+});

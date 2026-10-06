@@ -28,6 +28,7 @@
     .rv-done { display: flex; flex-direction: column; gap: 6px; }
     .rv-done .rv-big { font-size: 24px; color: #F59E0B; letter-spacing: 2px; }
     .rv-done p { margin: 0; white-space: pre-line; line-height: 1.6; overflow-wrap: anywhere; }
+    .rv-reply { margin-top: 8px; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 10px 10px 0; white-space: pre-line; overflow-wrap: anywhere; }
     @media (max-width: 640px) { .rv-form textarea { font-size: 16px; } }
 </style>
 
@@ -39,6 +40,9 @@
                 <span class="rv-big" aria-label="{{ __('Оценка :n из 5', ['n' => $review->rating]) }}">{{ \App\Models\MasterReview::stars($review->rating) }}</span>
                 <b>{{ $review->ratingLabel() }}</b>
                 @if($review->comment)<p>{{ $review->comment }}</p>@endif
+                @if($review->master_reply)
+                    <div class="rv-reply"><b>{{ __('Ответ мастера') }}:</b> {{ $review->master_reply }}</div>
+                @endif
             </div>
             @if($canReview)
                 <a class="uo-btn" style="margin-top:12px;" href="{{ route('public.orders.show', ['order' => $order, 'edit_review' => 1]) }}#review">✏️ {{ __('Изменить отзыв') }}</a>
@@ -82,6 +86,12 @@
             <span class="rv-big">{{ \App\Models\MasterReview::stars($review->rating) }}</span>
             <b>{{ $review->ratingLabel() }}</b>
             @if($review->comment)<p>{{ $review->comment }}</p>@endif
+            @if($review->master_reply)
+                <div class="rv-reply"><b>{{ __('Ответ мастера') }}:</b> {{ $review->master_reply }}</div>
+            @endif
         </div>
+        <a class="uo-btn" style="margin-top:12px;" href="{{ route('public.masters.show', $review->applicant_id) }}#review-{{ $review->id }}">
+            ↩ {{ $review->master_reply ? __('Изменить ответ') : __('Ответить на отзыв') }}
+        </a>
     </div>
 @endif
