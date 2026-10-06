@@ -28,6 +28,17 @@ class Applicant extends Model
         return $this->hasMany(Resume::class);
     }
 
+    public function orderOffers()
+    {
+        return $this->hasMany(UrgentOrderOffer::class);
+    }
+
+    /** Портфолио мастера — новые работы сверху. */
+    public function portfolioWorks()
+    {
+        return $this->hasMany(PortfolioWork::class)->orderByDesc('position')->orderByDesc('id');
+    }
+
     public function vacancyResponses()
     {
         return $this->hasMany(VacancyResponse::class);

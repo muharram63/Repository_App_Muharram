@@ -31,6 +31,12 @@
       </span>
         <a href="{{route('applicant.resume.index')}}"> {{ __('Мое резюме') }} </a>
     </div>
+    <div class="nav-item" data-section="portfolio">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-8 7"/></svg>
+      </span>
+        <a href="{{route('applicant.portfolio.index')}}"> {{ __('Портфолио работ') }} </a>
+    </div>
     <div class="nav-item" data-section="skills">
       <span class="icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -42,6 +48,18 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4z"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg>
       </span>
         <a href="{{route('applicant.ai.index')}}"> {{ __('ИИ-собеседования') }} </a>
+    </div>
+    <div class="nav-item" data-section="orders">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>
+      </span>
+        <a href="{{route('public.orders.mine')}}"> {{ __('Мои заявки на мастера') }} </a>
+    </div>
+    <div class="nav-item" data-section="orders-feed">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 3 4 5 4 9a4 4 0 0 1-8 0c0-2 1-3 1-5 2 1 3 2 3-4z"/><path d="M8 17a4 4 0 0 0 8 0"/></svg>
+      </span>
+        <a href="{{route('public.orders.index', ['mine' => 1])}}"> {{ __('Заказы для мастеров') }} </a>
     </div>
     <div class="nav-item" data-section="my-responses">
       <span class="icon">

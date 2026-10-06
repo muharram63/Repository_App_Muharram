@@ -124,6 +124,13 @@ Route::prefix('skills')->name('skills')->group(function () {
 });
 
 Route::resource('resume', \App\Http\Controllers\Applicant\ResumeController::class);
+
+// портфолио мастера: выполненные работы с фото и видео
+Route::resource('portfolio', \App\Http\Controllers\Applicant\PortfolioController::class)
+    ->except('show')->parameters(['portfolio' => 'work'])
+    ->middlewareFor(['store', 'update'], 'throttle:20,1');
+Route::delete('portfolio/{work}/media/{media}', [\App\Http\Controllers\Applicant\PortfolioController::class, 'destroyMedia'])
+    ->whereNumber(['work', 'media'])->name('portfolio.media.destroy');
 Route::get('responses', [\App\Http\Controllers\Applicant\ResponseController::class, 'index'])->name('responses.index');
 
 

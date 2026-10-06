@@ -43,6 +43,12 @@
       </span>
         <a href="{{route('public.responses.index')}}"> {{ __('Мои приглашения') }} </a>
     </div>
+    <div class="nav-item" data-section="orders">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>
+      </span>
+        <a href="{{route('public.orders.mine')}}"> {{ __('Мои заявки на мастера') }} </a>
+    </div>
     <div class="nav-item" data-section="resumes">
       <span class="icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>

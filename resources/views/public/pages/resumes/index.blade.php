@@ -133,7 +133,7 @@
             <form class="resume-toolbar" action="{{ route('public.resumes.index') }}" method="get">
                 <div class="exp-filters">
                     @foreach(['all' => __('Все'), 'noexp' => __('Без опыта'), 'junior' => __('1–2 года'), 'middle' => __('3–5 лет'), 'senior' => __('6+ лет')] as $key => $label)
-                        <a href="{{ route('public.resumes.index', array_filter(['exp' => $key === 'all' ? null : $key, 'q' => $query ?: null])) }}"
+                        <a href="{{ route('public.resumes.index', array_filter(['exp' => $key === 'all' ? null : $key, 'q' => $query ?: null, 'work' => $work])) }}"
                            style="display:inline-block; padding:8px 14px; border-radius:999px; text-decoration:none; font-size:13px; font-weight:600;
                                   border:1px solid {{ $exp === $key ? 'var(--accent)' : 'var(--border)' }};
                                   background:{{ $exp === $key ? 'var(--accent)' : 'transparent' }};
@@ -150,6 +150,9 @@
                 @endif
                 @if($proven)
                     <input type="hidden" name="proven" value="{{ $proven }}">
+                @endif
+                @if($work)
+                    <input type="hidden" name="work" value="{{ $work }}">
                 @endif
                 <button type="submit" class="btn-primary" style="padding:10px 20px; border:none; border-radius:10px; background:var(--accent); color:#fff; font-weight:700; cursor:pointer;">{{ __('Найти') }}</button>
             </form>
@@ -170,6 +173,7 @@
                                'proven' => $proven === $skill->id ? null : $skill->id,
                                'exp' => $exp === 'all' ? null : $exp,
                                'q' => $query ?: null,
+                               'work' => $work,
                            ])) }}">{{ $skill->name }}</a>
                     @endforeach
                     @if($proven)
@@ -177,7 +181,27 @@
                            href="{{ route('public.resumes.index', array_filter([
                                'exp' => $exp === 'all' ? null : $exp,
                                'q' => $query ?: null,
+                               'work' => $work,
                            ])) }}">{{ __('сбросить') }}</a>
+                    @endif
+                </div>
+            @endif
+
+            {{-- мастера с портфолио: фото и видео работ вместо (или вместе с) резюме --}}
+            @if($workCategories->isNotEmpty())
+                @php
+                    $keep = array_filter(['exp' => $exp === 'all' ? null : $exp, 'q' => $query ?: null, 'proven' => $proven]);
+                @endphp
+                <div class="proof-filter">
+                    <span class="proof-filter-label">📸 {{ __('Портфолио работ') }}</span>
+                    <a class="proof-chip @if($work === 'any') on @endif"
+                       href="{{ route('public.resumes.index', $keep + ($work === 'any' ? [] : ['work' => 'any'])) }}">{{ __('С портфолио') }}</a>
+                    @foreach($workCategories as $category)
+                        <a class="proof-chip @if($work === $category->slug) on @endif"
+                           href="{{ route('public.resumes.index', $keep + ($work === $category->slug ? [] : ['work' => $category->slug])) }}">{{ $category->title() }}</a>
+                    @endforeach
+                    @if($work)
+                        <a class="proof-clear" href="{{ route('public.resumes.index', $keep) }}">{{ __('сбросить') }}</a>
                     @endif
                 </div>
             @endif
@@ -238,6 +262,10 @@
                             </span>
                             <span class="rc-chip">👥 {{ $resume->responses_count }} {{ __('откликов') }}</span>
                             <span class="rc-chip">👁 {{ $resume->views }} {{ __('просмотров') }}</span>
+                            @if($applicant->portfolio_works_count)
+                                <a class="rc-chip proof" href="{{ route('public.masters.show', $applicant) }}"
+                                   style="text-decoration:none;">📸 {{ __('Портфолио: :count', ['count' => $applicant->portfolio_works_count]) }}</a>
+                            @endif
                             @if($resume->place_work)
                                 <span class="rc-chip">{{ $resume->place_work }}</span>
                             @endif

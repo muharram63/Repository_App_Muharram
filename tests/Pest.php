@@ -1,5 +1,10 @@
 <?php
 
+use App\Models\City;
+use App\Models\PortfolioWork;
+use App\Models\UrgentOrder;
+use App\Models\User;
+use App\Models\WorkCategory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -143,3 +148,57 @@ function makeResume(App\Models\Applicant $applicant, ?string $documents = null):
 */
 
 require_once __DIR__.'/Helpers/AiInterviewHelpers.php';
+
+// ==================== срочные заявки и мастера ====================
+
+function feedCity(string $region = 'Согдийская область, город Худжанд'): City
+{
+    return City::firstOrCreate(['region' => $region], ['country' => 'Таджикистан']);
+}
+
+function categoryId(string $slug): int
+{
+    return WorkCategory::where('slug', $slug)->value('id');
+}
+
+/** Мастер: соискатель с работой нужного вида в портфолио. */
+function feedMaster(string $category = 'plumbing', ?string $city = 'Худжанд', string $name = 'Мастер Фарход'): array
+{
+    $user = User::factory()->applicant()->create(['name' => $name]);
+    $applicant = makeApplicant($user);
+    $applicant->update(['city' => $city]);
+
+    $work = PortfolioWork::create([
+        'applicant_id' => $applicant->id,
+        'work_category_id' => categoryId($category),
+        'title' => 'Замена смесителя',
+    ]);
+    $work->media()->create(['type' => 'photo', 'path' => 'p.jpg', 'thumb_path' => 'p_t.jpg', 'mime' => 'image/jpeg', 'size' => 1]);
+
+    return [$user, $applicant];
+}
+
+function feedOrder(array $attributes = []): UrgentOrder
+{
+    $owner = $attributes['owner'] ?? User::factory()->employer()->create();
+    unset($attributes['owner']);
+
+    return UrgentOrder::create($attributes + [
+        'user_id' => $owner->id,
+        'work_category_id' => categoryId('plumbing'),
+        'title' => 'Течёт кран на кухне',
+        'description' => 'Капает из-под смесителя.',
+        'city_id' => feedCity()->id,
+        'district' => '18 мкр',
+        'address' => 'ул. Ленина, 7, кв. 3',
+        'deadline_option' => '1d',
+        'deadline_at' => now()->addDay(),
+        'status' => UrgentOrder::STATUS_OPEN,
+    ]);
+}
+
+function offerPayload(array $extra = []): array
+{
+    return $extra + ['message' => 'Приеду с запчастями, опыт 7 лет.', 'price' => 250, 'can_start' => 'today'];
+}
+

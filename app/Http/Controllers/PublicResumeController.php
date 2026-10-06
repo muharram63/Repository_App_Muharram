@@ -29,6 +29,13 @@ class PublicResumeController extends Controller
         // фильтр по навыку, подтверждённому заданием на платформе
         $proven = (int) $request->input('proven') ?: null;
 
+        // портфолио мастера: any — есть хоть одна работа, slug — работы этого вида
+        $work = (string) $request->input('work');
+        $workCategory = $work !== '' && $work !== 'any'
+            ? \App\Models\WorkCategory::where('slug', $work)->first()
+            : null;
+        $work = $work === 'any' || $workCategory ? $work : null;
+
         // поиск и фильтр считаем на сервере: постранично клиентский
         // перебор карточек работал бы только внутри одной страницы
         $resumes = Resume::with('applicant.user')
@@ -37,6 +44,10 @@ class PublicResumeController extends Controller
                 ->whereNotNull('finished_at')
                 ->where('score', '>=', SkillAttempt::PASSING)
                 ->with('test.skill')])
+            // число работ в портфолио — на карточку, без запроса из каждой.
+            // Стоит после вложенных with('applicant.…'): поставленный после
+            // него вложенный with перезаписал бы ограничение на 'applicant' пустым
+            ->with(['applicant' => fn ($a) => $a->withCount('portfolioWorks')])
             ->withCount('responses')
             ->whereHas('applicant.user', fn ($q) => $q->activeAccount()->whereDoesntHave(
                 'settings',
@@ -47,6 +58,10 @@ class PublicResumeController extends Controller
                 fn ($a) => $a->whereNotNull('finished_at')
                     ->where('score', '>=', SkillAttempt::PASSING)
                     ->whereHas('test', fn ($t) => $t->where('skill_id', $proven))
+            ))
+            ->when($work, fn ($q) => $q->whereHas(
+                'applicant.portfolioWorks',
+                fn ($w) => $w->when($workCategory, fn ($c) => $c->where('work_category_id', $workCategory->id))
             ))
             ->when($exp, fn ($q) => $q->whereBetween('experience_years', $ranges[$exp]))
             ->when($query !== '', fn ($q) => $q->where(function ($x) use ($query) {
@@ -64,6 +79,12 @@ class PublicResumeController extends Controller
             'query' => $query,
             'exp' => $exp ?? 'all',
             'proven' => $proven,
+            'work' => $work,
+            // в фильтре — только виды работ, по которым у кого-то есть портфолио
+            'workCategories' => \App\Models\WorkCategory::ordered()->whereIn(
+                'id',
+                \App\Models\PortfolioWork::query()->select('work_category_id')->whereNotNull('work_category_id')
+            )->get(),
             // в фильтре только навыки, по которым кто-то реально прошёл задание:
             // выбор из пустых вариантов ничего бы не находил
             'provenSkills' => Skill::whereHas(
@@ -93,6 +114,10 @@ class PublicResumeController extends Controller
 
         return view('public.pages.resumes.show', [
             'resume' => $resume,
+            // портфолио дополняет резюме: работы мастера показываются под ним
+            'works' => $resume->applicant
+                ? $resume->applicant->portfolioWorks()->with(['media', 'category'])->get()
+                : collect(),
             'hideContacts' => (bool) $owner && $owner->setting('hide_contacts') && ! $privileged,
         ]);
     }

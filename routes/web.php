@@ -30,6 +30,27 @@ Route::get('/storage/avatars/{name}', function (string $name) {
     return \Illuminate\Support\Facades\Storage::disk('public')->response($path);
 })->where('name', '[A-Za-z0-9._-]+')->name('public.files.avatar');
 
+/*
+ * Та же запасная отдача для фото и видео портфолио мастеров — открытой
+ * витрины. Обычно их отдаёт веб-сервер через симлинк public/storage.
+ */
+Route::get('/storage/portfolio/{applicant}/{work}/{name}', function (string $applicant, string $work, string $name) {
+    $path = 'portfolio/'.$applicant.'/'.$work.'/'.$name;
+
+    abort_unless(\Illuminate\Support\Facades\Storage::disk('public')->exists($path), 404);
+
+    return \Illuminate\Support\Facades\Storage::disk('public')->response($path);
+})->whereNumber(['applicant', 'work'])->where('name', '[A-Za-z0-9._-]+')->name('public.files.portfolio');
+
+// и для фото проблемы в срочных заявках
+Route::get('/storage/orders/{order}/{name}', function (string $order, string $name) {
+    $path = 'orders/'.$order.'/'.$name;
+
+    abort_unless(\Illuminate\Support\Facades\Storage::disk('public')->exists($path), 404);
+
+    return \Illuminate\Support\Facades\Storage::disk('public')->response($path);
+})->whereNumber('order')->where('name', '[A-Za-z0-9._-]+')->name('public.files.orders');
+
 
 
 Route::middleware('auth')->group(function () {
@@ -131,6 +152,23 @@ Route::middleware('auth')->group(function () {
             ->name('public.chats.message.update');
         Route::delete('/chats/{conversation}/messages/{message}', [\App\Http\Controllers\ChatController::class, 'destroyMessage'])
             ->name('public.chats.message.destroy');
+
+        // срочные заявки: создаёт любой вошедший — у частного заказчика компании нет
+        Route::get('/orders/create', [\App\Http\Controllers\UrgentOrderController::class, 'create'])->name('public.orders.create');
+        Route::post('/orders', [\App\Http\Controllers\UrgentOrderController::class, 'store'])->middleware('throttle:10,1')->name('public.orders.store');
+        Route::get('/my-orders', [\App\Http\Controllers\UrgentOrderController::class, 'mine'])->name('public.orders.mine');
+        Route::patch('/orders/{order}/cancel', [\App\Http\Controllers\UrgentOrderController::class, 'cancel'])->whereNumber('order')->name('public.orders.cancel');
+
+        // выбор исполнителя и закрытие заявки
+        Route::post('/orders/{order}/choose/{offer}', [\App\Http\Controllers\UrgentOrderController::class, 'choose'])
+            ->whereNumber(['order', 'offer'])->name('public.orders.choose');
+        Route::patch('/orders/{order}/complete', [\App\Http\Controllers\UrgentOrderController::class, 'complete'])->whereNumber('order')->name('public.orders.complete');
+
+        // отклики мастеров на заявки
+        Route::post('/orders/{order}/offers', [\App\Http\Controllers\UrgentOrderOfferController::class, 'store'])
+            ->whereNumber('order')->middleware('throttle:20,1')->name('public.orders.offers.store');
+        Route::delete('/orders/{order}/offers', [\App\Http\Controllers\UrgentOrderOfferController::class, 'withdraw'])
+            ->whereNumber('order')->name('public.orders.offers.withdraw');
     });
 
     require __DIR__.'/auth.php';
@@ -158,6 +196,14 @@ Route::get('/statistics/hired', [\App\Http\Controllers\PublicStatsController::cl
 Route::resource('/vacancies', \App\Http\Controllers\PublicVacancyController::class)->names('public.vacancies')->only(['index', 'show' ]);
 Route::resource('/resume' , \App\Http\Controllers\PublicResumeController::class)->names('public.resumes')->only(['index', 'show' ]);
 Route::resource('/companies' , \App\Http\Controllers\PublicCompanyController::class)->names('public.companies')->only(['index' , 'show']);
+// лента срочных заявок и сама заявка — открыты всем, и гостям: мастер
+// должен увидеть, что работа есть, ещё до регистрации. Адреса там нет.
+Route::get('/orders', [\App\Http\Controllers\UrgentOrderFeedController::class, 'index'])->name('public.orders.index');
+Route::get('/orders/{order}', [\App\Http\Controllers\UrgentOrderController::class, 'show'])->whereNumber('order')->name('public.orders.show');
+
+// профиль мастера: портфолио выполненных работ вместо резюме
+Route::get('/masters/{applicant}', [\App\Http\Controllers\PublicMasterController::class, 'show'])
+    ->whereNumber('applicant')->name('public.masters.show');
 
 // общий вход в кабинет: у каждой роли он свой
 Route::get('/dashboard', function () {

@@ -41,7 +41,16 @@ class PublicVacancyController extends Controller
             ->paginate(12)
             ->withQueryString();
 
-        return view('public.pages.vacancies.index', compact('vacancies', 'cities', 'query', 'city'));
+        // полоса «Срочно нужен мастер»: несколько срочных заявок над вакансиями
+        $urgentOrders = \App\Models\UrgentOrder::open()
+            ->where('deadline_at', '>', now())
+            ->whereIn('deadline_option', \App\Models\UrgentOrder::URGENT_DEADLINES)
+            ->with(['category', 'city', 'photos'])
+            ->orderBy('deadline_at')
+            ->limit(4)
+            ->get();
+
+        return view('public.pages.vacancies.index', compact('vacancies', 'cities', 'query', 'city', 'urgentOrders'));
     }
 
     /**

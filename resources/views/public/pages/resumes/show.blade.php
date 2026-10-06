@@ -752,6 +752,23 @@
                         </footer>
                     </article>
 
+                    {{-- портфолио мастера: фото и видео выполненных работ, вне листа резюме --}}
+                    @if($works->isNotEmpty())
+                        <div class="panel no-print" id="portfolio" style="margin-top:22px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+                                <h3 style="margin:0;">{{ __('Выполненные работы') }} · {{ $works->count() }}</h3>
+                                <a href="{{ route('public.masters.show', $resume->applicant) }}" style="font-size:14px; font-weight:600;">{{ __('Профиль мастера →') }}</a>
+                            </div>
+                            @include('partials.portfolio-gallery', ['works' => $works, 'limit' => 6])
+                        </div>
+                    @elseif($isResumeOwner)
+                        <div class="panel no-print" style="margin-top:22px;">
+                            <h3>{{ __('Выполненные работы') }}</h3>
+                            <p class="muted" style="margin:0 0 12px;">{{ __('Работаете руками? Добавьте фото и видео сделанных работ — они появятся здесь, под резюме.') }}</p>
+                            <a href="{{ route('applicant.portfolio.create') }}" style="font-weight:700;">+ {{ __('Добавить работу в портфолио') }}</a>
+                        </div>
+                    @endif
+
                     {{-- отклики владельцу — вне документа --}}
                     @if($isResumeOwner)
                         <div class="panel no-print" style="margin-top:22px;">

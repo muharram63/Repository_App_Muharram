@@ -33,6 +33,8 @@ class UserNotification extends Model
         'complaint_status' => '📌',
         'moderation' => '🛡',
         'admin_reply' => '📬',
+        // срочные заявки: новая заявка мастеру, отклик заказчику, выбор исполнителя
+        'order' => '🛠',
     ];
 
     public function user()

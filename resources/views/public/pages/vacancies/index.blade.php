@@ -445,6 +445,8 @@
                 ];
             @endphp
 
+            @include('public.pages.orders._strip', ['urgentOrders' => $urgentOrders ?? collect()])
+
             <div class="section-head">
                 <h2>{{ __('Список вакансий') }}</h2>
                 <p>

@@ -29,6 +29,11 @@ Schedule::command('ai:sweep')->everyMinute()->withoutOverlapping();
  * Если на сервере уже настроен постоянный `queue:work` (supervisor), эта
  * строка ему не мешает: задачи просто разберёт тот, кто успел первым.
  */
+// Срочные заявки, к сроку которых мастер не выбран: «Срок истёк» и
+// уведомление заказчику с кнопкой «Повторить». То же делается и при
+// открытии ленты заказов — на случай, если планировщик не запущен.
+Schedule::command('orders:expire')->everyFiveMinutes()->withoutOverlapping();
+
 Schedule::command('queue:work --stop-when-empty --max-time=55 --sleep=1')
     ->everyMinute()
     ->withoutOverlapping();

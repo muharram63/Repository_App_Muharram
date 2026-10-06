@@ -194,9 +194,21 @@ class SettingsController extends Controller
         }
 
         $avatar = $user->avatar;
+        $applicantId = $user->applicant?->id;
+        // заявки уйдут из базы каскадом, а их фото на диске — нет
+        $orderFolders = \App\Models\UrgentOrder::where('user_id', $user->id)->get()->map->folder()->all();
 
         Auth::logout();
         $user->delete();
+
+        foreach ($orderFolders as $folder) {
+            Storage::disk(\App\Models\UrgentOrder::DISK)->deleteDirectory($folder);
+        }
+
+        // фото и видео портфолио: записи ушли каскадом, файлы — здесь
+        if ($applicantId) {
+            Storage::disk(\App\Models\PortfolioMedia::DISK)->deleteDirectory(\App\Models\PortfolioWork::applicantFolder($applicantId));
+        }
 
         if ($avatar && Str::startsWith($avatar, 'storage/')) {
             Storage::disk('public')->delete(Str::after($avatar, 'storage/'));

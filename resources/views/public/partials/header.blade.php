@@ -166,6 +166,8 @@
             <a href="{{ route('public.companies.index') }}">{{ __('Компании') }}</a>
             <a href="{{ route('public.resumes.index') }}">{{ __('Соискатели') }}</a>
             <a href="{{ route('public.stats') }}">{{ __('Статистика') }}</a>
+            {{-- срочная заявка на мастера: гостя форма сначала отправит войти --}}
+            <a href="{{ route('public.orders.index') }}">🔥 {{ __('Срочные заказы') }}</a>
             @auth
                 <a href="{{ route('public.responses.index') }}">{{ __('Отклики') }}</a>
                 <a href="{{ route('public.interviews.index') }}">{{ __('Собеседования') }}</a>
@@ -230,7 +232,10 @@
                 <a href="{{ route('public.companies.index') }}">{{ __('Компании') }}</a>
                 <a href="{{ route('public.resumes.index') }}">{{ __('Соискатели') }}</a>
                 <a href="{{ route('public.stats') }}">{{ __('Статистика') }}</a>
+                <a href="{{ route('public.orders.index') }}">🔥 {{ __('Срочные заказы') }}</a>
+                <a href="{{ route('public.orders.create') }}">🛠 {{ __('Нужен мастер') }}</a>
                 @auth
+                    <a href="{{ route('public.orders.mine') }}">{{ __('Мои заявки на мастера') }}</a>
                     <a href="{{ route('public.responses.index') }}">{{ __('Отклики') }}</a>
                     <a href="{{ route('public.interviews.index') }}">{{ __('Собеседования') }}</a>
                     <a href="{{ route('public.chats.index') }}">{{ __('Чат') }}</a>
