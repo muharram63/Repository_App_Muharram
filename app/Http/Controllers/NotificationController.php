@@ -69,8 +69,13 @@ class NotificationController extends Controller
 
         return response()->json([
             'unread' => $request->user()->unreadNotificationsCount(),
+            // время сервера: с него начинается отсчёт на новом устройстве
+            'now' => now()->timestamp,
             'latest' => $latest ? [
                 'id' => $latest->id,
+                // склеенное уведомление («откликов: 3») обновляет created_at, а не id —
+                // новизну страница сравнивает по этому времени
+                'ts' => $latest->created_at?->timestamp,
                 'title' => $latest->title,
                 'body' => \Illuminate\Support\Str::limit((string) $latest->body, 140),
                 'icon' => $latest->icon(),

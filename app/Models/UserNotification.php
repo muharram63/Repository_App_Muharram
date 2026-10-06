@@ -94,6 +94,45 @@ class UserNotification extends Model
         return $text;
     }
 
+    /**
+     * Ссылка уведомления — без адреса сайта: «/orders/5», а не
+     * «http://localhost/orders/5».
+     *
+     * route() строит полный адрес от APP_URL, когда уведомление создаёт
+     * планировщик или очередь (там нет запроса браузера). Если сайт открыт по
+     * другому адресу (127.0.0.1:8000 при APP_URL=localhost, или домен сменили),
+     * такая ссылка не открывалась. Путь от корня работает на любом адресе.
+     * Внешние ссылки (другой сайт) не трогаем.
+     */
+    public static function localUrl(?string $url): ?string
+    {
+        if (! $url) {
+            return $url;
+        }
+
+        $parts = parse_url($url);
+        $host = $parts['host'] ?? null;
+
+        if ($host === null) {
+            return $url;
+        }
+
+        $own = array_filter([
+            parse_url((string) config('app.url'), PHP_URL_HOST),
+            request()?->getHost(),
+            'localhost',
+            '127.0.0.1',
+        ]);
+
+        if (! in_array(strtolower($host), array_map('strtolower', $own), true)) {
+            return $url;
+        }
+
+        return ($parts['path'] ?? '/')
+            .(isset($parts['query']) ? '?'.$parts['query'] : '')
+            .(isset($parts['fragment']) ? '#'.$parts['fragment'] : '');
+    }
+
     public static function deliver(
         ?int $userId,
         string $type,
@@ -125,6 +164,7 @@ class UserNotification extends Model
 
         $title = (string) self::resolve($title, $locale);
         $body = self::resolve($body, $locale);
+        $url = self::localUrl($url);
 
         // склейка: пока прошлое такое же уведомление не прочитано, обновляем его,
         // иначе переписка на полсотни реплик забивает весь ящик.
@@ -139,11 +179,14 @@ class UserNotification extends Model
                 ->first();
 
             if ($existing) {
-                $existing->update([
+                // forceFill: created_at не входит в $fillable, и update() молча
+                // пропускал его — склеенное уведомление не поднималось как новое,
+                // а всплывающая карточка о нём не показывалась
+                $existing->forceFill([
                     'title' => $title,
                     'body' => $body,
                     'created_at' => now(),
-                ]);
+                ])->save();
 
                 return $existing;
             }

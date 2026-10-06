@@ -1,7 +1,11 @@
 {{--   Create Resume---}}
 <script>
+(function () {
     // Только фон: белый/лавандовый фон + мягкое живое сияние в тон сайта (голубой/лавандовый/сиреневый)
     const canvas = document.getElementById('wave-bg');
+    // скрипт подключают и страницы без фонового холста — там он не нужен,
+    // а без этой проверки падал и останавливал остальные скрипты страницы
+    if (!canvas) { return; }
     const ctx = canvas.getContext('2d');
     let w, h;
 
@@ -62,4 +66,5 @@
         requestAnimationFrame(render);
     }
     render();
+})();
 </script>

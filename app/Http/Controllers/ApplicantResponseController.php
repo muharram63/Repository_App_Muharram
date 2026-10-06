@@ -27,7 +27,9 @@ class ApplicantResponseController extends Controller
                 ->with('error', __('Сначала заполните анкету соискателя.'));
         }
 
-        if ($vacancy->status !== 'active') {
+        // вакансия закрытого аккаунта не показывается — и отклик по прямому
+        // запросу на неё тоже не принимается
+        if ($vacancy->status !== 'active' || $vacancy->employer?->user?->isBlocked()) {
             return back()->with('error', __('Эта вакансия больше не принимает отклики.'));
         }
 

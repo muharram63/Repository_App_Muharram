@@ -197,7 +197,7 @@ test('соискатель получает непрочитанное приг�
         ->where('title', 'Вас пригласили на собеседование')->sole();
 
     expect($note->read_at)->toBeNull()
-        ->and($note->url)->toBe(route('public.interviews.show', $interview));
+        ->and($note->url)->toBe(route('public.interviews.show', $interview, false));
 });
 
 // ==================== видеосвязь: встраивание или новая вкладка ====================

@@ -31,6 +31,13 @@ class EmployerResponseController extends Controller
             return back()->with('error', __('Нельзя откликнуться на собственное резюме.'));
         }
 
+        // скрытое резюме и закрытый аккаунт публично не видны — по номеру из
+        // адреса пригласить их тоже нельзя: соискатель прятался от поиска
+        $owner = $resume->applicant?->user;
+        if (! $owner || $owner->isBlocked() || $owner->setting('hide_profile')) {
+            abort(404);
+        }
+
         $validated = $request->validate([
             'message' => 'nullable|string|max:1000',
         ]);

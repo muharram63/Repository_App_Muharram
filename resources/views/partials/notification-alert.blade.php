@@ -48,13 +48,18 @@
         0%, 100% { transform: rotate(0); } 20% { transform: rotate(16deg); }
         40% { transform: rotate(-14deg); } 60% { transform: rotate(9deg); } 80% { transform: rotate(-5deg); }
     }
+    /* телефон: карточка по ширине экрана с равными полями, а не прижатой справа */
+    @media (max-width: 560px) {
+        .na-toast { left: 12px; right: 12px; bottom: 12px; width: auto; }
+    }
     @media (prefers-reduced-motion: reduce) { .na-toast, .na-ico { animation: none; } }
 </style>
 
 <script>
     (function () {
         const url = @json(route('public.notifications.count'));
-        const LAST = 'na-last-id';
+        // время последнего показанного уведомления (секунды сервера)
+        const LAST = 'na-last-ts';
         const SOUND = 'na-sound';
 
         const toast = document.getElementById('naToast');
@@ -168,19 +173,28 @@
                     if (!data) { return; }
 
                     const latest = data.latest;
-                    const last = parseInt(stored(LAST, '0'), 10) || 0;
 
-                    if (!latest) { return; }
-
-                    // первый заход на этом устройстве — старые уведомления не озвучиваем
+                    /*
+                     * Первый заход на этом устройстве: старые уведомления не
+                     * озвучиваем — запоминаем «сейчас». Именно время сервера,
+                     * а не последнее уведомление: если непрочитанных нет,
+                     * запоминать было бы нечего, и первое настоящее
+                     * уведомление пропало бы молча.
+                     */
                     if (stored(LAST, null) === null) {
-                        store(LAST, String(latest.id));
+                        store(LAST, String(latest ? Math.max(latest.ts || 0, data.now || 0) : (data.now || 0)));
 
                         return;
                     }
 
-                    if (latest.id > last) {
-                        store(LAST, String(latest.id));
+                    if (!latest) { return; }
+
+                    // сравниваем по времени, а не по номеру: склеенное уведомление
+                    // («откликов: 3») обновляется на месте и номер не меняет
+                    const last = parseInt(stored(LAST, '0'), 10) || 0;
+
+                    if ((latest.ts || 0) > last) {
+                        store(LAST, String(latest.ts));
                         show(latest);
                     }
                 })

@@ -27,7 +27,7 @@ class AdminCityController extends Controller
             'cities' => $cities,
             // возможные дубли: тот же город, записанный иначе
             'duplicates' => $directory->duplicates(),
-            'usage' => $cities->mapWithKeys(fn (City $city) => [$city->id => $directory->usage($city)]),
+            'usage' => $directory->usageMany($cities),
             'allCities' => City::orderBy('region')->get(),
         ]);
     }

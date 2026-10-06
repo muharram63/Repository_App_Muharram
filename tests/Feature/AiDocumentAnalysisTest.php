@@ -384,7 +384,7 @@ test('сбой сверки зовёт человека, а не отказыв�
     // ведёт прямо в отчёт по кандидату, где и принимается решение,
     // а не в настройки вакансии
     expect(UserNotification::where('title', 'Кандидат ждёт ручной проверки')->value('url'))
-        ->toBe(route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]));
+        ->toBe(route('employer.ai.candidate', [$interview->vacancy_id, $interview->id], false));
 });
 
 test('снятые работодателем критерии переводят дело на человека', function () {

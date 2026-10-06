@@ -1,4 +1,11 @@
 {{-- Общий подвал публичной части --}}
+<style>
+    /* на телефоне ссылки переносятся, а не тянут страницу шире экрана */
+    @media (max-width:720px){
+        footer .footer-links{flex-wrap:wrap; gap:10px 18px;}
+        footer .footer-row{flex-wrap:wrap; gap:18px;}
+    }
+</style>
 <footer>
     <div class="container">
         <div class="footer-row">

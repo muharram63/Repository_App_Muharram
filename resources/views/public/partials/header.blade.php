@@ -141,6 +141,27 @@
         header.site .btn-ghost{display:none !important;}
         header.site > .container.site-row{padding:0 16px !important; gap:12px !important;}
     }
+    /*
+     * Телефон: «Разместить вакансию», «Зарегистрироваться» и выбор языка в
+     * шапку не помещались — страница становилась шире экрана (548px при
+     * 390px) и прокручивалась вбок, а окна на весь экран съезжали. Эти
+     * кнопки на узком экране живут в меню ☰ (блок .hdr-m-actions).
+     */
+    @media (max-width:560px){
+        header.site .header-actions > .btn-primary,
+        header.site .header-actions > .lang-pick{display:none !important;}
+        header.site .header-actions{margin-left:auto;}
+    }
+    .hdr-m-actions{display:none;}
+    @media (max-width:640px){
+        .hdr-m-actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+        .hdr-m-actions a{
+            flex:1 1 140px; display:inline-flex; align-items:center; justify-content:center;
+            height:44px; padding:0 14px; border-radius:12px; font-size:14.5px; font-weight:700; white-space:nowrap;
+            border:1px solid var(--border); color:var(--text); background:var(--surface);
+        }
+        .hdr-m-actions a.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+    }
 </style>
 
 <header class="site">
@@ -243,6 +264,25 @@
                     <a href="{{ route('public.chats.index') }}">{{ __('Чат') }}</a>
                 @endauth
             </nav>
+
+            {{-- кнопки шапки — на телефоне здесь, иначе шапка шире экрана --}}
+            <div class="hdr-m-actions">
+                @guest
+                    <a href="{{ route('login') }}">{{ __('Войти') }}</a>
+                    <a href="{{ route('register') }}" class="primary">{{ __('Зарегистрироваться') }}</a>
+                @endguest
+                @auth
+                    @if(auth()->user()->role === 'employer')
+                        <a href="{{ route('employer.dashboard') }}">{{ __('Кабинет') }}</a>
+                        <a href="{{ route('employer.vacancies.create') }}" class="primary">{{ __('Разместить вакансию') }}</a>
+                    @elseif(auth()->user()->role === 'applicant')
+                        <a href="{{ route('applicant.dashboard') }}">{{ __('Кабинет') }}</a>
+                        <a href="{{ route('applicant.resume.create') }}" class="primary">{{ __('Создать резюме') }}</a>
+                    @else
+                        <a href="{{ route('superadmin.dashboard') }}" class="primary">{{ __('Админ-панель') }}</a>
+                    @endif
+                @endauth
+            </div>
 
             <div class="toggles">
                 <div class="theme-toggle">

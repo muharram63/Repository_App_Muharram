@@ -76,7 +76,10 @@
             display:flex; align-items:center; justify-content:center;
             padding:40px 32px;
         }
-        .auth-card{width:100%; max-width:420px;}
+        .auth-card{width:100%; max-width:420px; min-width:0;}
+        .auth-wrap > *{min-width:0;}
+        /* длинная подпись роли не должна растягивать форму шире экрана */
+        .auth-card select.field-input{width:100%; max-width:100%; text-overflow:ellipsis;}
         .auth-eyebrow{
             display:inline-flex; align-items:center; gap:8px;
             background:var(--accent-soft); color:var(--accent-ink);
@@ -229,6 +232,7 @@
         .visual-card-text span{display:block; color:rgba(255,255,255,.75); font-weight:500; font-size:11.5px; margin-top:2px;}
 
         @media (max-width:900px){
+            .auth-form-side{padding:28px 16px;}
             .auth-wrap{grid-template-columns:1fr;}
             .auth-visual-side{display:none;}
             .field-row-2{grid-template-columns:1fr;}
@@ -275,7 +279,7 @@
                         <label class="field-label">{{ __('ФИО') }}</label>
                         <div class="field-input-wrap">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                            <input type="text" name="name" class="field-input" placeholder="{{ __('Введите свое ФИО') }}" style="width: 66vh;">
+                            <input type="text" name="name" class="field-input" placeholder="{{ __('Введите свое ФИО') }}" value="{{ old('name') }}" required>
                         </div>
                     </div>
                    </div>

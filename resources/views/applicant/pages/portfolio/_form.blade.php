@@ -17,6 +17,8 @@
 
 <style>
     .pf-form .field { margin-bottom: 16px; }
+    /* поля — шрифтом страницы, а не системным моноширинным */
+    .pf-form input, .pf-form select, .pf-form textarea { font-family: inherit; }
     .pf-form .hint { font-size: 12.5px; color: var(--gray-500); margin-top: 6px; line-height: 1.45; }
     .pf-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
     .pf-count { float: right; font-weight: 500; color: var(--gray-500); font-size: 12px; }

@@ -196,7 +196,13 @@
 
         @media (max-width: 720px) {
             .company-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .company-card-block {
+                min-width: 0;
+                padding: 18px;
+                overflow-wrap: anywhere;
             }
 
             .company-header {

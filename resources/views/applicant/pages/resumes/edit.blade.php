@@ -350,6 +350,11 @@
             outline-offset: 3px;
         }
 
+        /* на телефоне форма без отступа слева: 17vh из разметки делали страницу шире экрана */
+        @media (max-width: 900px) {
+            .form-card { margin-left: 0 !important; max-width: 100%; }
+        }
+
         @media (max-width: 640px) {
             .card-head, .card-body, .card-foot {
                 padding-left: 24px;

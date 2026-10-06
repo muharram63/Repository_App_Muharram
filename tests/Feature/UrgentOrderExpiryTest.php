@@ -29,7 +29,7 @@ test('просроченная открытая заявка закрывает�
 
     $note = UserNotification::where('user_id', $order->user_id)->sole();
     expect($note->title)->toBe('Срок заявки истёк')
-        ->and($note->url)->toBe(route('public.orders.create', ['repeat' => $order->id]));
+        ->and($note->url)->toBe(route('public.orders.create', ['repeat' => $order->id], false));
 });
 
 test('заявки в срок, с исполнителем и уже закрытые не трогаются', function () {

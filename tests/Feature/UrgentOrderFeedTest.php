@@ -105,7 +105,7 @@ test('мастер откликается, заказчик получает у�
 
     $note = UserNotification::where('user_id', $order->user_id)->sole();
     expect($note->type)->toBe('order')
-        ->and($note->url)->toBe(route('public.orders.show', $order));
+        ->and($note->url)->toBe(route('public.orders.show', $order, false));
 });
 
 test('уведомления о нескольких откликах склеиваются в одно', function () {
@@ -286,7 +286,7 @@ test('о новой заявке узнают мастера нужного ви
         ->and($notified)->not->toContain($owner->id);
 
     expect(UserNotification::where('user_id', $plumberHere->id)->sole()->url)
-        ->toBe(route('public.orders.show', UrgentOrder::sole()));
+        ->toBe(route('public.orders.show', UrgentOrder::sole(), false));
 });
 
 test('заблокированному мастеру уведомление не идёт', function () {

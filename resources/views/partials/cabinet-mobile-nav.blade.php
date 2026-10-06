@@ -77,7 +77,25 @@
         .app .sidebar .nav-item { min-height: 44px; }
 
         /* содержимое — с отступами телефона, а не настольного экрана */
-        .main { padding: 18px 16px 56px; }
+        .main { padding: 18px 16px 56px; min-width: 0; }
+        /*
+         * Колонка не растягивается под содержимое: иначе широкая таблица
+         * (список вакансий) делала всю страницу шире экрана. Таблица теперь
+         * прокручивается внутри своей карточки.
+         */
+        .app { grid-template-columns: minmax(0, 1fr) !important; }
+        .main .card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+        /*
+         * Старые формы (вакансия, резюме) задают размеры в vh прямо в разметке:
+         * отступ формы 17vh, поля шириной 30–70vh, кнопка, сдвинутая на 63vh.
+         * На компьютере это выглядит задуманно, а на телефоне выталкивает
+         * форму за край экрана. Здесь, только для узкого экрана, обнуляем.
+         */
+        .main [style*="margin-left: 17vh"],
+        .main [style*="margin-left: 63vh"] { margin-left: 0 !important; bottom: auto !important; position: static !important; }
+        .main input[style*="vh"], .main select[style*="vh"], .main textarea[style*="vh"] { width: 100% !important; max-width: 100%; }
+        .main .form-card { max-width: 100%; }
         .topbar { flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
     }
     @media (max-width: 560px) {
@@ -100,6 +118,32 @@
         const narrow = window.matchMedia('(max-width: 900px)');
 
         if (!app || !sidebar || !burger) { return; }
+
+        /*
+         * Пункт текущей страницы. В меню «Профиль» помечен активным жёстко,
+         * и на любой странице подсвечивался он. Ищем ссылку с самым длинным
+         * совпадением адреса: /applicant/portfolio/create — это «Портфолио».
+         */
+        (function markCurrent() {
+            const here = location.pathname.replace(/\/+$/, '');
+            let best = null;
+            let bestLength = 0;
+
+            sidebar.querySelectorAll('.nav-item a[href]').forEach(function (link) {
+                const target = new URL(link.href, location.origin);
+                if (target.origin !== location.origin) { return; }
+                const path = target.pathname.replace(/\/+$/, '');
+                if (path && (here === path || here.startsWith(path + '/')) && path.length > bestLength) {
+                    best = link.closest('.nav-item');
+                    bestLength = path.length;
+                }
+            });
+
+            if (best) {
+                sidebar.querySelectorAll('.nav-item.active').forEach(item => item.classList.remove('active'));
+                best.classList.add('active');
+            }
+        })();
 
         // название раздела — из заголовка страницы
         const heading = document.getElementById('pageTitle') || document.querySelector('.topbar h1') || document.querySelector('main h1');

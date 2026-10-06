@@ -5,7 +5,7 @@
         .uo-form .f { margin-bottom: 18px; }
         .uo-form label.t { display: block; font-size: 14px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
         .uo-form .opt { font-weight: 500; color: var(--text-muted); }
-        .uo-form input[type=text], .uo-form input[type=number], .uo-form select, .uo-form textarea {
+        .uo-form input[type=text], .uo-form input[type=number], .uo-form input[type=tel], .uo-form select, .uo-form textarea {
             width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
             background: var(--surface); color: var(--text); font: inherit; font-size: 15px;
         }

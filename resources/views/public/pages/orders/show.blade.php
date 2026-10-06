@@ -104,7 +104,8 @@
                         <dt>{{ __('Адрес') }}</dt>
                         <dd>
                             {{ $order->address ?: '—' }}
-                            @if($order->address)
+                            {{-- подсказка — заказчику; выбранный мастер видит адрес, потому что его выбрали --}}
+                            @if($order->address && $isOwner)
                                 <div style="font-weight:500; font-size:12.5px; color:var(--text-muted); margin-top:3px;">
                                     🔒 {{ __('Виден только вам и мастеру, которого вы выберете.') }}
                                 </div>

@@ -300,7 +300,10 @@
 
         @media (max-width: 576px) {
             .companies-hero h1 { font-size: 24px; }
-            .companies-grid { grid-template-columns: 1fr; }
+            /* minmax(0, …): иначе длинная почта компании растягивала колонку шире экрана */
+            .companies-grid { grid-template-columns: minmax(0, 1fr); }
+            .company-card { min-width: 0; }
+            .company-card * { min-width: 0; overflow-wrap: anywhere; }
         }
     </style>
 

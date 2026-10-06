@@ -93,6 +93,29 @@ class CityDirectory
         return $result;
     }
 
+    /**
+     * То же для многих городов сразу — по запросу на таблицу, а не на город:
+     * список в админке иначе делал бы три запроса на каждую строку.
+     *
+     * @param  iterable<City>  $cities
+     * @return array<int, array<string,int>>  id города => таблица => сколько
+     */
+    public function usageMany(iterable $cities): array
+    {
+        $ids = collect($cities)->pluck('id')->all();
+        $counts = [];
+
+        foreach (self::REFERENCES as $table) {
+            $counts[$table] = DB::table($table)->whereIn('city_id', $ids)
+                ->selectRaw('city_id, count(*) as total')->groupBy('city_id')
+                ->pluck('total', 'city_id');
+        }
+
+        return collect($ids)->mapWithKeys(fn (int $id) => [$id => collect(self::REFERENCES)
+            ->mapWithKeys(fn (string $table) => [$table => (int) ($counts[$table][$id] ?? 0)])
+            ->all()])->all();
+    }
+
     /** Сколько записей ссылается на город — по таблицам. */
     public function usage(City $city): array
     {

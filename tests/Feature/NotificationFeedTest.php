@@ -139,3 +139,55 @@ test('звук уведомлений есть и на страницах ИИ-�
         // обсуждение с Анной включает голос само
         ->assertSee('if (engine) { switchVoice(true); }', false);
 });
+
+test('счётчик отдаёт время уведомления и сервера — по ним страница решает, что новое', function () {
+    $user = App\Models\User::factory()->applicant()->create();
+
+    // непрочитанных нет: первое настоящее уведомление не должно пропасть молча
+    $this->actingAs($user)->getJson(route('public.notifications.count'))
+        ->assertOk()
+        ->assertJsonPath('latest', null)
+        ->assertJsonStructure(['unread', 'now', 'latest']);
+
+    App\Models\UserNotification::deliver($user->id, 'order', 'Новый отклик', 'Откликов: 1', '/orders/1', collapse: true);
+    $first = $this->actingAs($user)->getJson(route('public.notifications.count'))->json('latest');
+
+    // склеенное уведомление обновляется на месте: номер тот же, время новее
+    $this->travel(5)->seconds();
+    App\Models\UserNotification::deliver($user->id, 'order', 'Новый отклик', 'Откликов: 2', '/orders/1', collapse: true);
+    $second = $this->actingAs($user)->getJson(route('public.notifications.count'))->json('latest');
+
+    expect($second['id'])->toBe($first['id'])
+        ->and($second['ts'])->toBeGreaterThan($first['ts']);
+});
+
+test('шапка на телефоне: кнопки входа и кабинета — в меню, а не за краем экрана', function () {
+    $this->get(route('public.home'))
+        ->assertSee('class="hdr-m-actions"', false)
+        ->assertSee(route('register'), false);
+
+    $applicant = App\Models\User::factory()->applicant()->create();
+    makeApplicant($applicant);
+    $this->actingAs($applicant)->get(route('public.masters.index'))
+        ->assertSee('class="hdr-m-actions"', false)
+        ->assertSee(route('applicant.dashboard'), false);
+});
+
+test('поле ФИО в регистрации без жёсткой ширины', function () {
+    $this->get(route('register'))->assertDontSee('style="width: 66vh;"', false);
+});
+
+test('ссылка уведомления хранится без адреса сайта — работает на любом адресе', function () {
+    $user = App\Models\User::factory()->applicant()->create();
+
+    // как из планировщика: route() дал адрес из APP_URL
+    App\Models\UserNotification::deliver($user->id, 'order', 'Срок заявки истёк', null, 'http://localhost/orders/create?repeat=5#top');
+
+    expect(App\Models\UserNotification::where('user_id', $user->id)->value('url'))->toBe('/orders/create?repeat=5#top')
+        ->and(App\Models\UserNotification::localUrl('https://example.org/page'))->toBe('https://example.org/page')
+        ->and(App\Models\UserNotification::localUrl('/orders/1'))->toBe('/orders/1')
+        ->and(App\Models\UserNotification::localUrl(null))->toBeNull();
+
+    $note = App\Models\UserNotification::where('user_id', $user->id)->sole();
+    $this->actingAs($user)->get(route('public.notifications.open', $note))->assertRedirect('/orders/create?repeat=5#top');
+});
