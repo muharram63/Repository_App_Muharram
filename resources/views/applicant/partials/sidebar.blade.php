@@ -173,6 +173,8 @@
 </script>
 
 
+{{-- меню на телефоне: полоса с кнопкой ☰ и выезжающая панель --}}
+@include('partials.cabinet-mobile-nav')
 @include('partials.call-notify')
 {{-- новое уведомление — со звуком и всплывающей карточкой --}}
 @include('partials.notification-alert')

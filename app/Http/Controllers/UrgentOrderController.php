@@ -246,6 +246,78 @@ class UrgentOrderController extends Controller
             ->with('status', __('Исполнитель выбран. Ему открыты адрес и ваш телефон — он свяжется с вами. Его номер — ниже.'));
     }
 
+    /**
+     * Исполнитель не пришёл или не отвечает — выбрать другого.
+     *
+     * Заявка снова ищет мастера с новым сроком. Прежний исполнитель теряет
+     * доступ к адресу и телефону. Мастера, которым раньше пришёл отказ,
+     * возвращаются в список: заказчику не нужно ждать новых откликов.
+     */
+    public function reassign(Request $request, UrgentOrder $order)
+    {
+        abort_unless($order->isOwnedBy($request->user()), 404);
+
+        $data = $request->validate([
+            'deadline_option' => 'required|in:'.implode(',', array_keys(UrgentOrder::DEADLINES)),
+        ]);
+
+        $result = DB::transaction(function () use ($order, $data) {
+            $order = UrgentOrder::lockForUpdate()->find($order->id);
+
+            if (! $order->isAssigned()) {
+                return __('Сменить исполнителя можно, пока работа не отмечена выполненной.');
+            }
+
+            $dropped = UrgentOrderOffer::with('applicant')->find($order->chosen_offer_id);
+            $revived = UrgentOrderOffer::where('urgent_order_id', $order->id)
+                ->where('status', UrgentOrderOffer::STATUS_DECLINED)
+                ->with('applicant')
+                ->get();
+
+            $dropped?->update(['status' => UrgentOrderOffer::STATUS_DROPPED]);
+            UrgentOrderOffer::whereIn('id', $revived->pluck('id'))->update(['status' => UrgentOrderOffer::STATUS_PENDING]);
+
+            $order->update([
+                'status' => UrgentOrder::STATUS_OPEN,
+                'chosen_offer_id' => null,
+                'deadline_option' => $data['deadline_option'],
+                'deadline_at' => UrgentOrder::deadlineFor($data['deadline_option']),
+            ]);
+
+            return [$order, $dropped, $revived];
+        });
+
+        if (is_string($result)) {
+            return back()->with('error', $result);
+        }
+
+        [$order, $dropped, $revived] = $result;
+        $title = Str::limit($order->title, 60);
+
+        UserNotification::deliver(
+            $dropped?->applicant?->user_id,
+            'order',
+            UserNotification::text('Заказчик отменил выбор исполнителя'),
+            UserNotification::text('Заявка «:title» снова ищет мастера.', ['title' => $title]),
+            route('public.orders.index', ['mine' => 1]),
+        );
+
+        foreach ($revived as $offer) {
+            UserNotification::deliver(
+                $offer->applicant?->user_id,
+                'order',
+                UserNotification::text('Ваш отклик снова рассматривают'),
+                UserNotification::text('Заказчик заново выбирает мастера по заявке «:title».', ['title' => $title]),
+                route('public.orders.show', $order),
+            );
+        }
+
+        return redirect()->route('public.orders.show', $order)
+            ->with('status', $revived->isNotEmpty()
+                ? __('Заявка снова открыта. Мастера, которые откликались раньше, — в списке ниже: можно выбрать сразу.')
+                : __('Заявка снова открыта — мастера увидят её в ленте.'));
+    }
+
     /** Работа сделана — заказчик закрывает заявку. */
     public function complete(Request $request, UrgentOrder $order)
     {

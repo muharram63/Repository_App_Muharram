@@ -218,3 +218,62 @@ test('мастер, которого выбрали, видит заявку и 
         ->assertOk()
         ->assertSee(__('Заказ выполнен — спасибо!'));
 });
+
+// ==================== мастер не пришёл — выбрать другого ====================
+
+test('смена исполнителя: заявка снова открыта, прежний теряет адрес, отказанные возвращаются', function () {
+    [$owner, $order, [$first, $firstOffer], [$second, $secondOffer]] = orderWithOffers();
+    $this->actingAs($owner)->post(route('public.orders.choose', [$order, $firstOffer]));
+    UserNotification::query()->delete();
+
+    $this->travel(2)->days();
+    $this->actingAs($owner)->patch(route('public.orders.reassign', $order), ['deadline_option' => 'today'])
+        ->assertRedirect(route('public.orders.show', $order));
+
+    $order->refresh();
+    expect($order->status)->toBe('open')
+        ->and($order->chosen_offer_id)->toBeNull()
+        ->and($order->deadline_option)->toBe('today')
+        ->and($order->deadline_at->isFuture())->toBeTrue()
+        ->and($firstOffer->fresh()->status)->toBe('dropped')
+        ->and($secondOffer->fresh()->status)->toBe('pending');
+
+    expect(UserNotification::where('user_id', $first->id)->sole()->title)->toBe('Заказчик отменил выбор исполнителя')
+        ->and(UserNotification::where('user_id', $second->id)->sole()->title)->toBe('Ваш отклик снова рассматривают');
+
+    // прежний исполнитель адреса и телефона больше не видит
+    $this->actingAs($first)->get(route('public.orders.show', $order))
+        ->assertOk()
+        ->assertDontSee('ул. Ленина, 7')
+        ->assertDontSee('+992 93 555 66 77')
+        ->assertSee(__('Заказчик отменил выбор'));
+
+    // второго можно выбрать сразу
+    $this->actingAs($owner)->post(route('public.orders.choose', [$order, $secondOffer]))->assertSessionHasNoErrors();
+    expect($order->fresh()->chosen_offer_id)->toBe($secondOffer->id);
+});
+
+test('сменить исполнителя можно только заказчику и только пока работа не выполнена', function () {
+    [$owner, $order, [$first, $firstOffer]] = orderWithOffers();
+
+    // ещё никто не выбран
+    $this->actingAs($owner)->patch(route('public.orders.reassign', $order), ['deadline_option' => 'today'])->assertSessionHas('error');
+
+    $this->actingAs($owner)->post(route('public.orders.choose', [$order, $firstOffer]));
+    $this->actingAs($first)->patch(route('public.orders.reassign', $order), ['deadline_option' => 'today'])->assertNotFound();
+    $this->actingAs($owner)->patch(route('public.orders.reassign', $order), ['deadline_option' => 'never'])->assertSessionHasErrors('deadline_option');
+
+    $this->actingAs($owner)->patch(route('public.orders.complete', $order));
+    $this->actingAs($owner)->patch(route('public.orders.reassign', $order), ['deadline_option' => 'today'])->assertSessionHas('error');
+
+    expect($order->fresh()->status)->toBe('done');
+});
+
+test('у выбранного исполнителя есть кнопка «Выбрать другого мастера»', function () {
+    [$owner, $order, [, $firstOffer]] = orderWithOffers();
+    $this->actingAs($owner)->post(route('public.orders.choose', [$order, $firstOffer]));
+
+    $this->actingAs($owner)->get(route('public.orders.show', $order))
+        ->assertSee(__('Мастер не пришёл или не отвечает?'))
+        ->assertSee(route('public.orders.reassign', $order), false);
+});

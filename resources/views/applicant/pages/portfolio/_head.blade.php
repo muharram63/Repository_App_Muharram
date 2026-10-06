@@ -1,9 +1,9 @@
 {{--
     Общая шапка страниц портфолио.
 
-    На телефоне боковое меню кабинета скрыто, а мастера портфолио заполняют
-    как раз с телефона. Поэтому здесь своя полоса навигации для узкого экрана:
-    в кабинет, к списку работ и добавить работу.
+    На телефоне — быстрые кнопки «Мои работы» и «+ Добавить работу» под
+    заголовком: мастера заполняют портфолио как раз с телефона. Остальные
+    разделы — в меню кабинета (☰ вверху).
 --}}
 <style>
     .pf-mnav { display: none; gap: 8px; margin-bottom: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -19,9 +19,6 @@
 
     @media (max-width: 900px) {
         .pf-mnav { display: flex; }
-        .main { padding: 16px !important; }
-        .topbar { flex-wrap: wrap; gap: 12px; }
-        .topbar .user-chip { display: none; }
     }
 </style>
 
@@ -44,7 +41,6 @@
 </div>
 
 <nav class="pf-mnav" aria-label="{{ __('Портфолио') }}">
-    <a href="{{ route('applicant.dashboard') }}">← {{ __('Кабинет') }}</a>
     <a href="{{ route('applicant.portfolio.index') }}" @class(['on' => request()->routeIs('applicant.portfolio.index')])>{{ __('Мои работы') }}</a>
     <a href="{{ route('applicant.portfolio.create') }}" @class(['on' => request()->routeIs('applicant.portfolio.create')])>+ {{ __('Добавить работу') }}</a>
 </nav>

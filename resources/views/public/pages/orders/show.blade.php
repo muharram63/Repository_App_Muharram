@@ -22,6 +22,14 @@
         .uo-chosen { border: 2px solid var(--accent); }
         .uo-call { width: 100%; margin-top: 12px; font-size: 16px; padding: 14px; }
         .uo-facts a { color: var(--accent); }
+        .uo-reassign { margin-top: 12px; border: 1px dashed var(--border); border-radius: 12px; padding: 10px 14px; }
+        .uo-reassign summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--text-muted); }
+        .uo-reassign form { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .uo-reassign label { font-size: 13px; font-weight: 700; }
+        .uo-reassign select {
+            padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+            color: var(--text); font: inherit; font-size: 15px;
+        }
         .uo-offer-form label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 6px; }
         .uo-offer-form textarea, .uo-offer-form input, .uo-offer-form select {
             width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px;
@@ -159,6 +167,23 @@
                         <p class="uo-lead" style="margin:10px 0 0;">{{ __('Мастер не указал телефон в анкете — он позвонит вам сам: ему открыт ваш номер.') }}</p>
                     @endif
                     @if($order->isAssigned())
+                        {{-- мастер не пришёл — выбрать другого, с новым сроком --}}
+                        <details class="uo-reassign">
+                            <summary>{{ __('Мастер не пришёл или не отвечает?') }}</summary>
+                            <form method="POST" action="{{ route('public.orders.reassign', $order) }}"
+                                  data-confirm="{{ __('Отменить выбор этого мастера? Он потеряет доступ к адресу и телефону, а заявка снова откроется.') }}"
+                                  onsubmit="return confirm(this.dataset.confirm)">
+                                @csrf
+                                @method('PATCH')
+                                <label for="raDeadline">{{ __('Новый срок') }}</label>
+                                <select id="raDeadline" name="deadline_option">
+                                    @foreach(\App\Models\UrgentOrder::DEADLINES as $value => $label)
+                                        <option value="{{ $value }}" @selected($value === 'today')>{{ __($label) }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="submit" class="uo-btn" style="width:100%;">↻ {{ __('Выбрать другого мастера') }}</button>
+                            </form>
+                        </details>
                         <form method="POST" action="{{ route('public.orders.complete', $order) }}" style="margin-top:12px;"
                               data-confirm="{{ __('Мастер выполнил работу? Заявка закроется.') }}" onsubmit="return confirm(this.dataset.confirm)">
                             @csrf

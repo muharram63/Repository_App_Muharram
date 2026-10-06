@@ -21,6 +21,9 @@ class UrgentOrderOffer extends Model
 
     public const STATUS_EXPIRED = 'expired';
 
+    /** Выбранный исполнитель не пришёл — заказчик отменил выбор. */
+    public const STATUS_DROPPED = 'dropped';
+
     public const STATUSES = [
         self::STATUS_PENDING => 'Ждёт решения заказчика',
         self::STATUS_CHOSEN => 'Вас выбрали',
@@ -28,6 +31,7 @@ class UrgentOrderOffer extends Model
         self::STATUS_WITHDRAWN => 'Отклик отозван',
         self::STATUS_CANCELLED => 'Заказчик отменил заявку',
         self::STATUS_EXPIRED => 'Срок заявки истёк',
+        self::STATUS_DROPPED => 'Заказчик отменил выбор',
     ];
 
     /** Те же статусы глазами заказчика: «Вас выбрали» ему не подходит. */
@@ -38,6 +42,7 @@ class UrgentOrderOffer extends Model
         self::STATUS_WITHDRAWN => 'Отклик отозван',
         self::STATUS_CANCELLED => 'Заявка отменена',
         self::STATUS_EXPIRED => 'Срок истёк',
+        self::STATUS_DROPPED => 'Выбор отменён',
     ];
 
     public const CAN_START = [

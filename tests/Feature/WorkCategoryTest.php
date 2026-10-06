@@ -52,9 +52,29 @@ test('подписи статусов и сроков заявок переве�
         array_values(App\Models\UrgentOrderOffer::STATUSES),
         array_values(App\Models\UrgentOrderOffer::CAN_START),
         array_values(App\Models\UrgentOrderOffer::CUSTOMER_STATUSES),
-        ['Вас выбрали исполнителем', 'Заказчик выбрал другого мастера', 'Заказ отмечен выполненным', 'Заказчик отменил заявку', 'Заявка «:title». Адрес и телефон заказчика — на странице заявки.', 'По заявке «:title». Спасибо за отклик — новые заказы появляются каждый день.', 'Заказчик подтвердил выполнение заявки «:title». Спасибо за работу!', 'Заявка «:title» больше не актуальна.', 'Срок заявки истёк', '«:title»: исполнитель не выбран, откликов было :count. Повторите заявку — данные подставятся сами.', '«:title»: к сроку мастер не нашёлся. Повторите заявку — данные подставятся сами.'],
+        ['Вас выбрали исполнителем', 'Заказчик выбрал другого мастера', 'Заказ отмечен выполненным', 'Заказчик отменил заявку', 'Заявка «:title». Адрес и телефон заказчика — на странице заявки.', 'По заявке «:title». Спасибо за отклик — новые заказы появляются каждый день.', 'Заказчик подтвердил выполнение заявки «:title». Спасибо за работу!', 'Заявка «:title» больше не актуальна.', 'Срок заявки истёк', '«:title»: исполнитель не выбран, откликов было :count. Повторите заявку — данные подставятся сами.', '«:title»: к сроку мастер не нашёлся. Повторите заявку — данные подставятся сами.', 'Заказчик отменил выбор исполнителя', 'Заявка «:title» снова ищет мастера.', 'Ваш отклик снова рассматривают', 'Заказчик заново выбирает мастера по заявке «:title».'],
         ['Срочная заявка: :category', 'Новая заявка: :category', 'Новый отклик на заявку «:title»', ':name · :price · откликов: :count'],
     );
 
     expect(array_values(array_diff($labels, array_keys($dictionary))))->toBe([]);
 })->with(['tg', 'en']);
+
+test('в кабинетах есть меню для телефона', function () {
+    $applicant = App\Models\User::factory()->applicant()->create();
+    makeApplicant($applicant);
+    $employer = App\Models\User::factory()->employer()->create();
+    makeEmployer($employer);
+
+    foreach ([
+        [$applicant, route('applicant.dashboard')],
+        [$applicant, route('applicant.portfolio.index')],
+        [$applicant, route('applicant.resume.index')],
+        [$employer, route('employer.dashboard')],
+        [$employer, route('employer.vacancies.index')],
+    ] as [$user, $url]) {
+        $this->actingAs($user)->get($url)
+            ->assertOk()
+            ->assertSee('id="cabBurger"', false)
+            ->assertSee('aria-controls="cabinetSidebar"', false);
+    }
+});

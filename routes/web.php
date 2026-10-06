@@ -163,6 +163,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/orders/{order}/choose/{offer}', [\App\Http\Controllers\UrgentOrderController::class, 'choose'])
             ->whereNumber(['order', 'offer'])->name('public.orders.choose');
         Route::patch('/orders/{order}/complete', [\App\Http\Controllers\UrgentOrderController::class, 'complete'])->whereNumber('order')->name('public.orders.complete');
+        Route::patch('/orders/{order}/reassign', [\App\Http\Controllers\UrgentOrderController::class, 'reassign'])->whereNumber('order')->name('public.orders.reassign');
 
         // отклики мастеров на заявки
         Route::post('/orders/{order}/offers', [\App\Http\Controllers\UrgentOrderOfferController::class, 'store'])
