@@ -24,6 +24,7 @@ class PublicMasterController extends Controller
         abort_if(! $privileged && ($owner->setting('hide_profile') || $owner->isBlocked()), 404);
 
         $works = $applicant->portfolioWorks()->with(['media', 'category'])->get();
+        $reviews = $applicant->reviews()->with(['author', 'order.category'])->limit(30)->get();
 
         // пустая витрина посторонним не нужна; владельцу — подсказка, как её заполнить
         abort_if($works->isEmpty() && ! $privileged, 404);
@@ -36,6 +37,9 @@ class PublicMasterController extends Controller
             'isOwner' => $viewer && $viewer->id === $owner->id,
             'hideContacts' => $owner->setting('hide_contacts') && ! $privileged,
             'categories' => $works->pluck('category')->filter()->unique('id')->values(),
+            'reviews' => $reviews,
+            'ratingAvg' => ($rating = \App\Models\MasterReview::summaryFor($applicant->id))['avg'],
+            'ratingCount' => $rating['count'],
         ]);
     }
 }

@@ -262,6 +262,9 @@
                             </span>
                             <span class="rc-chip">👥 {{ $resume->responses_count }} {{ __('откликов') }}</span>
                             <span class="rc-chip">👁 {{ $resume->views }} {{ __('просмотров') }}</span>
+                            @if($applicant->reviews_count)
+                                <span class="rc-chip">@include('partials.master-rating', ['avg' => $applicant->reviews_avg_rating, 'count' => (int) $applicant->reviews_count])</span>
+                            @endif
                             @if($applicant->portfolio_works_count)
                                 <a class="rc-chip proof" href="{{ route('public.masters.show', $applicant) }}"
                                    style="text-decoration:none;">📸 {{ __('Портфолио: :count', ['count' => $applicant->portfolio_works_count]) }}</a>

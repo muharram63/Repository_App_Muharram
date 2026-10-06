@@ -757,6 +757,10 @@
                         <div class="panel no-print" id="portfolio" style="margin-top:22px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
                                 <h3 style="margin:0;">{{ __('Выполненные работы') }} · {{ $works->count() }}</h3>
+                                @include('partials.master-rating', [
+                                    'avg' => $ratingAvg, 'count' => $ratingCount,
+                                    'link' => route('public.masters.show', $resume->applicant).'#reviews',
+                                ])
                                 <a href="{{ route('public.masters.show', $resume->applicant) }}" style="font-size:14px; font-weight:600;">{{ __('Профиль мастера →') }}</a>
                             </div>
                             @include('partials.portfolio-gallery', ['works' => $works, 'limit' => 6])

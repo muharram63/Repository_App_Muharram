@@ -28,6 +28,12 @@ class Applicant extends Model
         return $this->hasMany(Resume::class);
     }
 
+    /** Отзывы заказчиков об этом мастере — новые сверху. */
+    public function reviews()
+    {
+        return $this->hasMany(MasterReview::class)->latest('id');
+    }
+
     public function orderOffers()
     {
         return $this->hasMany(UrgentOrderOffer::class);

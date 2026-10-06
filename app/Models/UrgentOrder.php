@@ -118,6 +118,25 @@ class UrgentOrder extends Model
         return $this->hasMany(UrgentOrderOffer::class)->latest('id');
     }
 
+    public function review()
+    {
+        return $this->hasOne(MasterReview::class);
+    }
+
+    /**
+     * Может ли пользователь оставить (или исправить) отзыв об исполнителе:
+     * он заказчик, работа отмечена выполненной, исполнитель был, и после
+     * выполнения прошло не больше EDIT_DAYS дней.
+     */
+    public function canBeReviewedBy(?User $user): bool
+    {
+        return $this->isOwnedBy($user)
+            && $this->status === self::STATUS_DONE
+            && $this->chosen_offer_id !== null
+            && $this->closed_at !== null
+            && $this->closed_at->gt(now()->subDays(MasterReview::EDIT_DAYS));
+    }
+
     /** Выбранный отклик — исполнитель заявки. */
     public function chosenOffer()
     {

@@ -30,6 +30,13 @@
         .ms-about p { margin: 0; color: var(--text); line-height: 1.65; white-space: pre-line; overflow-wrap: anywhere; }
         .ms-works { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 22px 24px; }
         .ms-empty { text-align: center; padding: 30px 10px; color: var(--text-muted); }
+        .ms-avg { color: #F59E0B; }
+        .ms-review { padding: 14px 0; border-top: 1px solid var(--border); }
+        .ms-review:first-of-type { border-top: 0; padding-top: 2px; }
+        .ms-review-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+        .ms-review-stars { color: #F59E0B; font-size: 16px; letter-spacing: 1px; }
+        .ms-review-meta { color: var(--text-muted); font-size: 13px; }
+        .ms-review p { margin: 6px 0 0; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; color: var(--text); }
         .ms-note { margin-bottom: 16px; padding: 12px 16px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); font-size: 14px; font-weight: 600; }
 
         @media (max-width: 640px) {
@@ -62,6 +69,7 @@
                             <span>📍 {{ __($applicant->city) }}</span>
                         @endif
                         <span>📸 {{ __('Работ в портфолио: :count', ['count' => $works->count()]) }}</span>
+                        @include('partials.master-rating', ['avg' => $ratingAvg, 'count' => $ratingCount, 'link' => '#reviews'])
                     </div>
                     @if($categories->isNotEmpty())
                         <div class="ms-cats">
@@ -104,6 +112,32 @@
                 @else
                     @include('partials.portfolio-gallery', ['works' => $works, 'limit' => null])
                 @endif
+            </div>
+
+            {{-- отзывы заказчиков: только по выполненным заявкам --}}
+            <div class="ms-works" id="reviews" style="margin-top:22px;">
+                <h2>{{ __('Отзывы заказчиков') }} @if($ratingCount) · <span class="ms-avg">★ {{ \App\Models\MasterReview::formatAverage((float) $ratingAvg) }}</span>@endif</h2>
+                @forelse($reviews as $review)
+                    <article class="ms-review">
+                        <div class="ms-review-head">
+                            <span class="ms-review-stars" aria-label="{{ __('Оценка :n из 5', ['n' => $review->rating]) }}">{{ \App\Models\MasterReview::stars($review->rating) }}</span>
+                            <b>{{ $review->authorName() }}</b>
+                            <span class="ms-review-meta">
+                                {{ $review->created_at->format('d.m.Y') }}
+                                @if($review->order?->category) · {{ $review->order->category->title() }}@endif
+                            </span>
+                        </div>
+                        @if($review->comment)
+                            <p>{{ $review->comment }}</p>
+                        @else
+                            <p class="ms-review-meta">{{ $review->ratingLabel() }}</p>
+                        @endif
+                    </article>
+                @empty
+                    <div class="ms-empty" style="padding:18px 10px;">
+                        {{ __('Отзывов пока нет. Их оставляют заказчики после выполненной заявки.') }}
+                    </div>
+                @endforelse
             </div>
         </div>
     </section>

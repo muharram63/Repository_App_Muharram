@@ -47,7 +47,7 @@ class PublicResumeController extends Controller
             // число работ в портфолио — на карточку, без запроса из каждой.
             // Стоит после вложенных with('applicant.…'): поставленный после
             // него вложенный with перезаписал бы ограничение на 'applicant' пустым
-            ->with(['applicant' => fn ($a) => $a->withCount('portfolioWorks')])
+            ->with(['applicant' => fn ($a) => $a->withCount(['portfolioWorks', 'reviews'])->withAvg('reviews', 'rating')])
             ->withCount('responses')
             ->whereHas('applicant.user', fn ($q) => $q->activeAccount()->whereDoesntHave(
                 'settings',
@@ -118,6 +118,8 @@ class PublicResumeController extends Controller
             'works' => $resume->applicant
                 ? $resume->applicant->portfolioWorks()->with(['media', 'category'])->get()
                 : collect(),
+            'ratingAvg' => ($rating = \App\Models\MasterReview::summaryFor($resume->applicant?->id))['avg'],
+            'ratingCount' => $rating['count'],
             'hideContacts' => (bool) $owner && $owner->setting('hide_contacts') && ! $privileged,
         ]);
     }

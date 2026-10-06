@@ -213,6 +213,8 @@
                 </div>
             @endif
 
+            @include('public.pages.orders._review')
+
             @if($isOwner || $offers->isNotEmpty())
                 <div class="uo-card" id="offers">
                     <h2 class="uo-h2">{{ __('Отклики мастеров') }} · {{ $offers->count() }}</h2>
@@ -243,6 +245,13 @@
                                         @endif
                                     </div>
                                     <div class="uo-offer-meta">
+                                        @if($master)
+                                            @include('partials.master-rating', [
+                                                'avg' => $master->reviews_avg_rating,
+                                                'count' => (int) $master->reviews_count,
+                                                'link' => route('public.masters.show', $master).'#reviews',
+                                            ])
+                                        @endif
                                         @if($master?->city)<span>📍 {{ __($master->city) }}</span>@endif
                                         <span>📸 {{ __('Работ в портфолио: :count', ['count' => $master?->portfolioWorks->count() ?? 0]) }}</span>
                                         <span>{{ $offer->created_at->format('d.m H:i') }}</span>

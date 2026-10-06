@@ -30,8 +30,11 @@ class UrgentOrderFeedController extends Controller
         $category = WorkCategory::where('slug', (string) $request->input('category'))->first();
         $cityId = (int) $request->input('city') ?: null;
         // «подходящие мне» — виды работ из моего портфолио
+        // запрос без сортировки связи portfolioWorks(): MySQL 8 не допускает
+        // DISTINCT вместе с ORDER BY по колонке, которой нет в выборке (3065)
         $myCategories = $applicant
-            ? $applicant->portfolioWorks()->whereNotNull('work_category_id')->distinct()->pluck('work_category_id')
+            ? \App\Models\PortfolioWork::where('applicant_id', $applicant->id)
+                ->whereNotNull('work_category_id')->distinct()->pluck('work_category_id')
             : collect();
         $mine = $request->boolean('mine') && $myCategories->isNotEmpty();
         // «мои отклики» — заявки, на которые я откликался, в любом статусе

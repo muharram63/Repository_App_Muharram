@@ -157,7 +157,7 @@ class UrgentOrderController extends Controller
             404
         );
 
-        $order->load(['category', 'city', 'photos', 'user.employer', 'user.applicant', 'chosenOffer.applicant.user']);
+        $order->load(['category', 'city', 'photos', 'user.employer', 'user.applicant', 'chosenOffer.applicant.user', 'review']);
 
         // отклики целиком видит только заказчик (и администратор): мастерам
         // чужие цены ни к чему
@@ -165,6 +165,9 @@ class UrgentOrderController extends Controller
             ? $order->offers()
                 ->where('status', '!=', UrgentOrderOffer::STATUS_WITHDRAWN)
                 ->with(['applicant.user', 'applicant.portfolioWorks.media', 'applicant.portfolioWorks.category'])
+                // оценка мастера рядом с откликом — заказчику проще выбрать.
+                // После вложенных with('applicant.…'): иначе ограничение перезапишется
+                ->with(['applicant' => fn ($a) => $a->withCount('reviews')->withAvg('reviews', 'rating')])
                 ->get()
             : collect();
 
