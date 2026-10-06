@@ -165,6 +165,7 @@
             <a href="{{ route('public.vacancies.index') }}">{{ __('Вакансии') }}</a>
             <a href="{{ route('public.companies.index') }}">{{ __('Компании') }}</a>
             <a href="{{ route('public.resumes.index') }}">{{ __('Соискатели') }}</a>
+            <a href="{{ route('public.masters.index') }}">{{ __('Мастера') }}</a>
             <a href="{{ route('public.stats') }}">{{ __('Статистика') }}</a>
             {{-- срочная заявка на мастера: гостя форма сначала отправит войти --}}
             <a href="{{ route('public.orders.index') }}">🔥 {{ __('Срочные заказы') }}</a>
@@ -231,6 +232,7 @@
                 <a href="{{ route('public.vacancies.index') }}">{{ __('Вакансии') }}</a>
                 <a href="{{ route('public.companies.index') }}">{{ __('Компании') }}</a>
                 <a href="{{ route('public.resumes.index') }}">{{ __('Соискатели') }}</a>
+                <a href="{{ route('public.masters.index') }}">{{ __('Мастера') }}</a>
                 <a href="{{ route('public.stats') }}">{{ __('Статистика') }}</a>
                 <a href="{{ route('public.orders.index') }}">🔥 {{ __('Срочные заказы') }}</a>
                 <a href="{{ route('public.orders.create') }}">🛠 {{ __('Нужен мастер') }}</a>

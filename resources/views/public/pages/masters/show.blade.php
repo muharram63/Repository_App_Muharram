@@ -49,6 +49,7 @@
 
     <section class="ms-page">
         <div class="container">
+            <a href="{{ route('public.masters.index') }}" style="display:inline-flex; gap:6px; font-size:14px; font-weight:600; color:var(--text-muted); margin-bottom:14px; text-decoration:none;">← {{ __('Все мастера') }}</a>
 
             @if($owner->setting('hide_profile'))
                 <div class="ms-note">{{ __('Профиль скрыт в настройках — эту страницу видите только вы.') }}</div>

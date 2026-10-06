@@ -207,6 +207,7 @@ Route::get('/orders', [\App\Http\Controllers\UrgentOrderFeedController::class, '
 Route::get('/orders/{order}', [\App\Http\Controllers\UrgentOrderController::class, 'show'])->whereNumber('order')->name('public.orders.show');
 
 // профиль мастера: портфолио выполненных работ вместо резюме
+Route::get('/masters', [\App\Http\Controllers\PublicMasterController::class, 'index'])->name('public.masters.index');
 Route::get('/masters/{applicant}', [\App\Http\Controllers\PublicMasterController::class, 'show'])
     ->whereNumber('applicant')->name('public.masters.show');
 

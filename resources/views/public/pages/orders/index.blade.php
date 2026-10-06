@@ -30,7 +30,10 @@
                     <h1 class="uo-h1">🔥 {{ __('Срочные заказы') }}</h1>
                     <p class="uo-lead" style="margin:0;">{{ __('Людям нужен мастер сегодня или в ближайшие дни. Откликнитесь — заказчик посмотрит ваши работы и выберет.') }}</p>
                 </div>
-                <a class="uo-btn primary" href="{{ route('public.orders.create') }}">🛠 {{ __('Нужен мастер') }}</a>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <a class="uo-btn" href="{{ route('public.masters.index') }}">👷 {{ __('Все мастера') }}</a>
+                    <a class="uo-btn primary" href="{{ route('public.orders.create') }}">🛠 {{ __('Нужен мастер') }}</a>
+                </div>
             </div>
 
             @include('public.pages.orders._styles')

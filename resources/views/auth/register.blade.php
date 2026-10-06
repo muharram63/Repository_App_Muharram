@@ -291,10 +291,12 @@
                 <div class="field-group">
                     <label class="field-label">{{ __('Роль') }}</label>
 
-                    <select name="role" class="field-input">
-                        <option value="applicant">{{ __('Соискатель') }}</option>
-                        <option value="employer">{{ __('Работадель') }}</option>
+                    <select name="role" class="field-input" aria-describedby="roleHint">
+                        <option value="applicant" @selected(old('role', 'applicant') === 'applicant')>{{ __('Соискатель или мастер — ищу работу или заказы') }}</option>
+                        <option value="employer" @selected(old('role') === 'employer')>{{ __('Работодатель — ищу сотрудников') }}</option>
                     </select>
+                    {{-- мастер (сантехник, электрик, маляр…) — это соискатель с портфолио работ --}}
+                    <div class="pass-hint" id="roleHint">{{ __('Мастерам — сантехникам, электрикам, малярам — выбирать «Соискатель или мастер»: после регистрации добавьте фото работ в портфолио. Заказать мастера можно с любой ролью.') }}</div>
                 </div>
 
                 <div class="field-group">
