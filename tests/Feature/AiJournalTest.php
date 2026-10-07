@@ -19,11 +19,12 @@ use App\Services\Ai\GeminiClient;
 use Illuminate\Support\Facades\Http;
 
 /** Ответ Interactions API с расходом токенов. */
-function journalAnswer(array $payload, array $usage = []): array
+function journalAnswer(array $payload, array $usage = [], string $model = 'gemini-3.8-flash'): array
 {
     return [
         'id' => 'int_1',
-        'model' => 'gemini-3.8-flash',
+        // Google называет в ответе модель, которая ответила на самом деле
+        'model' => $model,
         'usage' => $usage + [
             'total_input_tokens' => 120,
             'total_output_tokens' => 40,
@@ -495,14 +496,15 @@ test('когда занятость не проходит, подхватыва�
         ->and($sent[2][0]->data()['model'])->toBe('gemini-3.5-flash-lite');
 });
 
-test('исчерпанный лимит не повторяем', function () {
+test('исчерпанный лимит ту же модель не повторяет, а запасная пробуется один раз', function () {
     Illuminate\Support\Sleep::fake();
+    Illuminate\Support\Facades\Cache::flush();
 
     Http::fake(['*' => Http::response(
         ['error' => ['message' => 'Quota exceeded. Please retry in 20s']], 429
     )]);
 
-    // повтор только ускорит упор в ту же стену: пусть выше решают, ждать ли
+    // лимит исчерпан у обеих — дальше решают выше, без повторов по кругу
     expect(fn () => journal()->ask(
         purpose: 'answer_score',
         system: 'Оцени.',
@@ -512,7 +514,48 @@ test('исчерпанный лимит не повторяем', function () {
         options: ['model' => 'gemini-3.8-flash', 'fallback' => 'gemini-3.5-flash-lite'],
     ))->toThrow(AiUnavailableException::class);
 
-    Http::assertSentCount(1);
+    $sent = Http::recorded();
+
+    expect($sent)->toHaveCount(2)
+        ->and($sent[0][0]->data()['model'])->toBe('gemini-3.8-flash')
+        ->and($sent[1][0]->data()['model'])->toBe('gemini-3.5-flash-lite');
+});
+
+test('суточный лимит основной — оценку ставит запасная, и об этом известно', function () {
+    Illuminate\Support\Sleep::fake();
+    Illuminate\Support\Facades\Cache::flush();
+
+    Http::fake(['*' => Http::sequence()
+        ->push(['error' => ['message' => 'Rate limit exceeded (limit: 20 requests per day). Please retry in 8h25m51s']], 429)
+        ->push(journalAnswer(['score' => 4, 'why' => 'по делу'], model: 'gemini-3.5-flash-lite'))
+        ->push(journalAnswer(['score' => 3, 'why' => 'сойдёт'], model: 'gemini-3.5-flash-lite')),
+    ]);
+
+    $ask = fn () => journal()->askDetailed(
+        purpose: 'answer_score',
+        system: 'Оцени.',
+        turns: [['role' => 'user', 'text' => 'ответ']],
+        schema: ['type' => 'object'],
+        rules: scoreRules(),
+        options: ['model' => 'gemini-3.8-flash', 'fallback' => 'gemini-3.5-flash-lite'],
+    );
+
+    $first = $ask();
+
+    expect($first['data']['score'])->toBe(4)
+        ->and($first['model'])->toBe('gemini-3.5-flash-lite')
+        ->and(App\Services\Ai\AiJournal::exhausted('gemini-3.8-flash'))->toBeTrue();
+
+    // следующая оценка сразу идёт на запасную: заведомый отказ не запрашиваем
+    $second = $ask();
+
+    expect($second['model'])->toBe('gemini-3.5-flash-lite')
+        ->and(Http::recorded())->toHaveCount(3)
+        ->and(Http::recorded()[2][0]->data()['model'])->toBe('gemini-3.5-flash-lite');
+
+    // лимит обновился — снова основная
+    $this->travel(9)->hours();
+    expect(App\Services\Ai\AiJournal::exhausted('gemini-3.8-flash'))->toBeFalse();
 });
 
 test('каждая попытка попадает в журнал обращений', function () {

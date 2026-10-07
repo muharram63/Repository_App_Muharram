@@ -84,7 +84,29 @@
                         const token = @json(csrf_token());
                         let tries = 60;
 
+                        /*
+                         * Обсуждение с Анной не обрываем.
+                         *
+                         * Раньше готовая рекомендация перезагружала страницу
+                         * посреди разговора — пропадала вся переписка. А шаг
+                         * проверки, отправленный, пока Анна отвечает, на
+                         * однопоточном сервере задерживал её ответ на минуту.
+                         * Теперь шаг ждёт, пока Анна не занята, а вместо
+                         * перезагрузки во время разговора — кнопка.
+                         */
+                        function ready() {
+                            if (!window.AiAdvisorActive) { window.location.reload(); return; }
+
+                            const note = document.getElementById('crChecking');
+                            note.textContent = @json(__('Рекомендация готова. Обновите страницу, когда закончите разговор с Анной, — она уже знает результаты.')) + ' ';
+                            const link = document.createElement('a');
+                            link.href = window.location.href;
+                            link.textContent = @json(__('Обновить'));
+                            note.appendChild(link);
+                        }
+
                         function step() {
+                            if (window.AiAdvisorBusy) { setTimeout(step, 2000); return; }
                             if (--tries < 0) { return; }
 
                             fetch(url, {
@@ -93,7 +115,7 @@
                             })
                                 .then(function (r) { return r.ok ? r.json() : null; })
                                 .then(function (data) {
-                                    if (data && data.ready) { window.location.reload(); return; }
+                                    if (data && data.ready) { ready(); return; }
                                     setTimeout(step, data && data.did && data.did !== 'busy' ? 800 : 5000);
                                 })
                                 .catch(function () { setTimeout(step, 6000); });

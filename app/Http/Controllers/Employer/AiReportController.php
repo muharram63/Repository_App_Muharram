@@ -421,6 +421,29 @@ class AiReportController extends Controller
 
         $task = $interview->testTasks->firstWhere('kind', 'main');
 
+        /*
+         * Кто ставил баллы — основная модель оценки или запасная.
+         *
+         * Когда лимит основной исчерпан или она перегружена, оценка уходит на
+         * lite. Работодатель должен это видеть: балл менее глубокой модели —
+         * повод перепроверить ответ самому. Считаем по журналу обращений:
+         * так видны и оценки, сделанные до того, как модель стали писать к
+         * каждому ответу.
+         */
+        $scorers = AiInteraction::where('ai_interview_id', $interview->id)
+            ->whereIn('purpose', ['answer_score', 'task_grade'])
+            ->where('status', 'ok')
+            ->selectRaw('model, count(*) as calls')
+            ->groupBy('model')
+            ->get()
+            ->map(fn ($row) => [
+                'model' => $row->model,
+                'calls' => (int) $row->calls,
+                'fallback' => $row->model !== config('services.gemini.model_scoring'),
+            ])
+            ->sortBy('fallback')
+            ->values();
+
         return [
             'vacancy' => $vacancy,
             'interview' => $interview,
@@ -437,6 +460,8 @@ class AiReportController extends Controller
             'analysis' => $interview->analysis ?? [],
             'injections' => $interview->injectionAttempts,
             'usage' => $usage,
+            'scorers' => $scorers,
+            'scoringModel' => config('services.gemini.model_scoring'),
             'gates' => AiDecision::GATES,
             'outcomes' => DecisionEngine::PASSED,
         ];

@@ -974,6 +974,8 @@ test('без разбора вопросы строятся по резюме и
             && str_contains($prompt, 'PHP-разработчик')
             && str_contains($prompt, 'Backend')
             && str_contains($prompt, 'по его специальности')
+            // но профессия вакансии — первой
+            && str_contains($prompt, 'ПРОФЕССИЯ ВАКАНСИИ — ПЕРВОЙ')
             && str_contains($prompt, 'Документы кандидата ещё разбираются');
     });
 });
@@ -1105,6 +1107,31 @@ test('страница чата предлагает голосовой режи
         ->assertSee(trim(json_encode(route('applicant.ai.chat.transcribe', $interview)), '"'), false)
         // после вопроса микрофон включается сам
         ->assertSee('onEnd: questionSpoken', false);
+});
+
+test('сбой распознавания браузера переводит голос на сервер, а не выключает его', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('function fallbackToServer()', false)
+        // network и «служба не разрешена» больше не кончают голосовой режим
+        ->assertSee("['network', 'service-not-allowed', 'not-allowed', 'language-not-supported']", false)
+        ->assertSee("localStorage.setItem(ENGINE_PREF, 'server')", false);
+});
+
+test('фоновая работа во время разговора выключается только на однопоточном сервере', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+
+    // тесты идут не под php -S — сервер считается обычным
+    expect(App\Support\ServerCapacity::singleThreaded())->toBeFalse();
+
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('const backgroundWork = true;', false)
+        ->assertSee('if (!backgroundWork) { return; }', false);
 });
 
 test('собеседующий пишет реплики для произнесения вслух', function () {
@@ -1270,4 +1297,108 @@ test('начатый разговор выбора не предлагает', f
     $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
         ->assertOk()
         ->assertDontSee('id="chStart"', false);
+});
+
+// ==================== язык собеседования — язык всего ====================
+
+test('собеседование на таджикском — и страница, и ошибки на таджикском', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(config: ['language' => 'tg']);
+    $user->update(['locale' => 'ru']);
+
+    $this->actingAs($user)->withSession(['locale' => 'ru'])
+        ->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('<html lang="tg"', false)
+        ->assertSee(__('Как идёт разговор', [], 'tg'))
+        ->assertDontSee('Как идёт разговор')
+        // голос браузера и распознавание — тоже на языке собеседования
+        ->assertSee('const speechLang = "tg";', false);
+
+    // ошибка сервера приходит на том же языке
+    $this->actingAs($user)->withSession(['locale' => 'ru'])
+        ->postJson(route('applicant.ai.chat.answer', $interview), ['text' => ''])
+        ->assertStatus(422);
+    expect(app()->getLocale())->toBe('tg');
+});
+
+test('собеседование на английском — интерфейс английский, хотя сайт открыт по-русски', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady(config: ['language' => 'en']);
+
+    $this->actingAs($user)->withSession(['locale' => 'ru'])
+        ->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('<html lang="en"', false)
+        ->assertSee(__('Как идёт разговор', [], 'en'));
+});
+
+test('ошибки Gemini переводятся на язык собеседования', function () {
+    app()->setLocale('en');
+
+    expect(__('Помощник не успел ответить. Попробуйте ещё раз — диалог сохранён.'))
+        ->not->toBe('Помощник не успел ответить. Попробуйте ещё раз — диалог сохранён.');
+});
+
+// ==================== код в ответе запускается ====================
+
+/** Ответ оценщика с шагами запуска кода — форма шагов как у живого вызова. */
+function scoredWithRun(int $score, string $rationale, bool $isError = false): array
+{
+    return ['steps' => [
+        ['type' => 'code_execution_call', 'id' => 'call_1', 'arguments' => ['language' => 'python', 'code' => 'print(add(2, 3))']],
+        ['type' => 'code_execution_result', 'call_id' => 'call_1', 'result' => $isError ? "NameError\n" : "5\n", 'is_error' => $isError],
+        ['type' => 'model_output', 'content' => [['type' => 'text', 'text' => json_encode(['score' => $score, 'rationale' => $rationale])]]],
+    ]];
+}
+
+test('код и обычная речь различаются', function () {
+    expect(App\Support\CodeDetector::looksLikeCode("function add(\$a, \$b) {\n    return \$a + \$b;\n}"))->toBeTrue()
+        ->and(App\Support\CodeDetector::looksLikeCode("```\nprint(1)\n```"))->toBeTrue()
+        ->and(App\Support\CodeDetector::looksLikeCode('SELECT name FROM users WHERE id = 1;'))->toBeTrue()
+        ->and(App\Support\CodeDetector::looksLikeCode('Четыре года писал на Laravel, вёл платёжный шлюз и сократил отклик на 40%.'))->toBeFalse()
+        ->and(App\Support\CodeDetector::looksLikeCode('Я работал в команде; мы делали сайты (лендинги) для клиентов.'))->toBeFalse();
+});
+
+test('код в ответе оценщик запускает, а не читает', function () {
+    [$interview, , , $criteria] = chatReady();
+    Http::fake(['*' => Http::response(scoredWithRun(4, 'Код запущен: add(2, 3) вернула 5.'))]);
+
+    $verdict = realInterviewer()->scoreAnswer(
+        $interview, 'Напишите функцию сложения', "function add(\$a, \$b) {\n    return \$a + \$b;\n}", $criteria->first(),
+    );
+
+    Http::assertSent(fn ($r) => ($r['tools'][0]['type'] ?? null) === 'code_execution'
+        && str_contains($r['system_instruction'], 'В ОТВЕТЕ ЕСТЬ КОД — ЗАПУСТИ ЕГО'));
+
+    expect($verdict['score'])->toBe(4)
+        ->and($verdict['code_check']['executed'])->toBeTrue()
+        ->and($verdict['code_check']['runs'][0]['result'])->toContain('5');
+});
+
+test('в обычном ответе исполнения кода нет', function () {
+    [$interview, , , $criteria] = chatReady();
+    Http::fake(['*' => Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['score' => 3, 'rationale' => 'Конкретно.'])],
+    ]]]])]);
+
+    $verdict = realInterviewer()->scoreAnswer($interview, 'Расскажите о проекте', 'Вёл платёжный шлюз на Laravel.', $criteria->first());
+
+    Http::assertSent(fn ($r) => ! isset($r['tools']));
+    expect($verdict['code_check'])->toBeNull();
+});
+
+test('работодатель видит, что код из ответа запускался и что вышло', function () {
+    [$interview] = chatReady();
+
+    $turn = AiInterviewTurn::create([
+        'ai_interview_id' => $interview->id, 'position' => 2, 'role' => 'candidate',
+        'text' => 'function add($a,$b){return $a+$b;}', 'score' => 2, 'max_score' => 5, 'rationale' => 'Ошибка при запуске.',
+        'code_check' => ['executed' => true, 'runs' => [['language' => 'php', 'code' => '...', 'result' => "NameError\n", 'is_error' => true]]],
+    ]);
+
+    expect($turn->fresh()->codeCheckLabel())->toBe(__('Код из ответа запускался — с ошибкой.'));
+
+    $turn->update(['code_check' => ['executed' => false, 'runs' => []]]);
+    expect($turn->fresh()->codeCheckLabel())->toBe(__('Код в ответе есть, но запустить его не удалось — оценён по чтению.'));
 });

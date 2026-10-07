@@ -779,7 +779,12 @@ test('без разбора резюме задание опирается на 
 
     // разбора нет — профиль берётся из полей самого резюме
     expect(lastPrompt())->toContain('КАНДИДАТ (для выбора')
-        ->and(lastPrompt())->toContain('ВАКАНСИЯ');
+        ->and(lastPrompt())->toContain('ВАКАНСИЯ')
+        // стек из резюме не уводит задание в чужую профессию
+        ->and(lastPrompt())->toContain('ПРОФЕССИЮ ЗАДАЁТ ВАКАНСИЯ, А НЕ КАНДИДАТ')
+        ->and(lastPrompt())->toContain('задание всё равно по профессии вакансии)')
+        // последнее слово запроса — за профессией вакансии
+        ->and(lastPrompt())->toContain('ПРОФЕССИЯ ЗАДАНИЯ: «');
 });
 
 // ==================== брошенное задание ====================
@@ -1263,6 +1268,22 @@ test('после отправки Анна говорит, что собесед
         ->assertSee(__('Собеседование закончено'))
         ->assertSee($farewell->text)
         ->assertSee(trim(json_encode(route('applicant.ai.pump', $interview)), '"'), false);
+});
+
+test('прощание звучит один раз — сразу после отправки, а не при каждом заходе', function () {
+    Queue::fake();
+    [$interview, $user] = taskReady();
+    multiTask($interview);
+
+    // страница сразу после отправки — Анна прощается вслух
+    $this->actingAs($user)->followingRedirects()->post(route('applicant.ai.task.submit', $interview), [
+        'quiz' => [0, 1], 'solution' => 'решение', 'parts' => ['ответ'],
+    ])->assertOk()->assertSee("window.AiAvatar[true ? 'speak' : 'remember'](farewell);", false);
+
+    // вернулся позже — текст на месте, а голос только по «Повторить»
+    $this->actingAs($user)->get(route('applicant.ai.task', $interview))
+        ->assertOk()
+        ->assertSee("window.AiAvatar[false ? 'speak' : 'remember'](farewell);", false);
 });
 
 // ==================== финал для кандидата ====================

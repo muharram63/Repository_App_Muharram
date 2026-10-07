@@ -94,6 +94,11 @@
         <div class="av-meta">
             <div class="av-name">{{ $avatarName }}</div>
             <div class="av-role">{{ $avatarRole }}</div>
+            {{-- голос браузера вместо голоса Анны: лимит озвучки Gemini исчерпан --}}
+            <div class="av-voice-note" hidden
+                 title="{{ __('Озвучка Gemini временно недоступна (исчерпан лимит), поэтому вопросы читает голос браузера. Голос Анны вернётся, когда лимит обновится.') }}">
+                {{ __('упрощённый голос') }}
+            </div>
             <div class="av-state" id="avState">{{ __('Готов') }}</div>
         </div>
     </div>
@@ -133,6 +138,8 @@
     .av-meta { min-width: 0; flex: 1 1 120px; overflow-wrap: break-word; hyphens: auto; }
     .av-name { font-weight: 700; color: var(--ink, #111827); line-height: 1.3; }
     .av-role { font-size: 13px; color: var(--gray-500, #6B7280); line-height: 1.35; margin-top: 2px; }
+    .av-voice-note { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--wash-warn, #FEF3C7); color: var(--ink-warn, #92400E); cursor: help; }
+    .av-voice-note[hidden] { display: none; }
     .av-state {
         margin-top: 6px; font-size: 12px; font-weight: 600;
         color: var(--indigo-600, #4F46E5);
@@ -524,6 +531,8 @@
             const analysing = ensureAnalyser();
             unlock();
 
+            // звучит голос Анны (Gemini) — пометка «упрощённый голос» не нужна
+            markVoice(false);
             audio.src = url;
 
             const started = audio.play();
@@ -585,13 +594,42 @@
         // первому вопросу нужный голос уже был известен
         try { window.speechSynthesis && window.speechSynthesis.getVoices(); } catch (e) {}
 
+        /*
+         * Голос браузера — запасной, когда озвучка Gemini недоступна (чаще
+         * всего исчерпан бесплатный лимит). Раньше брался первый русский
+         * голос в списке — на Windows это нередко мужской «Pavel», и Анна
+         * вдруг начинала говорить мужским голосом. Теперь выбираем женский
+         * и по возможности естественный (нейросетевые голоса Edge, Google).
+         */
+        const FEMALE = /svetlana|dariya|daria|irina|milena|ekaterina|anna|alena|alyona|elena|google русский|female|женск/i;
+        const MALE = /pavel|dmitr|yuri|maxim|nikolai|male|мужск/i;
+
         function pickVoice(lang) {
             const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
             const wanted = (lang || '').toLowerCase().slice(0, 2);
 
-            return voices.find(function (v) { return v.lang.toLowerCase().indexOf(wanted) === 0; })
-                || voices.find(function (v) { return v.lang.toLowerCase().indexOf('ru') === 0; })
-                || null;
+            let best = null;
+            let bestScore = -1;
+
+            voices.forEach(function (v) {
+                const l = (v.lang || '').toLowerCase();
+                let score = l.indexOf(wanted) === 0 ? 100 : (l.indexOf('ru') === 0 ? 40 : -1);
+                if (score < 0) { return; }
+                if (FEMALE.test(v.name)) { score += 30; }
+                if (MALE.test(v.name) && !/female/i.test(v.name)) { score -= 30; }
+                if (/natural|neural|online/i.test(v.name)) { score += 15; }
+                // сетевые голоса («Google русский») звучат живее встроенных
+                if (v.localService === false) { score += 10; }
+                if (score > bestScore) { best = v; bestScore = score; }
+            });
+
+            return best;
+        }
+
+        /** Пометка «упрощённый голос» под именем — видно, почему голос другой. */
+        function markVoice(browser) {
+            const note = card.querySelector('.av-voice-note');
+            if (note) { note.hidden = !browser; }
         }
 
         function speakByBrowser(text, lang) {
@@ -606,6 +644,7 @@
 
             const utterance = new SpeechSynthesisUtterance(text);
             const code = lang || document.documentElement.lang || 'ru';
+            markVoice(true);
             const voice = pickVoice(code);
 
             utterance.lang = voice ? voice.lang : (LOCALES[code] || 'ru-RU');
@@ -677,10 +716,25 @@
             const ticket = {};
             waiting = ticket;
 
+            /*
+             * Срок — не только между вопросами, но и посреди запроса.
+             *
+             * Раньше он проверялся, лишь когда сервер ответил, а синтез может
+             * висеть до полутора минут (таймаут Gemini). Всё это время Анна
+             * молчала, а микрофон ждал, когда она договорит.
+             */
+            const giveUp = setTimeout(function () {
+                if (waiting !== ticket) { return; }
+                waiting = null;
+                clearTimeout(statusPoll);
+                speakByBrowser(opts.text, opts.lang);
+            }, 45000);
+
             function ask() {
                 if (waiting !== ticket) { return; }
 
                 if (Date.now() > deadline) {
+                    clearTimeout(giveUp);
                     speakByBrowser(opts.text, opts.lang);
 
                     return;
@@ -692,8 +746,10 @@
                         if (waiting !== ticket) { return; }
 
                         if (data && data.status === 'ready' && data.url) {
+                            clearTimeout(giveUp);
                             playFile(data.url, opts.text, opts.lang);
                         } else if (data && (data.status === 'failed' || data.status === 'none')) {
+                            clearTimeout(giveUp);
                             speakByBrowser(opts.text, opts.lang);
                         } else {
                             statusPoll = setTimeout(ask, 1500);
@@ -772,6 +828,8 @@
                 try { window.speechSynthesis && window.speechSynthesis.resume(); } catch (e) {}
             },
             repeat: function () { if (last) { speak(last); } },
+            // запомнить реплику для «Повторить», не произнося её сейчас
+            remember: function (options) { last = options || null; },
             mute: function (value) {
                 muted = !!value;
                 try { localStorage.setItem(muteKey, muted ? 'off' : 'on'); } catch (e) {}

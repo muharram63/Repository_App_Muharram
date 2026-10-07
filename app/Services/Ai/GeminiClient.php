@@ -128,7 +128,7 @@ class GeminiClient
             // повторяет такой ответ, а остальные сервисы ловят родителя и
             // ведут себя как раньше. Текст сообщения тот же.
             throw new AiUnreadableAnswerException(
-                'Помощник ответил неразборчиво. Отправьте сообщение ещё раз.'
+                __('Помощник ответил неразборчиво. Отправьте сообщение ещё раз.')
             );
         }
 
@@ -265,7 +265,7 @@ class GeminiClient
         $model ??= $this->config['tts_model'] ?? '';
 
         if (blank($model)) {
-            throw new AiUnavailableException('Модель синтеза речи не настроена.');
+            throw new AiUnavailableException(__('Модель синтеза речи не настроена.'));
         }
 
         $json = $this->send(
@@ -291,13 +291,13 @@ class GeminiClient
                 'finish' => $json['candidates'][0]['finishReason'] ?? null,
             ]);
 
-            throw new AiUnavailableException('Не удалось озвучить вопрос. Попробуйте ещё раз.');
+            throw new AiUnavailableException(__('Не удалось озвучить вопрос. Попробуйте ещё раз.'));
         }
 
         $bytes = base64_decode($encoded, true);
 
         if ($bytes === false || $bytes === '') {
-            throw new AiUnavailableException('Озвучка пришла повреждённой. Попробуйте ещё раз.');
+            throw new AiUnavailableException(__('Озвучка пришла повреждённой. Попробуйте ещё раз.'));
         }
 
         return [
@@ -359,7 +359,7 @@ class GeminiClient
     private function send(array $payload, ?string $endpoint = null, ?int $timeout = null): array
     {
         if (! $this->configured()) {
-            throw new AiUnavailableException('Помощник выключен: в .env не задан GEMINI_API_KEY.');
+            throw new AiUnavailableException(__('Помощник выключен: в .env не задан GEMINI_API_KEY.'));
         }
 
         try {
@@ -387,9 +387,9 @@ class GeminiClient
             // Раньше сбой DNS показывался как «не успел ответить», и человек
             // жал «повторить» вместо того, чтобы проверить сеть или VPN.
             throw new AiUnavailableException(match (true) {
-                self::unresolved($e) => 'Не удалось найти сервер Gemini: нет доступа в интернет или сбоит DNS. Проверьте сеть или VPN и попробуйте ещё раз — диалог сохранён.',
-                self::unreachable($e) => 'Не удалось соединиться с Gemini. Проверьте интернет и попробуйте ещё раз — диалог сохранён.',
-                default => 'Помощник не успел ответить. Попробуйте ещё раз — диалог сохранён.',
+                self::unresolved($e) => __('Не удалось найти сервер Gemini: нет доступа в интернет или сбоит DNS. Проверьте сеть или VPN и попробуйте ещё раз — диалог сохранён.'),
+                self::unreachable($e) => __('Не удалось соединиться с Gemini. Проверьте интернет и попробуйте ещё раз — диалог сохранён.'),
+                default => __('Помощник не успел ответить. Попробуйте ещё раз — диалог сохранён.'),
             });
         }
 
@@ -416,18 +416,20 @@ class GeminiClient
 
             return new AiUnavailableException(
                 $wait
-                    ? 'Бесплатный лимит запросов исчерпан. Продолжим через '.$wait.' с — диалог сохранён.'
-                    : 'Бесплатный лимит запросов исчерпан. Подождите минуту и продолжите — диалог сохранён.',
+                    ? __('Бесплатный лимит запросов исчерпан. Продолжим через :seconds с — диалог сохранён.', ['seconds' => $wait])
+                    : __('Бесплатный лимит запросов исчерпан. Подождите минуту и продолжите — диалог сохранён.'),
                 $wait,
+                rateLimited: true,
+                resetIn: self::resetIn($body),
             );
         }
 
         return new AiUnavailableException(match (true) {
-            $status === 400 => 'Помощник не принял запрос. Попробуйте переформулировать ответ.',
-            in_array($status, [401, 403], true) => 'Ключ Gemini не принят. Проверьте GEMINI_API_KEY в .env.',
+            $status === 400 => __('Помощник не принял запрос. Попробуйте переформулировать ответ.'),
+            in_array($status, [401, 403], true) => __('Ключ Gemini не принят. Проверьте GEMINI_API_KEY в .env.'),
             // перегрузку модели повторять имеет смысл, но не сию секунду
-            $status >= 500 => 'Gemini сейчас перегружен. Попробуем ещё раз через минуту — диалог сохранён.',
-            default => 'Помощник временно недоступен. Попробуйте ещё раз.',
+            $status >= 500 => __('Gemini сейчас перегружен. Попробуем ещё раз через минуту — диалог сохранён.'),
+            default => __('Помощник временно недоступен. Попробуйте ещё раз.'),
         }, $status >= 500 ? 30 : null, overloaded: $status >= 500);
     }
 
@@ -437,13 +439,34 @@ class GeminiClient
      */
     private function retryAfter(string $body): ?int
     {
-        if (! preg_match('/retry in ([\d.]+)s/i', $body, $found)) {
-            return null;
-        }
+        $full = self::resetIn($body);
 
         // округляем вверх и держим в разумных рамках: ждать дольше минуты
         // человек всё равно не станет, а ноль превратил бы паузу в мгновенный повтор
-        return max(1, min(60, (int) ceil((float) $found[1])));
+        return $full === null ? null : max(1, min(60, $full));
+    }
+
+    /**
+     * Через сколько секунд лимит обновится на самом деле — без потолка.
+     *
+     * Суточный лимит Google пишет часами и минутами: «Please retry in
+     * 8h43m57.05s». Прежний разбор понимал только секунды, такой срок не
+     * узнавал вовсе — и озвучка каждые десять минут снова стучалась в
+     * исчерпанный на сутки лимит.
+     */
+    public static function resetIn(string $body): ?int
+    {
+        if (! preg_match('/retry in ((?:\d+h)?(?:\d+m)?(?:[\d.]+s)?)/i', $body, $found) || $found[1] === '') {
+            return null;
+        }
+
+        preg_match('/(\d+)h/', $found[1], $h);
+        preg_match('/(\d+)m(?!s)/', $found[1], $m);
+        preg_match('/([\d.]+)s/', $found[1], $s);
+
+        $seconds = (int) ($h[1] ?? 0) * 3600 + (int) ($m[1] ?? 0) * 60 + (int) ceil((float) ($s[1] ?? 0));
+
+        return $seconds > 0 ? $seconds : null;
     }
 
     /**
@@ -476,7 +499,7 @@ class GeminiClient
         if ($text === '') {
             Log::warning('Gemini вернул ответ без текста', ['keys' => array_keys($json)]);
 
-            throw new AiUnavailableException('Помощник вернул пустой ответ. Попробуйте ещё раз.');
+            throw new AiUnavailableException(__('Помощник вернул пустой ответ. Попробуйте ещё раз.'));
         }
 
         return $text;

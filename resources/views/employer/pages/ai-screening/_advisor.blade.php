@@ -173,27 +173,64 @@
             node.append(name, body);
             feed.appendChild(node);
             feed.scrollTop = feed.scrollHeight;
+
+            return node;
+        }
+
+        /*
+         * Одна реплика — одна озвучка.
+         *
+         * Звук готовится на сервере секунды, а то и десятки секунд. Раньше,
+         * если работодатель за это время успевал спросить снова, звук прошлой
+         * реплики приходил уже после его вопроса — и Анна заново произносила
+         * старый ответ. Каждая озвучка теперь получает номер; пришедшая не к
+         * своей реплике молча отбрасывается, а новое сообщение обрывает речь.
+         */
+        let speechTicket = 0;
+        let speechFetch = null;
+
+        function silence() {
+            speechTicket++;
+            talking = false;
+            if (speechFetch) { try { speechFetch.abort(); } catch (e) {} speechFetch = null; }
+            if (window.AiAvatar) { window.AiAvatar.stop(); }
         }
 
         /** Анна говорит: звук с сервера, иначе голос браузера. Договорила — onEnd. */
         function speak(text, onEnd) {
-            if (!window.AiAvatar) { if (onEnd) { onEnd(); } return; }
+            silence();
+            const mine = speechTicket;
+            talking = true;
+            const done = function () {
+                if (mine !== speechTicket) { return; }
+                talking = false;
+                if (onEnd) { onEnd(); }
+            };
+
+            if (!window.AiAvatar) { done(); return; }
 
             window.AiAvatar.setState('thinking');
+
+            speechFetch = window.AbortController ? new AbortController() : null;
 
             fetch(urls.speak, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest'},
                 body: JSON.stringify({text: text}),
+                signal: speechFetch ? speechFetch.signal : undefined,
             })
                 .then(function (r) { return r.ok ? r.blob() : null; })
                 .then(function (blob) {
-                    const options = {text: text, lang: locale, onEnd: onEnd};
+                    if (mine !== speechTicket) { return; }
+                    speechFetch = null;
+                    const options = {text: text, lang: locale, onEnd: done};
                     if (blob) { options.audioUrl = URL.createObjectURL(blob); }
                     window.AiAvatar.speak(options);
                 })
                 .catch(function () {
-                    window.AiAvatar.speak({text: text, lang: locale, onEnd: onEnd});
+                    if (mine !== speechTicket) { return; }
+                    speechFetch = null;
+                    window.AiAvatar.speak({text: text, lang: locale, onEnd: done});
                 });
         }
 
@@ -203,11 +240,25 @@
             if (busy) { return; }
             busy = true;
             send.disabled = true;
+
+            /*
+             * Реплика ушла — микрофон и голос Анны замолкают. Раньше микрофон
+             * продолжал слушать после отправки текстом или подсказкой, слышал
+             * ответ Анны из колонок и отправлял его как реплику работодателя:
+             * Анна отвечала сама себе, второй раз подряд.
+             */
+            stopListening();
+            silence();
+            window.AiAdvisorBusy = true;
             say(@json(__('Анна думает…')));
 
-            if (message) {
-                bubble('me', message);
-            }
+            // вопрос без ответа из ленты убираем: он вернётся в поле, и
+            // повторная отправка не задвоит его в переписке
+            const mine = message ? bubble('me', message) : null;
+            const unsent = function () {
+                if (mine) { mine.remove(); }
+                if (message && !input.value) { input.value = message; }
+            };
 
             fetch(urls.advise, {
                 method: 'POST',
@@ -218,10 +269,10 @@
                 .then(function (res) {
                     busy = false;
                     send.disabled = false;
+                    window.AiAdvisorBusy = false;
 
                     if (!res.ok) {
-                        say(res.data.error || @json(__('Не получилось ответить — спросите иначе.')));
-                        afterSpeech();
+                        failed(res.data.error || @json(__('Не получилось ответить — спросите иначе.')));
 
                         return;
                     }
@@ -240,8 +291,24 @@
                 .catch(function () {
                     busy = false;
                     send.disabled = false;
-                    say(@json(__('Связь прервалась — попробуйте ещё раз.')));
+                    window.AiAdvisorBusy = false;
+                    failed(@json(__('Связь прервалась — попробуйте ещё раз.')));
                 });
+
+            /*
+             * Анна не ответила — так и говорим, и микрофон не включаем.
+             *
+             * Раньше ошибка («Помощник не успел ответить») тут же затиралась
+             * надписью «Слушаю — говорите», а аватар снова показывал «Слушает
+             * вас». Со стороны выглядело так, будто ответ проглочен и ИИ просит
+             * говорить заново. Теперь ошибка остаётся на экране, вопрос — в
+             * поле, и спросить снова можно одной кнопкой.
+             */
+            function failed(error) {
+                unsent();
+                if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
+                say(error + ' ' + @json(__('Ваш вопрос остался в поле — нажмите «Отправить», чтобы спросить ещё раз.')));
+            }
         }
 
         form.addEventListener('submit', function (event) {
@@ -259,6 +326,8 @@
         document.getElementById('adStart').addEventListener('click', function () {
             startRow.hidden = true;
             talk.hidden = false;
+            // разговор начат — страница больше не перезагружается сама
+            window.AiAdvisorActive = true;
 
             /*
              * Голос включается сам: это нажатие — то действие, после которого
@@ -337,12 +406,34 @@
             handle(@json(__('Нет, не отправляй пока.')));
         });
 
+        /*
+         * «Да» — только короткое и ясное согласие.
+         *
+         * Раньше хватало, чтобы реплика начиналась с «да», «ок» или «отправ»:
+         * «дальше расскажи», «давайте подумаем», «отправлять пока не надо»
+         * отправляли кандидату ответ без всякого согласия. Теперь согласие —
+         * это первое слово из списка, не больше четырёх слов и ни одного
+         * «не», «но», «подожди». Всё прочее уходит Анне как обычный вопрос.
+         */
+        const YES = ['да', 'ҳа', 'ha', 'yes', 'подтверждаю', 'отправляй', 'отправь', 'отправить', 'давай', 'ок', 'ok', 'okay', 'конечно', 'ага', 'согласен', 'согласна'];
+        const NO = ['нет', 'не', 'но', 'на', 'no', 'not', 'отмена', 'отмени', 'подожди', 'погоди', 'стоп', 'пока'];
+
+        function answerKind(text) {
+            const words = text.toLowerCase().replace(/[.,!?…;:«»"]/g, ' ').trim().split(/\s+/).filter(Boolean);
+
+            if (!words.length) { return null; }
+            if (words.some(function (w) { return NO.indexOf(w) !== -1; })) { return 'no'; }
+            if (YES.indexOf(words[0]) !== -1 && words.length <= 4) { return 'yes'; }
+
+            return null;
+        }
+
         /** Реплика работодателя: «да»/«нет» в ответ на предложение — иначе вопрос Анне. */
         function handle(text) {
             if (pending) {
-                const t = text.toLowerCase();
-                if (/^(да|ҳа|ha|yes|подтверждаю|отправ|давай|ок|okay|ok)/.test(t)) { execute(); return; }
-                if (/^(нет|не |не$|на|no|отмена|подожди)/.test(t)) { cancel(); }
+                const reply = answerKind(text);
+                if (reply === 'yes') { execute(); return; }
+                if (reply === 'no') { cancel(); }
             }
 
             ask(text);
@@ -353,7 +444,15 @@
         const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const browserLang = {ru: 'ru-RU', en: 'en-US'}[locale];
         const canMic = !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-        const engine = Recognition && browserLang && window.isSecureContext ? 'browser' : (canMic ? 'server' : null);
+        // распознавание на сервере — только если сервер его умеет (есть ключ)
+        const serverCapable = canMic && @json(app(\App\Services\Ai\SpeechRecognizer::class)->available())
+            && !!(window.AudioContext || window.webkitAudioContext);
+        // микрофон браузер уже дал — «not-allowed» тогда говорит о службе
+        // распознавания, а не о микрофоне
+        let micGranted = false;
+        // Анна говорит — микрофон не слушает
+        let talking = false;
+        let engine = Recognition && browserLang && window.isSecureContext ? 'browser' : (serverCapable ? 'server' : null);
         const SILENCE_MS = 2000;
 
         let rec = null, listening = false, heard = '', heardAt = 0, spoke = false, watch = null;
@@ -375,11 +474,7 @@
             mic.title = voiceOn ? @json(__('Голос включён — нажмите, чтобы выключить')) : @json(__('Говорить голосом'));
 
             if (voiceOn) {
-                if (engine === 'server') {
-                    const Ctx = window.AudioContext || window.webkitAudioContext;
-                    ctx = ctx || new Ctx();
-                    if (ctx.state === 'suspended') { ctx.resume(); }
-                }
+                if (engine === 'server') { ensureContext(); }
                 startListening();
             } else {
                 stopListening();
@@ -389,8 +484,41 @@
 
         mic.addEventListener('click', function () { switchVoice(!voiceOn); });
 
+        function ensureContext() {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            ctx = ctx || new Ctx();
+            if (ctx.state === 'suspended') { ctx.resume(); }
+        }
+
+        /*
+         * Распознавание браузера не работает — дальше слушает сервер.
+         *
+         * Раньше ошибка network (нет доступа к серверам Google, Яндекс
+         * Браузер, Opera) не обрабатывалась вовсе: распознавание
+         * перезапускалось по кругу, кнопка горела зелёным, а голос не брался.
+         */
+        function fallbackToServer() {
+            if (engine !== 'browser') { return; }
+
+            stopListening();
+
+            if (!serverCapable) {
+                voiceOn = false;
+                mic.classList.remove('is-on');
+                say(@json(__('Распознавание речи в этом браузере не работает — пишите текстом. Лучше всего работает Chrome или Edge.')));
+
+                return;
+            }
+
+            engine = 'server';
+            ensureContext();
+            startListening();
+            say(@json(__('Распознавание браузера не отвечает — слушаю через сервер. Говорите, отправлю, когда замолчите.')));
+        }
+
         function startListening() {
-            if (!voiceOn || listening || busy) { return; }
+            // пока Анна говорит, микрофон молчит: иначе он услышит её саму
+            if (!voiceOn || listening || busy || talking) { return; }
 
             listening = true;
             heard = '';
@@ -404,6 +532,17 @@
                 rec.continuous = true;
                 rec.interimResults = true;
                 let finals = '';
+                let heardAudio = false;
+                let quickEnds = 0;
+                let runStarted = Date.now();
+                const mine = rec;
+
+                rec.onaudiostart = function () { heardAudio = true; };
+
+                // служба так и не взяла звук — она недоступна, хоть и молчит об этом
+                setTimeout(function () {
+                    if (rec === mine && listening && !heardAudio) { fallbackToServer(); }
+                }, 6000);
 
                 rec.onresult = function (event) {
                     let interim = '';
@@ -416,21 +555,45 @@
                     spoke = true;
                     heardAt = Date.now();
                 };
-                rec.onend = function () { if (listening && rec) { try { rec.start(); } catch (e) {} } };
+                rec.onend = function () {
+                    if (!listening || rec !== mine) { return; }
+
+                    // сеанс обрывается сразу после запуска — служба не работает
+                    quickEnds = Date.now() - runStarted < 1500 ? quickEnds + 1 : 0;
+                    if (quickEnds >= 3) { fallbackToServer(); return; }
+
+                    runStarted = Date.now();
+                    try { rec.start(); } catch (e) {}
+                };
                 rec.onerror = function (event) {
-                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    if (rec !== mine) { return; }
+
+                    if (event.error === 'not-allowed' && !micGranted) {
                         voiceOn = false;
                         mic.classList.remove('is-on');
                         stopListening();
                         say(@json(__('Браузер не дал доступ к микрофону. Разрешите его в настройках сайта или пишите текстом.')));
+                    } else if (['network', 'service-not-allowed', 'not-allowed', 'language-not-supported'].indexOf(event.error) !== -1) {
+                        fallbackToServer();
                     }
                 };
+
+                // заранее спрашиваем микрофон: если он есть, отказ службы
+                // распознавания — повод перейти на сервер, а не выключить голос
+                if (canMic && !micGranted) {
+                    navigator.mediaDevices.getUserMedia({audio: true}).then(function (s) {
+                        micGranted = true;
+                        s.getTracks().forEach(function (t) { t.stop(); });
+                    }).catch(function () {});
+                }
+
                 try { rec.start(); } catch (e) {}
             } else {
                 const begin = stream ? Promise.resolve(stream) : navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true}});
 
                 begin.then(function (s) {
                     stream = s;
+                    micGranted = true;
                     if (!listening) { return; }
                     chunks = [];
                     source = ctx.createMediaStreamSource(s);

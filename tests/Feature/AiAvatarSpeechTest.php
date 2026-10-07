@@ -664,3 +664,111 @@ test('синтез выключается отдельно от остально
     $noKey = ['key' => null] + $base + ['tts_enabled' => true];
     expect((new GeminiSpeech(new GeminiClient($noKey), $noKey))->available())->toBeFalse();
 });
+
+// ==================== лимит озвучки Gemini ====================
+
+/** Синтезатор, у которого исчерпан бесплатный лимит, — считает обращения. */
+function limitedVoice(): object
+{
+    $fake = new class implements SpeechSynthesizer {
+        public int $calls = 0;
+        public bool $limited = true;
+
+        public function available(): bool { return true; }
+
+        public function voice(): string { return 'Sulafat'; }
+
+        public function speak(string $text): array
+        {
+            $this->calls++;
+
+            if ($this->limited) {
+                throw new AiUnavailableException('Бесплатный лимит запросов исчерпан.', null, rateLimited: true);
+            }
+
+            return ['bytes' => 'RIFF'.str_repeat("\0", 40).str_repeat('ab', 4000), 'mime' => 'audio/wav', 'tokens' => 1];
+        }
+    };
+    app()->instance(SpeechSynthesizer::class, $fake);
+
+    return $fake;
+}
+
+test('исчерпан лимит — пауза: следующие реплики не ждут отказа Gemini впустую', function () {
+    Illuminate\Support\Facades\Cache::flush();
+    $fake = limitedVoice();
+    [$interview, , $applicantUser] = makeAiInterview();
+
+    $first = AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 1, 'role' => 'ai', 'text' => 'первый вопрос', 'speech_status' => 'pending']);
+    $second = AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 2, 'role' => 'ai', 'text' => 'второй вопрос', 'speech_status' => 'pending']);
+
+    $this->actingAs($applicantUser)->getJson(route('applicant.ai.speech.status', $first))->assertJson(['status' => 'failed']);
+    $this->actingAs($applicantUser)->getJson(route('applicant.ai.speech.status', $second))->assertJson(['status' => 'failed']);
+
+    // ко второй реплике Gemini уже не спрашивали: пауза после первого отказа
+    expect($fake->calls)->toBe(1)
+        ->and(app(App\Services\Ai\SpeechLibrary::class)->coolingDown())->toBeGreaterThan(0);
+});
+
+test('после паузы неудачная реплика озвучивается голосом Анны при повторе', function () {
+    Illuminate\Support\Facades\Cache::flush();
+    $fake = limitedVoice();
+    [$interview, , $applicantUser] = makeAiInterview();
+    $turn = AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 1, 'role' => 'ai', 'text' => 'вопрос про опыт', 'speech_status' => 'pending']);
+
+    $this->actingAs($applicantUser)->getJson(route('applicant.ai.speech.status', $turn))->assertJson(['status' => 'failed']);
+
+    // пока пауза — повтор не дёргает Gemini
+    $this->actingAs($applicantUser)->getJson(route('applicant.ai.speech.status', $turn))->assertJson(['status' => 'failed']);
+    expect($fake->calls)->toBe(1);
+
+    // лимит обновился, пауза прошла — повтор даёт настоящий голос
+    $fake->limited = false;
+    $this->travel(App\Services\Ai\SpeechLibrary::COOLDOWN_SECONDS + 5)->seconds();
+
+    $this->actingAs($applicantUser)->getJson(route('applicant.ai.speech.status', $turn))
+        ->assertJson(['status' => 'ready', 'url' => route('applicant.ai.speech.turn', $turn)]);
+});
+
+test('на странице есть пометка «упрощённый голос» и выбор женского голоса браузера', function () {
+    fakeVoice();
+    [$interview, , $applicantUser] = makeAiInterview(state: ['consent_at' => now(), 'stage' => 'interview', 'analysis_status' => 'ready']);
+
+    $this->actingAs($applicantUser)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee('class="av-voice-note"', false)
+        ->assertSee(__('упрощённый голос'))
+        ->assertSee('svetlana|dariya', false);
+});
+
+test('суточный лимит озвучки: пауза до его обновления, а не на десять минут', function () {
+    // так Google пишет срок суточного лимита — часами и минутами
+    $body = '{"error":{"code":429,"message":"Quota exceeded, limit: 10, model: gemini-3.8-flash-lite-tts\nPlease retry in 8h43m57.059370719s."}}';
+
+    expect(App\Services\Ai\GeminiClient::resetIn($body))->toBe(8 * 3600 + 43 * 60 + 58)
+        ->and(App\Services\Ai\GeminiClient::resetIn('Please retry in 16.6s.'))->toBe(17)
+        ->and(App\Services\Ai\GeminiClient::resetIn('Please retry in 2m5s.'))->toBe(125)
+        ->and(App\Services\Ai\GeminiClient::resetIn('без срока'))->toBeNull();
+
+    Illuminate\Support\Facades\Cache::flush();
+    app()->instance(App\Services\Ai\SpeechSynthesizer::class, new class implements App\Services\Ai\SpeechSynthesizer
+    {
+        public function available(): bool { return true; }
+
+        public function voice(): string { return 'Sulafat'; }
+
+        public function speak(string $text): array
+        {
+            throw new AiUnavailableException('Бесплатный лимит запросов исчерпан.', 60, rateLimited: true, resetIn: 8 * 3600);
+        }
+    });
+
+    try {
+        app(App\Services\Ai\SpeechLibrary::class)->make('вопрос');
+    } catch (AiUnavailableException) {
+    }
+
+    // через час пауза всё ещё действует — Gemini не дёргаем
+    $this->travel(1)->hours();
+    expect(app(App\Services\Ai\SpeechLibrary::class)->coolingDown())->toBeGreaterThan(6 * 3600);
+});

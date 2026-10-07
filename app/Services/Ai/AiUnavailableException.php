@@ -24,6 +24,10 @@ class AiUnavailableException extends RuntimeException
         string $message,
         public readonly ?int $retryAfter = null,
         public readonly bool $overloaded = false,
+        // Google ответил 429: исчерпан лимит запросов (в минуту или в сутки)
+        public readonly bool $rateLimited = false,
+        // через сколько секунд лимит обновится на самом деле (суточный — часы)
+        public readonly ?int $resetIn = null,
     ) {
         parent::__construct($message);
     }

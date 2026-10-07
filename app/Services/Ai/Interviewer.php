@@ -41,9 +41,10 @@ interface Interviewer
      * Оценка одного ответа по одному критерию.
      *
      * Видит только вопрос, ответ и описание критерия. Историю разговора не
-     * получает — в этом и смысл.
+     * получает — в этом и смысл. Код в ответе запускает и возвращает, что
+     * вышло (code_check); если кода нет — null.
      *
-     * @return array{score:int,max:int,rationale:string}
+     * @return array{score:int,max:int,rationale:string,code_check?:?array}
      *
      * @throws AiUnavailableException
      * @throws AiInvalidAnswerException

@@ -83,6 +83,24 @@ class SpeechLibrary
     }
 
     /**
+     * Сколько ждать после «лимит исчерпан» без указания срока. Бесплатный
+     * тариф Gemini даёт на озвучку около десятка запросов в сутки и несколько
+     * в минуту; без паузы каждая следующая реплика ждала бы отказа впустую.
+     */
+    public const COOLDOWN_SECONDS = 600;
+
+    private const COOLDOWN_KEY = 'tts-cooldown-until';
+
+    /**
+     * Лимит озвучки сейчас исчерпан — к Gemini не обращаемся, страница сразу
+     * говорит голосом браузера. Возвращает, сколько секунд осталось, или 0.
+     */
+    public function coolingDown(): int
+    {
+        return max(0, (int) \Illuminate\Support\Facades\Cache::get(self::COOLDOWN_KEY, 0) - time());
+    }
+
+    /**
      * Озвучить текст или отдать готовое.
      *
      * @return array{path:string,cached:bool,ms:int,bytes:int}
@@ -103,12 +121,23 @@ class SpeechLibrary
             ];
         }
 
+        if ($left = $this->coolingDown()) {
+            throw new AiUnavailableException(__('Лимит озвучки исчерпан — повторим через :seconds с.', ['seconds' => $left]), $left, rateLimited: true);
+        }
+
         $startedAt = microtime(true);
 
         try {
             $audio = $this->synthesizer->speak($text);
         } catch (AiUnavailableException $e) {
             $this->audit($interview, $text, null, $startedAt, 'failed', $e->getMessage());
+
+            // лимит: пауза для всех — следующие реплики не ждут отказа впустую
+            if ($e->rateLimited) {
+                // суточный лимит — пауза до его обновления, а не на десять минут
+                $wait = ($e->resetIn ?? $e->retryAfter) ? ($e->resetIn ?? $e->retryAfter) + 2 : self::COOLDOWN_SECONDS;
+                \Illuminate\Support\Facades\Cache::put(self::COOLDOWN_KEY, time() + $wait, $wait);
+            }
 
             throw $e;
         }

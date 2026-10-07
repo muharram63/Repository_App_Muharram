@@ -72,6 +72,8 @@ class AiChatController extends Controller
             'maxAnswer' => self::MAX_ANSWER,
             // разбор документов ещё идёт — скажем, что вопросы уточнятся
             'analysing' => $interview->analysisRunning(),
+            // однопоточный сервер: фоновые обращения к модели заперли бы чат
+            'backgroundWork' => ! \App\Support\ServerCapacity::singleThreaded(),
         ]);
     }
 

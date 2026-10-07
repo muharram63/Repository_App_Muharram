@@ -41,6 +41,12 @@ class TestGrader
         $details = $submission->details ?? [];
         $answers = $submission->answers ?? [];
 
+        // проверку уже передали человеку — не повторяем её по кругу: каждый
+        // повтор тратил лимит модели и не пускал собеседование к решению
+        if (filled($details['handed_over'] ?? null)) {
+            return 'failed';
+        }
+
         // тест — сразу и без модели
         if ($task->hasQuiz() && ! isset($details['quiz'])) {
             $details['quiz'] = $this->scoreQuiz($task, $answers['quiz'] ?? []);
@@ -77,6 +83,7 @@ class TestGrader
                     'review' => $verdict['review'] ?? [],
                     'execution' => $verdict['execution'] ?? [],
                     'executed' => (bool) ($verdict['executed'] ?? false),
+                    'model' => $verdict['model'] ?? null,
                 ];
             }
 
@@ -179,6 +186,10 @@ class TestGrader
             'requires_review' => true,
             ...($interview->stage === 'test' ? ['stage' => 'decision'] : []),
         ]);
+
+        // пометка на самой попытке: иначе отчёт и Анна продолжали бы
+        // говорить «проверяется», хотя проверять её уже никто не будет
+        $submission->update(['details' => ($submission->details ?? []) + ['handed_over' => $reason]]);
 
         Log::warning('Задание не проверено', [
             'interview' => $interview->id,

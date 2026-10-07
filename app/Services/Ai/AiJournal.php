@@ -4,6 +4,7 @@ namespace App\Services\Ai;
 
 use App\Models\AiInteraction;
 use App\Models\AiInterview;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Facades\Validator;
@@ -91,7 +92,7 @@ class AiJournal
      * модель, но и что на самом деле вывела запущенная программа. При
      * расхождении верить надо выводу.
      *
-     * @return array{data:array,execution:array<int,array>}
+     * @return array{data:array,execution:array<int,array>,model:string}
      *
      * @throws AiUnavailableException
      * @throws AiInvalidAnswerException
@@ -109,6 +110,12 @@ class AiJournal
         $attempt = 0;
         $overloadRetry = 0;
         $lastErrors = [];
+
+        // лимит основной модели уже исчерпан — сразу к запасной, не тратя
+        // запрос на заведомый отказ
+        if (filled($options['fallback'] ?? null) && self::exhausted($options['model'] ?? null)) {
+            $options['model'] = $options['fallback'];
+        }
 
         while ($attempt < self::ATTEMPTS) {
             $attempt++;
@@ -139,6 +146,33 @@ class AiJournal
                 continue;
             } catch (AiUnavailableException $e) {
                 $this->record($purpose, $interview, $system, $turns, null, $startedAt, 'failed', $e->getMessage(), $options);
+
+                /*
+                 * Лимит исчерпан — сразу на запасную модель.
+                 *
+                 * На бесплатном ключе у gemini-3.6-flash двадцать запросов в
+                 * сутки, и раньше двадцать первая оценка падала: ответ
+                 * оставался без балла, собеседование уходило на ручную
+                 * проверку. У запасной lite свой лимит, и он щедрее. Пауза не
+                 * нужна: ждать обновления суток бессмысленно. Исчерпание
+                 * запоминаем до сброса лимита — следующие вызовы пойдут на
+                 * запасную сразу. Какая модель ставила балл, видно в отчёте.
+                 */
+                if ($e->rateLimited && filled($options['fallback'] ?? null)
+                    && ($options['model'] ?? null) !== $options['fallback']) {
+                    self::markExhausted($options['model'] ?? null, $e->resetIn ?? $e->retryAfter);
+
+                    Log::info('Лимит исчерпан: переходим на запасную модель', [
+                        'purpose' => $purpose,
+                        'from' => $options['model'] ?? null,
+                        'to' => $options['fallback'],
+                    ]);
+
+                    $options['model'] = $options['fallback'];
+                    $attempt--;
+
+                    continue;
+                }
 
                 /*
                  * Перегрузку пережидаем, остальное отдаём наверх.
@@ -198,6 +232,8 @@ class AiJournal
                 return [
                     'data' => $validated['data'],
                     'execution' => $answer['execution'] ?? [],
+                    // кто на самом деле ответил: основная или запасная
+                    'model' => (string) ($answer['model'] ?? ($options['model'] ?? config('services.gemini.model', ''))),
                 ];
             }
 
@@ -353,6 +389,24 @@ class AiJournal
      *
      * @param  array{data:array,usage:array,model:string}|null  $answer
      */
+    /** Лимит модели исчерпан и ещё не обновился. */
+    public static function exhausted(?string $model): bool
+    {
+        return filled($model) && Cache::has('gemini-exhausted:'.$model);
+    }
+
+    /**
+     * Запомнить исчерпание до сброса лимита. Срок, который назвал Google;
+     * без срока — минута: так переживём и поминутный лимит, не застряв на
+     * запасной модели надолго.
+     */
+    private static function markExhausted(?string $model, ?int $seconds): void
+    {
+        if (filled($model)) {
+            Cache::put('gemini-exhausted:'.$model, true, max(60, (int) $seconds));
+        }
+    }
+
     private function record(
         string $purpose,
         ?AiInterview $interview,

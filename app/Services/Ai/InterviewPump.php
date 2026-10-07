@@ -138,7 +138,9 @@ class InterviewPump
         // 3. проверка тестовой части
         $submission = $this->submission($interview);
 
-        if ($submission && $submission->submitted_at && ! $submission->isGraded()) {
+        // переданную человеку проверку не трогаем — дальше решение
+        if ($submission && $submission->submitted_at && ! $submission->isGraded()
+            && blank($submission->details['handed_over'] ?? null)) {
             try {
                 $this->grader->step($submission);
             } catch (AiUnavailableException $e) {

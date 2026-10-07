@@ -295,7 +295,17 @@
          */
         const pumpUrl = @json(route('applicant.ai.pump', $interview));
 
+        /*
+         * На однопоточном сервере (php artisan serve на Windows) фоновую
+         * работу не просим: пока она шла, сервер не отвечал ни на что — ни на
+         * озвучку вопроса, ни на отправку ответа. Оценки и задание догонят
+         * позже, на странице задания.
+         */
+        const backgroundWork = @json($backgroundWork ?? true);
+
         function pumpStep() {
+            if (!backgroundWork) { return; }
+
             fetch(pumpUrl, {
                 method: 'POST',
                 headers: {'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
@@ -303,7 +313,7 @@
         }
 
         function prepareTask() {
-            if (taskRequested) { return; }
+            if (taskRequested || !backgroundWork) { return; }
             taskRequested = true;
 
             fetch(prepareUrl, {

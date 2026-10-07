@@ -26,9 +26,29 @@
             // таджикского в нём нет — его распознаёт сервер
             const browserLang = {ru: 'ru-RU', en: 'en-US'}[speechLang];
             const canMic = !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-            const engine = Recognition && browserLang && window.isSecureContext
+            const serverCapable = !!(canMic && serverRecognition && (window.AudioContext || window.webkitAudioContext));
+
+            /*
+             * Браузерное распознавание бывает «есть, но не работает».
+             *
+             * SpeechRecognition объявлен в Яндекс Браузере, Opera, Brave, а
+             * Chrome отправляет звук на серверы Google — без доступа к ним
+             * распознавание молчит или падает с network. Раньше на этом голос
+             * кончался: режим выключался или вечно «слушал», хотя серверное
+             * распознавание было рядом. Теперь при сбое переходим на сервер и
+             * запоминаем это, чтобы в следующий раз не наступать на то же.
+             */
+            const ENGINE_PREF = 'ai-voice-engine';
+            let browserBroken = false;
+            try { browserBroken = localStorage.getItem(ENGINE_PREF) === 'server'; } catch (e) {}
+
+            let engine = Recognition && browserLang && window.isSecureContext && !(browserBroken && serverCapable)
                 ? 'browser'
-                : (canMic && serverRecognition && (window.AudioContext || window.webkitAudioContext) ? 'server' : null);
+                : (serverCapable ? 'server' : null);
+
+            // микрофон браузер уже дал — значит, «not-allowed» от
+            // распознавания говорит о службе распознавания, а не о микрофоне
+            let micGranted = false;
 
             let on = false;
             let listening = false;
@@ -110,6 +130,26 @@
                 armWatch();
             }
 
+            /** Распознавание браузера не работает — дальше слушает сервер. */
+            function fallbackToServer() {
+                if (engine !== 'browser') { return; }
+
+                halt();
+
+                if (!serverCapable) {
+                    off(@json(__('Распознавание речи в этом браузере не работает — отвечайте текстом. Лучше всего работает Chrome или Edge.')));
+
+                    return;
+                }
+
+                engine = 'server';
+                try { localStorage.setItem(ENGINE_PREF, 'server'); } catch (e) {}
+
+                ensureContext();
+                listen();
+                say(@json(__('Распознавание браузера не отвечает — слушаю через сервер. Говорите, отправлю, когда замолчите.')));
+            }
+
             function startBrowser() {
                 rec = new Recognition();
                 rec.lang = browserLang;
@@ -117,6 +157,20 @@
                 rec.interimResults = true;
 
                 let finals = '';
+                let heardAudio = false;
+                let quickEnds = 0;
+                let runStarted = Date.now();
+                const mine = rec;
+
+                // служба запустилась и слышит микрофон — она жива
+                rec.onaudiostart = function () { heardAudio = true; };
+
+                // за шесть секунд распознавание так и не взяло звук — служба
+                // недоступна, хотя ошибки не сообщила (так ведут себя браузеры,
+                // где SpeechRecognition есть только для вида)
+                setTimeout(function () {
+                    if (rec === mine && listening && !heardAudio) { fallbackToServer(); }
+                }, 6000);
 
                 rec.onresult = function (event) {
                     let interim = '';
@@ -140,16 +194,32 @@
                 // Chrome сам останавливает распознавание после паузы — пока
                 // мы слушаем, запускаем снова
                 rec.onend = function () {
-                    if (listening && rec) {
-                        try { rec.start(); } catch (e) {}
+                    if (!listening || rec !== mine) { return; }
+
+                    // служба обрывает сеанс сразу после запуска — она не
+                    // работает, и перезапускать её по кругу бессмысленно
+                    quickEnds = Date.now() - runStarted < 1500 ? quickEnds + 1 : 0;
+
+                    if (quickEnds >= 3) {
+                        fallbackToServer();
+
+                        return;
                     }
+
+                    runStarted = Date.now();
+                    try { rec.start(); } catch (e) {}
                 };
 
                 rec.onerror = function (event) {
-                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    if (rec !== mine) { return; }
+
+                    if (event.error === 'not-allowed' && !micGranted) {
                         off(@json(__('Браузер не дал доступ к микрофону. Разрешите его в настройках сайта или отвечайте текстом.')));
-                    } else if (event.error === 'network') {
-                        off(@json(__('Распознавание речи недоступно без сети — отвечайте текстом.')));
+                    } else if (event.error === 'audio-capture') {
+                        off(@json(__('Микрофон не найден. Подключите его или отвечайте текстом.')));
+                    } else if (['network', 'service-not-allowed', 'not-allowed', 'language-not-supported'].indexOf(event.error) !== -1) {
+                        // микрофон есть, а служба распознавания — нет
+                        fallbackToServer();
                     }
                     // no-speech и прочее — просто слушаем дальше
                 };
@@ -171,7 +241,7 @@
                 if (stream) { return Promise.resolve(stream); }
 
                 return navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true}})
-                    .then(function (s) { stream = s; return s; });
+                    .then(function (s) { stream = s; micGranted = true; return s; });
             }
 
             function ensureContext() {
@@ -392,6 +462,7 @@
                 // проверяем микрофон, если это возможно, чтобы отказ всплыл сразу
                 return canMic
                     ? navigator.mediaDevices.getUserMedia({audio: true}).then(function (s) {
+                        micGranted = true;
                         s.getTracks().forEach(function (t) { t.stop(); });
                     })
                     : Promise.resolve();

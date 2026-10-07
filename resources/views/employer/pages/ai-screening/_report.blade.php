@@ -126,6 +126,25 @@
             </div>
         </div>
 
+        {{-- кто ставил баллы: при исчерпанном лимите — запасная модель --}}
+        @if(($scorers ?? collect())->isNotEmpty())
+            <div class="rp-line">
+                <span class="rp-hint">{{ __('Оценивала модель:') }}</span>
+                @foreach($scorers as $scorer)
+                    <span class="rp-chip {{ $scorer['fallback'] ? 'rp-half' : '' }}">
+                        {{ $scorer['model'] }}
+                        — {{ $scorer['fallback'] ? __('запасная') : __('основная') }},
+                        {{ trans_choice(':count оценка|:count оценки|:count оценок', $scorer['calls'], ['count' => $scorer['calls']]) }}
+                    </span>
+                @endforeach
+            </div>
+            @if($scorers->contains('fallback', true))
+                <div class="rp-hint">
+                    {{ __('Часть оценок поставила запасная модель — основная была перегружена или исчерпала дневной лимит. Её разбор проще: такие ответы стоит просмотреть самому.') }}
+                </div>
+            @endif
+        @endif
+
         @if($decision)
             <div class="rp-line">
                 <span class="rp-chip">{{ __('Основание:') }} {{ $decision->gateLabel() ?? '—' }}</span>
@@ -274,8 +293,23 @@
                                 @if($turn->criterion_key) · {{ $turn->criterion_key }} @endif
                                 @if($turn->rationale) — {{ $turn->rationale }} @endif
                             </div>
+                            @if($turn->scored_by && $turn->scored_by !== ($scoringModel ?? null))
+                                <div class="rp-why" style="color:var(--ink-warn,#B45309)">
+                                    {{ __('Оценено запасной моделью :model', ['model' => $turn->scored_by]) }}
+                                </div>
+                            @endif
                         @elseif($turn->isFromCandidate())
                             <div class="rp-why" style="color:var(--danger,#DC2626)">{{ __('Ответ не оценён') }}</div>
+                        @endif
+
+                        {{-- код из ответа запускался: что вышло — факт, а не мнение модели --}}
+                        @if($turn->codeCheckLabel())
+                            <div class="rp-why"><b>{{ $turn->codeCheckLabel() }}</b></div>
+                            @foreach($turn->code_check['runs'] ?? [] as $run)
+                                @if(filled($run['result'] ?? null))
+                                    <pre class="rp-pre">{{ trim($run['result']) }}</pre>
+                                @endif
+                            @endforeach
                         @endif
 
                         @if($turn->injection_flagged)

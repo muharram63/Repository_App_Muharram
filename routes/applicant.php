@@ -30,7 +30,8 @@ Route::prefix('resume/assistant')->name('resume.assistant')->group(function () {
 
 // ИИ-собеседование кандидата: согласие, документы, разговор с ИИ, тестовое
 // задание и результат. Голос аватара — страница проверки и озвучка реплик.
-Route::prefix('ai-interview')->name('ai.')->group(function () {
+// Всё собеседование идёт на его языке: интерфейс, ошибки, голос (InterviewLocale).
+Route::prefix('ai-interview')->name('ai.')->middleware(\App\Http\Middleware\InterviewLocale::class)->group(function () {
     $speech = \App\Http\Controllers\Applicant\AiSpeechController::class;
 
     $interview = \App\Http\Controllers\Applicant\AiInterviewController::class;

@@ -464,15 +464,22 @@
              * Анна прощается: собеседование закончено, ответ придёт в срок.
              * Звук готовится на сервере; если браузер не даст играть без
              * нажатия, аватар покажет кнопку «Озвучить».
+             *
+             * Только сразу после отправки. Раньше прощание звучало при каждом
+             * открытии страницы — вернулся по уведомлению, обновил страницу, и
+             * Анна прощается снова. Текст остаётся на экране, а услышать
+             * его ещё раз можно кнопкой «Повторить».
              */
             if (window.AiAvatar) {
-                window.AiAvatar.speak({
+                const farewell = {
                     text: @json($farewell->text),
                     @if($farewell->speech_status !== 'none')
                         statusUrl: @json(route('applicant.ai.speech.status', $farewell)),
                     @endif
                     lang: @json($interview->config?->language ?? 'ru'),
-                });
+                };
+
+                window.AiAvatar[@json((bool) session('speak_farewell')) ? 'speak' : 'remember'](farewell);
             }
         @endif
 

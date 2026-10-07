@@ -85,7 +85,15 @@ class AiSpeechController extends Controller
          * продлится. Если реплику уже озвучивает очередь или соседний запрос,
          * отвечаем «готовится» — страница спросит ещё раз.
          */
-        if ($turn->speech_status === 'pending') {
+        /*
+         * Реплику, которую не удалось озвучить из-за лимита, пробуем снова,
+         * когда пауза прошла: при повторном воспроизведении она прозвучит
+         * голосом Анны, а не браузера. Пока лимит действует — не пробуем.
+         */
+        $retry = $turn->speech_status === 'failed' && $turn->needsSpeech()
+            && $this->library->available() && $this->library->coolingDown() === 0;
+
+        if ($turn->speech_status === 'pending' || $retry) {
             // длинный вопрос синтезируется до двадцати секунд и дольше —
             // стандартные 30 секунд PHP оборвали бы запрос на полуслове
             @set_time_limit((int) config('services.gemini.tts_timeout', 90) + 15);

@@ -978,3 +978,190 @@ test('подпись аватара переносится, а не вылеза
         // реплики подписаны: кто говорит
         ->assertSee('ad-who', false);
 });
+
+// ==================== доклад Анны: профессия и тест ====================
+
+/** Что ушло модели в разговоре с работодателем — промпт и отчёт одной строкой. */
+function advisorSees(AiInterview $interview, string $message = 'Расскажи'): string
+{
+    Illuminate\Support\Facades\Http::fake(['*' => Illuminate\Support\Facades\Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['reply' => 'Хорошо.', 'action' => 'none'])],
+    ]]]])]);
+
+    (new App\Services\Ai\GeminiHiringAdvisor(
+        new App\Services\Ai\AiJournal(new App\Services\Ai\GeminiClient([
+            'key' => 'k', 'model' => 'gemini-3.5-flash-lite', 'model_scoring' => 'gemini-3.6-flash',
+            'model_vision' => 'gemini-3.6-flash', 'revision' => 'r', 'timeout' => 5, 'connect_timeout' => 3,
+        ])),
+        new App\Services\Security\InjectionGuard,
+    ))->advise($interview->fresh(), [], $message, 'ru');
+
+    $sent = '';
+    Illuminate\Support\Facades\Http::assertSent(function ($request) use (&$sent) {
+        $sent = json_encode($request->data(), JSON_UNESCAPED_UNICODE);
+
+        return true;
+    });
+
+    return $sent;
+}
+
+test('без требований о профессии Анна не выдаёт за неё другие обязательные', function () {
+    [, $interview] = reportReady();
+
+    expect(advisorSees($interview))
+        ->toContain('требований о самой профессии в сверке нет')
+        ->not->toContain('Вывод: профессия подходит');
+});
+
+test('Анна начинает с профессии, и вывод о ней считает код', function () {
+    [, $interview] = reportReady();
+    AiInterviewCriterion::where('vacancy_id', $interview->vacancy_id)->where('key', 'php')->update(['basis' => 'skills']);
+
+    $sent = advisorSees($interview);
+
+    expect($sent)
+        ->toContain('ПЕРВЫМ ДЕЛОМ — ПРОФЕССИЯ')
+        ->toContain('Профессия кандидата: PHP-разработчик')
+        ->toContain('Вывод: профессия подходит')
+        // раздел о профессии — раньше баллов и рекомендации
+        ->and(mb_strpos($sent, 'ПРОФЕССИЯ (главное'))->toBeLessThan(mb_strpos($sent, 'БАЛЛЫ (из 100)'));
+});
+
+test('не та профессия — Анна узнаёт это первой строкой, а не из баллов', function () {
+    [, $interview] = reportReady();
+
+    AiRequirementCheck::where('ai_interview_id', $interview->id)
+        ->where('requirement', 'PHP и Laravel')
+        ->update(['status' => 'missing', 'evidence_quote' => null]);
+    AiInterviewCriterion::where('vacancy_id', $interview->vacancy_id)->where('key', 'php')->update(['basis' => 'title']);
+
+    expect(advisorSees($interview))
+        ->toContain('Вывод: профессия НЕ подтверждена — не выполнено обязательное требование: PHP и Laravel')
+        ->toContain('какими бы ни были баллы');
+});
+
+test('Анна докладывает итог теста и вопросы, на которых кандидат ошибся', function () {
+    [, $interview] = reportReady();
+
+    $task = $interview->testTasks()->sole();
+    $task->update(['quiz' => [
+        ['question' => 'Что вернёт count([])?', 'options' => ['0', '1', 'null', 'ошибка'], 'answer' => 0],
+        ['question' => 'Какой индекс ускорит WHERE email = ?', 'options' => ['a', 'b', 'c', 'd'], 'answer' => 1],
+    ]]);
+    $task->submission()->first()->update(['details' => [
+        'quiz' => ['correct' => 1, 'total' => 2, 'score' => 50, 'items' => [
+            ['chosen' => 0, 'answer' => 0, 'correct' => true],
+            ['chosen' => 3, 'answer' => 1, 'correct' => false],
+        ]],
+        'parts' => [['score' => 60, 'summary' => 'Скобки не убирает.', 'executed' => true]],
+    ]]);
+
+    expect(advisorSees($interview, 'Как он сдал тест?'))
+        ->toContain('Итог тестовой части: 55 из 100.')
+        ->toContain('Тест с вариантами: верно 1 из 2.')
+        ->toContain('ошибка в вопросе: «Какой индекс ускорит WHERE email = ?»')
+        ->not->toContain('ошибка в вопросе: «Что вернёт count([])?»')
+        ->toContain('балл 60 из 100. Скобки не убирает. Код запускался по-настоящему.');
+});
+
+test('просроченное и брошенное задание Анна не называет «проверяется»', function () {
+    [, $interview] = reportReady();
+    $submission = $interview->testTasks()->sole()->submission()->first();
+
+    // время вышло: попытка закрыта нулём без решения
+    $submission->update(['submitted_at' => null, 'content' => null, 'score' => 0]);
+    expect(advisorSees($interview))
+        ->toContain('Время вышло, решение не сдано — тестовая часть 0 из 100.')
+        ->not->toContain('Проверка идёт');
+
+    // проверку ИИ бросил и передал человеку
+    $submission->update(['submitted_at' => now(), 'graded_at' => null, 'details' => ['handed_over' => 'негодный ответ']]);
+    expect(advisorSees($interview))
+        ->toContain('Автоматически проверить не удалось')
+        ->not->toContain('Проверка идёт');
+});
+
+test('переданную человеку проверку двигатель не повторяет и переходит к решению', function () {
+    [$vacancy, , $employerUser] = reportReady();
+
+    [$finished] = makeAiInterview($vacancy, [
+        'consent_at' => now(), 'stage' => 'decision', 'analysis_status' => 'ready',
+        'documents_score' => 70, 'requires_review' => true,
+    ]);
+    $task = AiTestTask::create([
+        'ai_interview_id' => $finished->id, 'kind' => 'main', 'statement' => 'Задание',
+        'format' => 'case', 'reference_solution' => 'эталон', 'rubric' => [['point' => 'п', 'weight' => 1]],
+        'issued_at' => now(), 'deadline_at' => now()->addHour(),
+    ]);
+    AiTestSubmission::create([
+        'ai_test_task_id' => $task->id, 'content' => 'решение', 'submitted_at' => now(),
+        'details' => ['handed_over' => 'Модель дважды ответила негодно'],
+    ]);
+
+    app()->instance(App\Services\Ai\TaskExaminer::class, new class implements App\Services\Ai\TaskExaminer
+    {
+        public function available(): bool { return true; }
+
+        public function compose(AiInterview $interview, $criteria): array { return []; }
+
+        public function grade(AiTestTask $task, string $solution, int $part = 0): array
+        {
+            throw new RuntimeException('повторной проверки быть не должно');
+        }
+    });
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.pump', [$vacancy, $finished]))
+        ->assertOk()
+        ->assertJsonPath('did', 'decision');
+});
+
+test('голос работодателя: «да» — только ясное согласие, сбой распознавания ведёт на сервер', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee('function answerKind(text)', false)
+        ->assertDontSee('/^(да|ҳа|ha|yes|подтверждаю|отправ|давай|ок|okay|ok)/', false)
+        ->assertSee('function fallbackToServer()', false)
+        // реплика ушла — микрофон и старая озвучка замолкают
+        ->assertSee('function silence()', false)
+        ->assertSee('if (mine !== speechTicket) { return; }', false);
+});
+
+// ==================== какой моделью оценён кандидат ====================
+
+test('отчёт показывает, какая модель ставила баллы, и предупреждает о запасной', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $main = config('services.gemini.model_scoring');
+
+    AiInteraction::create([
+        'ai_interview_id' => $interview->id, 'vacancy_id' => $vacancy->id,
+        'purpose' => 'answer_score', 'model' => 'gemini-3.5-flash-lite',
+        'tokens_in' => 100, 'tokens_out' => 50, 'latency_ms' => 3000, 'status' => 'ok',
+    ]);
+    $interview->turns()->where('role', 'candidate')->update(['scored_by' => 'gemini-3.5-flash-lite']);
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Оценивала модель:'))
+        // из reportReady() — одна оценка основной
+        ->assertSee($main)
+        ->assertSee('gemini-3.5-flash-lite')
+        ->assertSee(__('запасная'))
+        ->assertSee(__('Часть оценок поставила запасная модель — основная была перегружена или исчерпала дневной лимит. Её разбор проще: такие ответы стоит просмотреть самому.'))
+        ->assertSee(__('Оценено запасной моделью :model', ['model' => 'gemini-3.5-flash-lite']));
+});
+
+test('без запасной модели предупреждения нет', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+
+    $this->actingAs($employerUser)
+        ->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Оценивала модель:'))
+        ->assertDontSee(__('Часть оценок поставила запасная модель — основная была перегружена или исчерпала дневной лимит. Её разбор проще: такие ответы стоит просмотреть самому.'));
+});

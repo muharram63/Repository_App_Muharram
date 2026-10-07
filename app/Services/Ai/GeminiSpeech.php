@@ -51,7 +51,7 @@ class GeminiSpeech implements SpeechSynthesizer
         $clean = $this->prepare($text);
 
         if ($clean === '') {
-            throw new AiUnavailableException('Озвучивать нечего: текст вопроса пуст.');
+            throw new AiUnavailableException(__('Озвучивать нечего: текст вопроса пуст.'));
         }
 
         return $this->client->speech($clean, $this->voice());

@@ -24,6 +24,8 @@ class AiInterviewTurn extends Model
         'score',
         'max_score',
         'rationale',
+        'code_check',
+        'scored_by',
         'injection_flagged',
         'speech_status',
         'speech_path',
@@ -35,6 +37,8 @@ class AiInterviewTurn extends Model
         // слова кандидата и вопросы о его опыте — персональные данные
         'text' => 'encrypted',
         'rationale' => 'encrypted',
+        // запуск кода из ответа: {executed, runs:[{language, code, result, is_error}]}
+        'code_check' => 'encrypted:array',
         'position' => 'integer',
         'score' => 'integer',
         'max_score' => 'integer',
@@ -129,6 +133,31 @@ class AiInterviewTurn extends Model
     public function isScored(): bool
     {
         return $this->score !== null;
+    }
+
+    /**
+     * Итог запуска кода из ответа — для отчёта и для Анны.
+     *
+     * null — кода в ответе не было; иначе понятная фраза: работает, с ошибкой
+     * или запустить не вышло (тогда балл поставлен по чтению кода).
+     */
+    public function codeCheckLabel(): ?string
+    {
+        $check = $this->code_check;
+
+        if (! is_array($check)) {
+            return null;
+        }
+
+        if (empty($check['executed'])) {
+            return __('Код в ответе есть, но запустить его не удалось — оценён по чтению.');
+        }
+
+        $failed = collect($check['runs'] ?? [])->contains(fn ($run) => ! empty($run['is_error']));
+
+        return $failed
+            ? __('Код из ответа запускался — с ошибкой.')
+            : __('Код из ответа запускался — работает.');
     }
 
     /**

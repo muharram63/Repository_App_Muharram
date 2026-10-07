@@ -238,7 +238,10 @@ class AiTaskController extends Controller
         }
 
         return redirect()->route('applicant.ai.task', $interview)
-            ->with('status', __('Решение отправлено. ИИ проверяет его — это занимает до минуты.'));
+            ->with('status', __('Решение отправлено. ИИ проверяет его — это занимает до минуты.'))
+            // прощание звучит один раз — сразу после отправки, а не при
+            // каждом возвращении на страницу
+            ->with('speak_farewell', true);
     }
 
 

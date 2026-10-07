@@ -107,6 +107,10 @@ class ScoreInterviewAnswer implements ShouldQueue
             'score' => $verdict['score'],
             'max_score' => $verdict['max'],
             'rationale' => $verdict['rationale'],
+            // код из ответа запускался — что вышло, видно работодателю
+            'code_check' => $verdict['code_check'] ?? null,
+            // какая модель ставила балл: при исчерпанном лимите — запасная
+            'scored_by' => $verdict['model'] ?? null,
         ]);
 
         $this->maybeConfirmRequirement($turn, $criterion, $verdict['score']);
