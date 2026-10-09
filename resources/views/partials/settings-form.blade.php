@@ -237,6 +237,69 @@
             </span>
         </label>
 
+        {{--
+            Работодателю — уведомления о кандидатах: что присылать и куда.
+            Уведомление в браузере приходит, даже когда вкладка свёрнута, но
+            браузер разрешает его только после явного «Разрешить» — поэтому
+            рядом кнопка, которая это разрешение и спрашивает.
+        --}}
+        @if($user->employer)
+            <h3 style="margin:14px 0 4px; font-size:14px">{{ __('Уведомления о кандидатах') }}</h3>
+
+            @foreach([
+                'notify_new_candidates' => [__('Новый кандидат'), __('Кто-то откликнулся на вашу вакансию')],
+                'notify_reports' => [__('Отчёт ИИ-собеседования готов'), __('Кандидат прошёл собеседование: совпадение и рекомендация ИИ')],
+                'notify_reminders' => [__('Напоминания'), __('Раз в сутки — сколько кандидатов ждут вашего решения больше суток')],
+            ] as $key => [$label, $hint])
+                <label class="set-switch">
+                    <input type="checkbox" name="{{ $key }}" value="1" @checked($settings->{$key})>
+                    <span class="t"><b>{{ $label }}</b><span>{{ $hint }}</span></span>
+                </label>
+            @endforeach
+
+            <h3 style="margin:14px 0 4px; font-size:14px">{{ __('Куда присылать') }}</h3>
+
+            @foreach([
+                'channel_site' => [__('На сайте'), __('Колокольчик со счётчиком и всплывающее окно в углу')],
+                'channel_browser' => [__('В браузере'), __('Системное уведомление, даже когда вкладка свёрнута')],
+                'channel_email' => [__('На почту'), __('Письмо на ваш email — когда на сервере настроена почта')],
+            ] as $key => [$label, $hint])
+                <label class="set-switch">
+                    <input type="checkbox" name="{{ $key }}" value="1" @checked($settings->{$key})>
+                    <span class="t"><b>{{ $label }}</b><span>{{ $hint }}</span></span>
+                </label>
+            @endforeach
+
+            <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px">
+                <button type="button" class="btn" id="setBrowserPermit">🔔 {{ __('Разрешить уведомления в браузере') }}</button>
+                <span class="hint" id="setBrowserState"></span>
+            </div>
+            <script>
+                (function () {
+                    const btn = document.getElementById('setBrowserPermit');
+                    const out = document.getElementById('setBrowserState');
+                    const texts = {
+                        granted: @json(__('Разрешено — уведомления будут приходить.')),
+                        denied: @json(__('Браузер запретил уведомления. Разрешите их в настройках сайта (значок замка в адресной строке).')),
+                        unsupported: @json(__('Этот браузер не умеет показывать уведомления.')),
+                    };
+
+                    function paint() {
+                        if (!('Notification' in window)) { out.textContent = texts.unsupported; btn.disabled = true; return; }
+                        out.textContent = texts[Notification.permission] || '';
+                        btn.hidden = Notification.permission === 'granted';
+                    }
+
+                    btn.addEventListener('click', function () {
+                        if (!('Notification' in window)) { return; }
+                        Notification.requestPermission().then(paint, paint);
+                    });
+
+                    paint();
+                })();
+            </script>
+        @endif
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">{{ __('Сохранить') }}</button>
         </div>

@@ -238,20 +238,9 @@ class MakeHiringDecision implements ShouldQueue
 
     private function notifyEmployer(AiInterview $interview, AiDecision $decision): void
     {
-        $manual = $decision->requires_manual_review;
-        $name = $interview->applicant?->user?->name ?? 'Кандидат';
-
-        UserNotification::deliver(
-            $interview->vacancy?->employer?->user_id,
-            'interview',
-            UserNotification::text($manual ? 'Кандидат ждёт вашего решения' : 'ИИ подготовил отчёт — подтвердите решение'),
-            UserNotification::text(':name · «:title» · :outcome', [
-                'name' => $name,
-                'title' => $interview->vacancy?->title ?? '—',
-                'outcome' => UserNotification::text(AiDecision::OUTCOMES[$decision->effectiveOutcome()] ?? (string) $decision->outcome),
-            ]),
-            route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]),
-        );
+        // отчёт готов: имя, процент совпадения и рекомендация — одним уведомлением,
+        // и только один раз на решение (EmployerAlerts следит за дублями)
+        \App\Support\EmployerAlerts::reportReady($interview, $decision);
     }
 
     /**

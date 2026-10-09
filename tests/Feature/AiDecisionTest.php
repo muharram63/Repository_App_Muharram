@@ -437,7 +437,7 @@ test('ИИ советуется с работодателем, а кандида
     (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
 
     expect(UserNotification::where('user_id', $interview->vacancy->employer->user_id)
-        ->where('title', 'ИИ подготовил отчёт — подтвердите решение')->exists())->toBeTrue()
+        ->where('title', 'Отчёт ИИ-собеседования готов')->where('body', 'like', '%Рекомендация: Принять%')->exists())->toBeTrue()
         ->and(UserNotification::where('user_id', $interview->applicant->user_id)
             ->where('title', 'Вы прошли отбор')->exists())->toBeFalse()
         ->and($interview->fresh()->isAnnounced())->toBeFalse();
@@ -485,7 +485,9 @@ test('кандидат ждёт больше суток — ИИ напомин�
     (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
 
     $release = app(App\Services\Scoring\DecisionRelease::class);
-    $reminders = fn () => UserNotification::where('user_id', $employerId)->where('title', 'Кандидат ждёт вашего ответа')->count();
+    // одно общее напоминание в сутки: «У вас 1 кандидат ждёт решения»
+    $reminders = fn () => UserNotification::where('user_id', $employerId)->where('title', 'Кандидаты ждут решения')
+        ->where('body', 'У вас 1 кандидат ждёт решения')->count();
 
     // сутки ещё не прошли
     expect($release->remindOverdue())->toBe(0);
@@ -531,7 +533,9 @@ test('при ручной проверке работодателя зовут �
 
     (new MakeHiringDecision($interview->id))->handle(new FakeWriter);
 
-    expect(UserNotification::where('title', 'Кандидат ждёт вашего решения')->exists())->toBeTrue();
+    // отчёт готов, рекомендация — дополнительное собеседование
+    expect(UserNotification::where('title', 'Отчёт ИИ-собеседования готов')
+        ->where('body', 'like', '%Рекомендация: Доп. собеседование%')->exists())->toBeTrue();
 });
 
 test('решение принимается один раз', function () {

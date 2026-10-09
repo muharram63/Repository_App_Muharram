@@ -460,7 +460,8 @@ test('несоставленное задание уходит на ручную
 
     // работодателя позвали решать; кандидат ответ получит от него
     expect(UserNotification::where('user_id', $interview->vacancy->employer->user_id)
-        ->where('title', 'Кандидат ждёт вашего решения')->count())->toBe(1)
+        ->where('title', 'Отчёт ИИ-собеседования готов')
+        ->where('body', 'like', '%Рекомендация: Доп. собеседование%')->count())->toBe(1)
         ->and($interview->isAnnounced())->toBeFalse();
 });
 

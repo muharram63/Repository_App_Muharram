@@ -34,6 +34,11 @@ Schedule::command('ai:sweep')->everyMinute()->withoutOverlapping();
 // открытии ленты заказов — на случай, если планировщик не запущен.
 Schedule::command('orders:expire')->everyFiveMinutes()->withoutOverlapping();
 
+// Кандидаты ждут решения работодателя больше суток — одно напоминание
+// «У вас N кандидатов ждут решения» в сутки на работодателя. Каждый час, чтобы
+// не ждать до конкретного времени; дубль в тот же день не уйдёт.
+Schedule::command('employers:remind-awaiting')->hourly()->withoutOverlapping();
+
 Schedule::command('queue:work --stop-when-empty --max-time=55 --sleep=1')
     ->everyMinute()
     ->withoutOverlapping();

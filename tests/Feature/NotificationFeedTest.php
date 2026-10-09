@@ -19,7 +19,8 @@ test('a response and its status change reach both inboxes', function () {
         ->post('/vacancies/'.$vacancy->id.'/respond', ['message' => 'Готов приступить'])
         ->assertRedirect();
 
-    expect(UserNotification::where('user_id', $employerUser->id)->where('type', 'response')->count())->toBe(1);
+    // «новый кандидат» — вид уведомления работодателю о кандидатах
+    expect(UserNotification::where('user_id', $employerUser->id)->where('type', 'candidate')->count())->toBe(1);
 
     // работодатель меняет статус — уведомление уходит соискателю
     $response = VacancyResponse::first();

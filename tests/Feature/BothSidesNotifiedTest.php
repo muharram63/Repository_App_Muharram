@@ -27,7 +27,8 @@ test('a response lands in both inboxes', function () {
     // получателю — непрочитанное
     $forEmployer = UserNotification::where('user_id', $employerUser->id)->first();
     expect($forEmployer)->not->toBeNull();
-    expect($forEmployer->title)->toBe('Новый отклик на вакансию');
+    expect($forEmployer->title)->toBe('Новый кандидат');
+    expect($forEmployer->body)->toContain($applicantUser->name)->toContain($vacancy->title);
     expect($forEmployer->isUnread())->toBeTrue();
 
     // отправителю — запись о своём действии, уже прочитанная

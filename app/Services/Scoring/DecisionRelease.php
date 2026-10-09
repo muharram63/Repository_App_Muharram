@@ -70,39 +70,21 @@ class DecisionRelease
      */
     public function remindOverdue(?int $interviewId = null): int
     {
-        $reminded = 0;
+        /*
+         * Напоминание теперь одно на работодателя — «У вас N кандидатов ждут
+         * решения», не чаще раза в сутки (EmployerAlerts). Раньше уходило по
+         * напоминанию на каждого кандидата, и вместе с общим получались дубли.
+         * Здесь лишь выбираем, кому: владельцу этого собеседования или всем.
+         */
+        $employerUserId = $interviewId
+            ? AiInterview::with('vacancy.employer')->find($interviewId)?->vacancy?->employer?->user_id
+            : null;
 
-        AiDecision::query()
-            ->whereNull('released_at')
-            ->where('created_at', '<=', now()->subHours(self::REMIND_AFTER_HOURS))
-            ->when($interviewId, fn ($q) => $q->where('ai_interview_id', $interviewId))
-            ->with('interview.config', 'interview.vacancy.employer', 'interview.applicant.user')
-            ->get()
-            // действует только последнее решение собеседования
-            ->filter(fn (AiDecision $d) => $d->interview?->latestDecision?->is($d))
-            ->filter(fn (AiDecision $d) => $d->interview?->config?->remindsEmployer())
-            ->each(function (AiDecision $decision) use (&$reminded) {
-                if (! Cache::add('decision-reminder-'.$decision->id, true, now()->addHours(self::REMIND_AFTER_HOURS))) {
-                    return;
-                }
+        if ($interviewId && ! $employerUserId) {
+            return 0;
+        }
 
-                $interview = $decision->interview;
-
-                UserNotification::deliver(
-                    $interview->vacancy?->employer?->user_id,
-                    'interview',
-                    UserNotification::text('Кандидат ждёт вашего ответа'),
-                    UserNotification::text(':name ждёт ответа по вакансии «:title» больше суток. ИИ подготовил рекомендацию, но без вашего разрешения ничего не отправит.', [
-                        'name' => $interview->applicant?->user?->name ?? UserNotification::text('Кандидат'),
-                        'title' => $interview->vacancy?->title ?? '—',
-                    ]),
-                    route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]),
-                );
-
-                $reminded++;
-            });
-
-        return $reminded;
+        return \App\Support\EmployerAlerts::remindAwaiting($employerUserId);
     }
 
     /**

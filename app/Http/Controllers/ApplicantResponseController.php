@@ -55,16 +55,10 @@ class ApplicantResponseController extends Controller
             ->where('applicant_id', $applicant->id)
             ->update(['vacancy_response_id' => $response->id]);
 
-        // уведомление получают обе стороны: работодателю — новое,
-        // соискателю — отметка о собственном действии, уже прочитанная
-        UserNotification::deliver(
-            $vacancy->employer?->user_id,
-            'response',
-            UserNotification::text('Новый отклик на вакансию'),
-            UserNotification::text(':name откликнулся на «:title»', ['name' => $user->name, 'title' => $vacancy->title]),
-            route('public.responses.index'),
-            'mail_responses',
-        );
+        // уведомление получают обе стороны: работодателю — «новый кандидат»
+        // (на сайте, в браузере и на почту — как он настроил), соискателю —
+        // отметка о собственном действии, уже прочитанная
+        \App\Support\EmployerAlerts::newCandidate($response->setRelation('vacancy', $vacancy));
 
         UserNotification::deliver(
             $user->id,

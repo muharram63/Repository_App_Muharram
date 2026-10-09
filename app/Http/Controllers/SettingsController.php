@@ -154,7 +154,11 @@ class SettingsController extends Controller
             'call_notify' => $request->boolean('call_notify'),
             'mail_responses' => $request->boolean('mail_responses'),
             'mail_messages' => $request->boolean('mail_messages'),
-        ]);
+        ] + ($user->employer
+            // работодателю — виды уведомлений о кандидатах и каналы
+            ? collect(array_merge(UserSetting::EMPLOYER_ALERTS, UserSetting::ALERT_CHANNELS))
+                ->mapWithKeys(fn ($key) => [$key => $request->boolean($key)])->all()
+            : []));
 
         return back()->with('status', __('Настройки уведомлений сохранены.'));
     }

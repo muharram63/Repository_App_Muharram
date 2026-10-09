@@ -61,6 +61,8 @@
         // время последнего показанного уведомления (секунды сервера)
         const LAST = 'na-last-ts';
         const SOUND = 'na-sound';
+        // уведомление в браузере: работодатель включил этот канал в настройках
+        const browserOn = @json((bool) auth()->user()->setting('channel_browser'));
 
         const toast = document.getElementById('naToast');
         const icon = document.getElementById('naIcon');
@@ -153,9 +155,29 @@
             toast.hidden = false;
             chime();
             flashTitle();
+            notifyBrowser(note);
 
             clearTimeout(hideTimer);
             hideTimer = setTimeout(function () { toast.hidden = true; }, 12000);
+        }
+
+        /*
+         * Системное уведомление браузера — когда вкладка свёрнута или на
+         * другой. Карточка в углу видна, только если человек смотрит на
+         * страницу; работодатель с десятком вкладок пропустил бы кандидата.
+         * Браузер показывает его лишь с разрешения (кнопка в настройках).
+         */
+        function notifyBrowser(note) {
+            if (!browserOn || !document.hidden || !('Notification' in window) || Notification.permission !== 'granted') { return; }
+
+            try {
+                const shown = new Notification(note.title || '', {body: note.body || '', tag: 'workio-' + note.id});
+                shown.onclick = function () {
+                    window.focus();
+                    if (note.url) { window.location.href = note.url; }
+                    shown.close();
+                };
+            } catch (e) {}
         }
 
         document.getElementById('naClose').addEventListener('click', function () { toast.hidden = true; });
