@@ -36,6 +36,7 @@
         .cd-meta { margin-top: 3px; font-size: 13px; color: var(--gray-500); }
 
         .cd-mark { padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .cd-sent { background: var(--wash-good, #DCFCE7); color: var(--ink-good, #15803D); border: 1px solid #86EFAC; }
         .cd-passed { background: var(--wash-good); color: var(--ink-good); }
         .cd-rejected { background: var(--wash-danger); color: var(--danger); }
         .cd-manual { background: var(--wash-warn); color: var(--ink-warn); }
@@ -106,6 +107,11 @@
 
                                 @if($interview->requires_review)
                                     <span class="cd-mark cd-manual">{{ __('нужно ваше решение') }}</span>
+                                @endif
+
+                                {{-- ответ кандидату ушёл — зелёная отметка, видно без открытия карточки --}}
+                                @if($badge = $interview->latestDecision?->sentBadge())
+                                    <span class="cd-mark cd-sent">✓ {{ $badge }}</span>
                                 @endif
 
                                 @if($interview->latestDecision?->isOverridden())

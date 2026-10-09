@@ -1332,3 +1332,112 @@ test('почта настроена — письмо с текстом черн�
     Illuminate\Support\Facades\Mail::assertSent(App\Mail\DecisionLetter::class, fn ($mail) => $mail->hasTo($interview->applicant->user->email)
         && $mail->text === 'Спасибо за время! Мы выбрали другого кандидата.');
 });
+
+// ==================== после отправки: зелёная плашка и конец разговора ====================
+
+test('после отправки — текст зелёной плашки об отказе, и он же после перезагрузки', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+    $name = $interview->applicant->user->name;
+
+    $response = $this->actingAs($employerUser)->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertJsonPath('outcome', 'rejected');
+
+    $released = $interview->latestDecision->fresh()->released_at;
+    $banner = __('✓ Уведомление об отказе отправлено кандидату :name — :date', [
+        'name' => $name, 'date' => $released->format('d.m.Y, H:i'),
+    ]);
+    expect($response->json('banner'))->toBe($banner);
+
+    // перезагрузка: плашка видна (из базы), обсуждение завершено и не начинается заново
+    $page = $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))->assertOk();
+    $html = $page->getContent();
+
+    expect($html)->toContain(e(ltrim($banner, '✓ ')))
+        ->and($html)->toMatch('/id="crSentBanner"[^>]*role="status"\s*>/')         // без hidden
+        ->and($html)->toMatch('/id="adEnded"\s*>/')                                // «Разговор завершён» показан
+        ->and($html)->toMatch('/id="adStartRow"\s+hidden/')                        // «Начать обсуждение» спрятано
+        ->and($html)->toContain(__('Открыть обсуждение заново'));
+});
+
+test('о принятии плашка говорит иначе, чем об отказе', function () {
+    [$vacancy, $interview] = reportReady(outcome: 'passed');
+    $interview->latestDecision->update(['outcome' => 'passed', 'released_at' => now(), 'release_source' => 'employer']);
+
+    $decision = $interview->latestDecision->fresh();
+    $replace = ['name' => $interview->applicant->user->name, 'date' => $decision->released_at->format('d.m.Y, H:i')];
+
+    expect($decision->sentBanner())->toBe(__('✓ Уведомление о принятии отправлено кандидату :name — :date', $replace))
+        ->and($decision->sentBanner())->not->toBe(__('✓ Уведомление об отказе отправлено кандидату :name — :date', $replace))
+        ->and($decision->sentBadge())->toBe(__('Принят — уведомление отправлено'));
+});
+
+test('после отправки бот переходит в «Разговор завершён» и всё выключает', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        // статус «Разговор завершён» — в едином источнике состояния аватара
+        ->assertSee('ended: '.json_encode(__('Разговор завершён'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT), false)
+        // одна фраза после отправки и полная остановка
+        ->assertSee(json_encode(__('Уведомление отправлено. Разговор завершён.'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT), false)
+        ->assertSee('function endConversation()', false)
+        ->assertSee("window.AiAvatar.setState('ended')", false)
+        ->assertSee('function lockTalk(locked)', false);
+});
+
+test('повторная отправка не происходит: второе подтверждение возвращает ту же плашку', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $first = $this->actingAs($employerUser)->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]))->json('banner');
+    $second = $this->actingAs($employerUser)->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertJsonPath('message', __('Ответ кандидату уже отправлен.'))
+        ->json('banner');
+
+    expect($second)->toBe($first)
+        ->and(UserNotification::where('user_id', $interview->applicant->user_id)->where('type', 'response_status')->count())->toBe(1);
+});
+
+test('отправка не удалась — причина и повтор, решение не отмечается отправленным', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    app()->instance(App\Services\Scoring\DecisionRelease::class, new class extends App\Services\Scoring\DecisionRelease
+    {
+        public function release(AiDecision $decision, string $source): bool
+        {
+            throw new RuntimeException('база недоступна');
+        }
+    });
+
+    $this->actingAs($employerUser)->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]))
+        ->assertStatus(500)
+        ->assertJsonPath('retry', true)
+        ->assertJsonPath('error', __('Не удалось отправить уведомление: :reason', ['reason' => __('сбой на сервере, попробуйте ещё раз')]));
+
+    expect($interview->latestDecision->fresh()->isReleased())->toBeFalse();
+
+    // на странице есть красная плашка и «Повторить отправку»
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee('id="adFailed"', false)
+        ->assertSee(__('Повторить отправку'));
+});
+
+
+test('в списке кандидатов и откликов — зелёная отметка об отправленном ответе', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->latestDecision->update(['released_at' => now(), 'release_source' => 'employer']);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidates', $vacancy))
+        ->assertOk()
+        ->assertSee(__('Отказ — уведомление отправлено'));
+
+    $this->actingAs($employerUser)->get(route('employer.responses.index'))
+        ->assertOk()
+        ->assertSee(__('Отказ — уведомление отправлено'));
+});

@@ -212,6 +212,10 @@
                         <span class="status-tag {{ $response->status }}">
                             {{ $statusLabels[$response->status] ?? $response->status }}
                         </span>
+                        {{-- ответ по ИИ-собеседованию ушёл кандидату — видно, не открывая карточку --}}
+                        @if($badge = $response->aiInterview?->latestDecision?->sentBadge())
+                            <span class="status-tag {{ $response->aiInterview->latestDecision->effectiveOutcome() === 'passed' ? 'accepted' : 'rejected' }}">✓ {{ $badge }}</span>
+                        @endif
                     </div>
                 @empty
                     <div style="text-align:center; padding:48px 16px;">

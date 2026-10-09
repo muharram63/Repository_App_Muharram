@@ -340,7 +340,14 @@ class AiReportController extends Controller
 
         // обсуждение с Анной отправляет решение в фоне — ему нужен ответ, а не страница
         if ($request->expectsJson()) {
-            return response()->json(['message' => $done, 'released' => true]);
+            $sent = $decision->fresh();
+
+            return response()->json([
+                'message' => $done,
+                'released' => true,
+                'banner' => $sent->sentBanner(),
+                'outcome' => $sent->effectiveOutcome(),
+            ]);
         }
 
         return back()->with('status', __('Решение изменено: :outcome.', ['outcome' => $decision->fresh()->outcomeLabel()]));
@@ -373,18 +380,39 @@ class AiReportController extends Controller
             $decision->update(['edited_message' => mb_substr($edited, 0, 5000)]);
         }
 
-        if (! $this->release->release($decision->fresh(), 'employer')) {
+        try {
+            $released = $this->release->release($decision->fresh(), 'employer');
+        } catch (\Throwable $e) {
+            /*
+             * Отправка сорвалась — говорим об этом прямо, с причиной.
+             * Страница покажет красную плашку и кнопку «Повторить отправку»,
+             * а разговор с Анной не завершится, пока ответ не уйдёт.
+             */
+            report($e);
+            $error = __('Не удалось отправить уведомление: :reason', ['reason' => __('сбой на сервере, попробуйте ещё раз')]);
+
+            return $json ? response()->json(['error' => $error, 'retry' => true], 500) : back()->with('error', $error);
+        }
+
+        if (! $released) {
             $already = __('Ответ кандидату уже отправлен.');
 
-            return $json ? response()->json(['message' => $already, 'released' => true]) : back()->with('status', $already);
+            return $json
+                ? response()->json(['message' => $already, 'released' => true, 'banner' => $decision->fresh()->sentBanner()])
+                : back()->with('status', $already);
         }
 
         $interview->update(['requires_review' => false, 'stage' => 'done']);
 
         if ($json) {
+            $sent = $decision->fresh();
+
             return response()->json([
-                'message' => __('Готово: ответ «:outcome» отправлен кандидату.', ['outcome' => $decision->fresh()->outcomeLabel()]),
+                'message' => __('Готово: ответ «:outcome» отправлен кандидату.', ['outcome' => $sent->outcomeLabel()]),
                 'released' => true,
+                // зелёная плашка — тот же текст, что после перезагрузки страницы
+                'banner' => $sent->sentBanner(),
+                'outcome' => $sent->effectiveOutcome(),
             ]);
         }
 

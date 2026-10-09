@@ -20,7 +20,7 @@ class ResponseController extends Controller
                 ->with('error', __('Сначала заполните анкету работодателя.'));
         }
 
-        $responses = VacancyResponse::with('applicant.user', 'applicant.resume', 'vacancy.city')
+        $responses = VacancyResponse::with('applicant.user', 'applicant.resume', 'vacancy.city', 'aiInterview.latestDecision')
             ->whereIn('vacancy_id', $employer->vacancies()->pluck('id'))
             ->latest()
             ->get();

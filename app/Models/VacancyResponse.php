@@ -25,6 +25,12 @@ class VacancyResponse extends Model
         return $this->belongsTo(Applicant::class);
     }
 
+    /** ИИ-собеседование по этому отклику — для отметки «уведомление отправлено». */
+    public function aiInterview()
+    {
+        return $this->hasOne(AiInterview::class, 'vacancy_response_id');
+    }
+
     public function vacancy()
     {
         return $this->belongsTo(Vacancy::class);

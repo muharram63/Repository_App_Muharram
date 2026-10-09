@@ -2190,5 +2190,21 @@
     "Черновик письма кандидату": "Draft letter to the candidate",
     "Кандидат его ещё не видел. Исправить текст можно в блоке «Ваше решение» — письмо уйдёт только после вашего подтверждения.": "The candidate has not seen it yet. You can edit the text in the Your decision block — the letter is sent only after you confirm.",
     "Можно исправить. Кандидат получит ровно этот текст — и только после вашего подтверждения.": "You can edit it. The candidate will receive exactly this text — and only after you confirm.",
-    "Подробности — в вашем кабинете на сайте:": "Details are in your account on the site:"
+    "Подробности — в вашем кабинете на сайте:": "Details are in your account on the site:",
+    "✓ Уведомление о принятии отправлено кандидату :name — :date": "✓ Acceptance notification sent to candidate :name — :date",
+    "✓ Уведомление об отказе отправлено кандидату :name — :date": "✓ Rejection notification sent to candidate :name — :date",
+    "✓ Уведомление отправлено кандидату :name — :date": "✓ Notification sent to candidate :name — :date",
+    "Принят — уведомление отправлено": "Hired — notification sent",
+    "Отказ — уведомление отправлено": "Rejected — notification sent",
+    "Уведомление отправлено": "Notification sent",
+    "Не удалось отправить уведомление: :reason": "Could not send the notification: :reason",
+    "сбой на сервере, попробуйте ещё раз": "server error, please try again",
+    "у кандидата больше нет аккаунта на сайте": "the candidate no longer has an account on the site",
+    "воспользуйтесь кнопками решения ниже": "use the decision buttons below",
+    "связь прервалась": "the connection was lost",
+    "Повторить отправку": "Retry sending",
+    "Разговор завершён: ответ кандидату отправлен.": "Conversation ended: the answer has been sent to the candidate.",
+    "Открыть обсуждение заново": "Reopen the discussion",
+    "Уведомление отправлено. Разговор завершён.": "Notification sent. The conversation is over.",
+    "Разговор завершён": "Conversation ended"
 }

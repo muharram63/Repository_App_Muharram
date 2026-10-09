@@ -56,6 +56,9 @@
                 ← {{ __('Ко всем кандидатам') }}
             </a>
 
+            {{-- ответ кандидату ушёл — видно сразу, из базы, и после перезагрузки --}}
+            @include('employer.pages.ai-screening._sent-banner', ['decision' => $interview->latestDecision])
+
             @if(session('status'))
                 <div class="cr-note cr-good">{{ session('status') }}</div>
             @endif

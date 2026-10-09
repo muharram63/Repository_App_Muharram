@@ -64,6 +64,7 @@
     .ad-state { font-size: 12px; color: var(--gray-500, #6B7280); min-height: 16px; }
     .ad-status { font-size: 12px; font-weight: 700; color: var(--indigo-600, #4F46E5); }
     .ad-status[data-ai-state="listening"] { color: #16A34A; }
+    .ad-status[data-ai-state="ended"] { color: var(--ink-good, #15803D); }
     .ad-confirm {
         padding: 12px 14px; border-radius: 12px; border: 1px solid #FCD34D;
         background: var(--wash-warn, #FEF3C7); color: var(--ink-warn, #92400E);
@@ -93,7 +94,26 @@
                 </div>
             </div>
 
-            <div class="ad-row" id="adStartRow">
+            @php($alreadySent = (bool) $interview->latestDecision?->isReleased())
+
+            {{-- отправка сорвалась: причина и повтор; разговор не завершается --}}
+            <div class="cr-failed" id="adFailed" role="alert" hidden>
+                <span>✕ <span id="adFailedText"></span></span>
+                <button type="button" class="cr-btn" id="adRetry">↻ {{ __('Повторить отправку') }}</button>
+            </div>
+
+            {{--
+                Ответ кандидату отправлен — разговор завершён. При повторном
+                открытии страницы Анна не начинает заново: работодатель сразу
+                видит итог. Обсудить ещё раз можно, но новая отправка без явного
+                нового подтверждения не случится.
+            --}}
+            <div class="ad-row" id="adEnded" @unless($alreadySent) hidden @endunless>
+                <span class="ad-state" style="font-weight:700; color:var(--ink,#111827)">{{ __('Разговор завершён: ответ кандидату отправлен.') }}</span>
+                <button type="button" class="cr-btn cr-btn-ghost" id="adReopen">{{ __('Открыть обсуждение заново') }}</button>
+            </div>
+
+            <div class="ad-row" id="adStartRow" @if($alreadySent) hidden @endif>
                 <button type="button" class="cr-btn" id="adStart">▶ {{ __('Начать обсуждение') }}</button>
                 <span class="ad-state">{{ __('Анна кратко доложит о кандидате.') }}</span>
             </div>
@@ -437,10 +457,12 @@
 
             if (!target) {
                 executing = false;
-                say(@json(__('Не получилось отправить — воспользуйтесь кнопками решения ниже.')));
+                showFailure(@json(__('Не удалось отправить уведомление: :reason', ['reason' => __('воспользуйтесь кнопками решения ниже')])));
 
                 return;
             }
+
+            hideFailure();
 
             const body = new FormData(target);
             if (!viaApprove) {
@@ -461,28 +483,115 @@
 
                     if (!res.ok) {
                         yesBtn.disabled = false;
-                        say(res.data.error || res.data.message || @json(__('Не получилось отправить — попробуйте ещё раз.')));
-                        if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
+                        showFailure(res.data.error || res.data.message
+                            || @json(__('Не удалось отправить уведомление: :reason', ['reason' => __('сбой на сервере, попробуйте ещё раз')])));
 
                         return;
                     }
 
                     sent = true;
                     cancel();
-
-                    const done = res.data.message || @json(__('Готово: ответ отправлен кандидату.'));
-                    bubble('ai', done);
-                    history.push({role: 'ai', text: done});
-                    say(@json(__('Обновите страницу, чтобы увидеть отправленное письмо в отчёте.')));
-                    speak(done, afterSpeech);
+                    finishAfterSend(res.data);
                 })
                 .catch(function () {
                     executing = false;
                     yesBtn.disabled = false;
-                    say(@json(__('Связь прервалась — попробуйте ещё раз.')));
-                    if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
+                    showFailure(@json(__('Не удалось отправить уведомление: :reason', ['reason' => __('связь прервалась')])));
                 });
         }
+
+        // ==================== отправлено: разговор завершён ====================
+
+        const failedBox = document.getElementById('adFailed');
+        const failedText = document.getElementById('adFailedText');
+        const endedRow = document.getElementById('adEnded');
+
+        /*
+         * Отправка сорвалась — красная плашка с причиной и «Повторить».
+         * Разговор не завершается: пока ответ не ушёл, решение не принято.
+         */
+        function showFailure(message) {
+            failedText.textContent = message;
+            failedBox.hidden = false;
+            say('');
+            if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
+        }
+
+        function hideFailure() { failedBox.hidden = true; }
+
+        document.getElementById('adRetry').addEventListener('click', execute);
+
+        /*
+         * Уведомление ушло — Анна один раз говорит об этом и замолкает совсем.
+         *
+         * Раньше после отправки разговор продолжался: микрофон снова слушал,
+         * Анна отвечала, и было непонятно, ушёл ли ответ. Теперь — зелёная
+         * плашка с решением, одна фраза «Уведомление отправлено. Разговор
+         * завершён», после неё микрофон, распознавание и озвучка выключены, а
+         * поле и кнопки неактивны — продолжить случайно нельзя.
+         */
+        function finishAfterSend(data) {
+            hideFailure();
+
+            const banner = document.getElementById('crSentBanner');
+            if (banner && data.banner) {
+                document.getElementById('crSentText').textContent = data.banner.replace(/^✓\s*/, '');
+                banner.hidden = false;
+            }
+
+            const farewell = @json(__('Уведомление отправлено. Разговор завершён.'));
+            bubble('ai', farewell);
+            history.push({role: 'ai', text: farewell});
+
+            // голос больше не нужен: после прощания микрофон не включится
+            voiceOn = false;
+            stopListening();
+            lockTalk(true);
+
+            speak(farewell, endConversation);
+        }
+
+        /** Разговор завершён: всё выключено, статус — «Разговор завершён». */
+        function endConversation() {
+            voiceOn = false;
+            stopListening();
+            silence();
+            lockTalk(true);
+            say('');
+            // поле и микрофон остаются видны, но неактивны: под микрофоном
+            // тот же статус «Разговор завершён», что и у аватара
+            endedRow.hidden = false;
+            if (window.AiAvatar) { window.AiAvatar.setState('ended'); }
+        }
+
+        /** Поле, кнопки, подсказки и микрофон — неактивны, пока разговор завершён. */
+        function lockTalk(locked) {
+            [input, send, mic].concat(Array.from(talk.querySelectorAll('[data-ask]'))).forEach(function (node) {
+                node.disabled = locked;
+            });
+            mic.classList.remove('is-on');
+        }
+
+        /*
+         * «Открыть обсуждение заново» — поговорить ещё раз. Новой отправки без
+         * нового явного подтверждения не будет: ответ уже ушёл (sent), и
+         * подтверждение больше не предлагается — изменить решение можно только
+         * формой «Ваше решение».
+         */
+        document.getElementById('adReopen').addEventListener('click', function () {
+            endedRow.hidden = true;
+            lockTalk(false);
+            if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
+
+            if (window.AiAdvisorActive) {
+                talk.hidden = false;
+            } else {
+                startRow.hidden = false;
+            }
+        });
+
+        // ответ отправлен раньше — сразу итог, Анна разговор не начинает
+        if (sent && window.AiAvatar) { window.AiAvatar.setState('ended'); }
 
         const yesBtn = document.getElementById('adYes');
         yesBtn.addEventListener('click', execute);

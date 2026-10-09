@@ -128,6 +128,45 @@ class AiDecision extends Model
     }
 
     /**
+     * Зелёная плашка «уведомление отправлено» — из базы, а не из страницы.
+     *
+     * Работодатель должен с одного взгляда видеть, что ответ ушёл и какой:
+     * приём и отказ называются по-разному. Плашка держится и после
+     * перезагрузки, потому что собирается из released_at и исхода решения.
+     */
+    public function sentBanner(): ?string
+    {
+        if (! $this->isReleased()) {
+            return null;
+        }
+
+        $replace = [
+            'name' => $this->interview?->applicant?->user?->name ?? __('Кандидат'),
+            'date' => $this->released_at->format('d.m.Y, H:i'),
+        ];
+
+        return match ($this->effectiveOutcome()) {
+            'passed' => __('✓ Уведомление о принятии отправлено кандидату :name — :date', $replace),
+            'rejected' => __('✓ Уведомление об отказе отправлено кандидату :name — :date', $replace),
+            default => __('✓ Уведомление отправлено кандидату :name — :date', $replace),
+        };
+    }
+
+    /** Короткая отметка для списка кандидатов. */
+    public function sentBadge(): ?string
+    {
+        if (! $this->isReleased()) {
+            return null;
+        }
+
+        return match ($this->effectiveOutcome()) {
+            'passed' => __('Принят — уведомление отправлено'),
+            'rejected' => __('Отказ — уведомление отправлено'),
+            default => __('Уведомление отправлено'),
+        };
+    }
+
+    /**
      * Что сейчас сказано кандидату.
      *
      * Изменил решение работодатель — его письмо, иначе письмо ИИ. Без этого
