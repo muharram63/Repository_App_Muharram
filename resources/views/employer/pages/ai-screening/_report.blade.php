@@ -453,15 +453,27 @@
         @endif
     </div>
 
-    {{-- ==================== что сказали кандидату ==================== --}}
-    @if($decision?->message_to_candidate)
+    {{--
+        ==================== письмо кандидату ====================
+        Пока ответ не отправлен — это черновик: кандидат его ещё не видел.
+        Раньше он шёл под заголовком «Что получил кандидат», хотя кандидат не
+        получил ничего. После отправки — то, что ушло на самом деле.
+    --}}
+    @if($decision?->candidateMessage())
         <div class="rp-card">
-            <h2>{{ __('Что получил кандидат') }}</h2>
-            <p class="rp-hint">{{ __('Сохранено дословно: формулировки со временем меняются, а сказанное человеку должно быть воспроизводимо.') }}</p>
-            <div class="rp-text">{{ $decision->message_to_candidate }}</div>
-            @if($decision->isOverridden() && $decision->override_message)
-                <h2 style="margin-top:14px">{{ __('После вашего решения кандидат получил') }}</h2>
-                <div class="rp-text">{{ $decision->override_message }}</div>
+            @if($decision->isReleased())
+                <h2>{{ __('Что получил кандидат') }}</h2>
+                <p class="rp-hint">{{ __('Сохранено дословно: формулировки со временем меняются, а сказанное человеку должно быть воспроизводимо.') }}
+                    {{ __('Отправлено') }} {{ $decision->released_at->format('d.m.Y H:i') }}.</p>
+                <div class="rp-text">{{ $decision->candidateMessage() }}</div>
+                @if($decision->message_to_candidate && $decision->candidateMessage() !== $decision->message_to_candidate)
+                    <h2 style="margin-top:14px">{{ __('Черновик, который предлагал ИИ') }}</h2>
+                    <div class="rp-text">{{ $decision->message_to_candidate }}</div>
+                @endif
+            @else
+                <h2>{{ __('Черновик письма кандидату') }}</h2>
+                <p class="rp-hint">{{ __('Кандидат его ещё не видел. Исправить текст можно в блоке «Ваше решение» — письмо уйдёт только после вашего подтверждения.') }}</p>
+                <div class="rp-text">{{ $decision->candidateMessage() }}</div>
             @endif
         </div>
     @endif

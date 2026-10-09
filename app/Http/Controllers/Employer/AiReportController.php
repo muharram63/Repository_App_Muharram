@@ -331,6 +331,9 @@ class AiReportController extends Controller
                 UserNotification::text('Решение по вакансии «:title» принял работодатель.', ['title' => $vacancy->title]),
                 route('applicant.ai.result', $interview),
             );
+
+            // пересмотренное решение — и на почту, если она настроена
+            \App\Support\CandidateMail::decision($decision->fresh());
         }
 
         $done = __('Готово: ответ «:outcome» отправлен кандидату.', ['outcome' => $decision->fresh()->outcomeLabel()]);

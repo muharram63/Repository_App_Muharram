@@ -51,6 +51,9 @@ class DecisionRelease
             route('applicant.ai.result', $interview),
         );
 
+        // и на почту — если в .env настроен SMTP; иначе только уведомление
+        \App\Support\CandidateMail::decision($decision->fresh());
+
         return true;
     }
 

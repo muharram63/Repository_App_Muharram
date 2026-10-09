@@ -138,6 +138,36 @@
 
                 {{-- ИИ советуется: согласны — один щелчок, и кандидат получает ответ --}}
                 @php $pending = $interview->latestDecision && ! $interview->latestDecision->isReleased(); @endphp
+
+                {{--
+                    Черновик письма кандидату — можно исправить перед отправкой.
+                    Под каждый итог свой текст: под рекомендацию ИИ — его письмо,
+                    под другой итог — шаблон. Выбрали другой итог — текст сменится,
+                    если вы его ещё не правили. Уходит то, что в поле.
+                --}}
+                @if($interview->awaitsEmployer() && ! ($interview->latestDecision?->isReleased()))
+                    @php
+                        $draftDecision = $interview->latestDecision;
+                        $draftReasons = $draftDecision?->outcome === 'rejected' ? ($draftDecision->reasons ?? []) : [];
+                        $drafts = [
+                            'passed' => $draftDecision?->effectiveOutcome() === 'passed' && $draftDecision->candidateMessage()
+                                ? $draftDecision->candidateMessage()
+                                : \App\Services\Scoring\DecisionMessage::template('passed', $interview, []),
+                            'rejected' => $draftDecision?->effectiveOutcome() === 'rejected' && $draftDecision->candidateMessage()
+                                ? $draftDecision->candidateMessage()
+                                : \App\Services\Scoring\DecisionMessage::template('rejected', $interview, $draftReasons),
+                        ];
+                        $draftOutcome = in_array($draftDecision?->effectiveOutcome(), ['passed', 'rejected'], true)
+                            ? $draftDecision->effectiveOutcome() : 'passed';
+                    @endphp
+                    <div class="cr-field" style="margin-bottom:12px">
+                        <label for="crDraft">{{ __('Черновик письма кандидату') }}</label>
+                        <textarea id="crDraft" rows="6" maxlength="5000" style="width:100%; font:inherit; font-size:14px; padding:10px 12px; border-radius:10px; border:1px solid var(--gray-300,#D1D5DB); background:var(--white,#fff); color:var(--ink,#111827)"
+                                  data-draft-passed="{{ $drafts['passed'] }}" data-draft-rejected="{{ $drafts['rejected'] }}"
+                                  data-outcome="{{ $draftOutcome }}">{{ $drafts[$draftOutcome] }}</textarea>
+                        <span class="cr-hint">{{ __('Можно исправить. Кандидат получит ровно этот текст — и только после вашего подтверждения.') }}</span>
+                    </div>
+                @endif
                 @if($pending && in_array($interview->latestDecision->outcome, ['passed', 'rejected'], true))
                     <form method="POST" id="crApprove" action="{{ route('employer.ai.candidate.approve', [$vacancy, $interview]) }}"
                           style="margin-bottom:12px">
@@ -178,6 +208,62 @@
                     </div>
                 </form>
                 @endunless
+
+                {{--
+                    Черновик письма: под каждый итог — свой текст, правки помнятся
+                    для каждого итога отдельно. «Согласен с ИИ» отправляет черновик
+                    итога ИИ, «Изменить решение» — черновик выбранного итога. Тот же
+                    текст берёт и Анна, когда решение подтверждают голосом.
+                --}}
+                <script>
+                    (function () {
+                        const draft = document.getElementById('crDraft');
+                        if (!draft) { return; }
+
+                        const texts = {passed: draft.dataset.draftPassed, rejected: draft.dataset.draftRejected};
+                        let shown = draft.dataset.outcome;
+                        const select = document.getElementById('outcome');
+
+                        function show(outcome) {
+                            texts[shown] = draft.value;
+                            shown = outcome;
+                            draft.value = texts[outcome] || '';
+                        }
+
+                        if (select) {
+                            select.value = shown;
+                            select.addEventListener('change', function () { show(select.value); });
+                        }
+
+                        draft.addEventListener('input', function () { texts[shown] = draft.value; });
+
+                        window.CrDraft = {
+                            get: function (outcome) {
+                                texts[shown] = draft.value;
+
+                                return texts[outcome] || '';
+                            },
+                        };
+
+                        // в обычную отправку формы — текст письма под её итог
+                        function attach(form, outcome) {
+                            if (!form) { return; }
+                            form.addEventListener('submit', function () {
+                                let field = form.querySelector('input[name=message]');
+                                if (!field) {
+                                    field = document.createElement('input');
+                                    field.type = 'hidden';
+                                    field.name = 'message';
+                                    form.appendChild(field);
+                                }
+                                field.value = window.CrDraft.get(outcome());
+                            });
+                        }
+
+                        attach(document.getElementById('crApprove'), function () { return draft.dataset.outcome; });
+                        attach(document.getElementById('crOverride'), function () { return select ? select.value : shown; });
+                    })();
+                </script>
             </div>
 
             <div class="cr-actions">

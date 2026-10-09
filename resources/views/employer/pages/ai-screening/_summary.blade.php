@@ -12,22 +12,35 @@
     $recommendation = $decision?->outcome;
     $released = $decision?->isReleased();
 
-    // насколько закрыты требования: найдено — полностью, частично — наполовину,
-    // с весом каждого критерия
-    $byCriterion = $checks->keyBy('criterion_id');
-    $weighted = 0;
-    $weights = 0;
-    foreach ($criteria as $criterion) {
-        $check = $byCriterion->get($criterion->id);
-        $value = match ($check?->status) {
-            'found', 'confirmed_in_interview' => 1,
-            'partial' => 0.5,
-            default => 0,
-        };
-        $weighted += $value * $criterion->weight;
-        $weights += $criterion->weight;
+    // соответствие вакансии: по профессии, по навыкам и общее — считает код
+    // по сверке требований (найдено — целиком, частично — наполовину, с весом)
+    $percent = \App\Support\MatchPercent::compute($criteria, $checks);
+    $match = $percent['overall'];
+
+    // портрет кандидата из разбора до собеседования
+    $analysis = $interview->analysis ?? [];
+
+    /*
+     * Обоснование рекомендации — из того, на чём решение и стоит: итоговый
+     * балл и пороги вакансии, основание решения и чего не хватило. Собирает
+     * код, а не модель: обоснование должно совпадать с расчётом дословно.
+     */
+    $why = [];
+    if ($decision) {
+        if ($decision->total !== null) {
+            $why[] = __('Итоговый балл :total из 100 при пороге приёма :accept и пороге отказа :reject.', [
+                'total' => $decision->total,
+                'accept' => $interview->config?->threshold_accept ?? '—',
+                'reject' => $interview->config?->threshold_reject ?? '—',
+            ]);
+        }
+        if ($decision->gateLabel()) {
+            $why[] = __('Основание:').' '.$decision->gateLabel().'.';
+        }
+        if ($decision->reasons) {
+            $why[] = __('Чего не хватило:').' '.implode(', ', $decision->reasons).'.';
+        }
     }
-    $match = $weights > 0 ? (int) round($weighted / $weights * 100) : null;
 
     $strengths = $checks->filter(fn ($c) => $c->isSatisfied());
     $gaps = $checks->reject(fn ($c) => $c->isSatisfied());
@@ -77,9 +90,9 @@
         } }}</div>
         <div style="flex:1; min-width:220px">
             <b>{{ match($recommendation) {
-                'passed' => __('Рекомендую принять кандидата'),
-                'rejected' => __('Рекомендую отказать — вежливо, с причиной'),
-                'manual_review' => __('Не берусь решать — нужно ваше решение'),
+                'passed' => __('Рекомендую принять'),
+                'rejected' => __('Рекомендую отказать'),
+                'manual_review' => __('Нужно дополнительное собеседование'),
                 default => match (true) {
                     ! $interview->consented() => __('Кандидат ещё не дал согласие на собеседование'),
                     $interview->stage === 'documents' => __('Кандидат загружает документы'),
@@ -108,13 +121,63 @@
         </div>
     </div>
 
-    @if($match !== null)
+    {{-- обоснование рекомендации: из расчёта, слово в слово --}}
+    @if($why)
         <div>
-            <div class="rp-line" style="justify-content:space-between">
-                <span style="font-size:13px; font-weight:600">{{ __('Соответствие требованиям вакансии') }}</span>
-                <b style="font-size:15px">{{ $match }}%</b>
-            </div>
-            <div class="sm-meter"><i style="width: {{ $match }}%; background: {{ $match >= 70 ? '#22C55E' : ($match >= 40 ? '#F59E0B' : '#EF4444') }}"></i></div>
+            <div style="font-size:13px; font-weight:700; margin-bottom:4px">{{ __('Обоснование') }}</div>
+            <ul class="sm-list">
+                @foreach($why as $line)<li>{{ $line }}</li>@endforeach
+            </ul>
+        </div>
+    @endif
+
+    {{-- соответствие вакансии: профессия, навыки и общее --}}
+    @if($match !== null)
+        <div style="display:flex; flex-direction:column; gap:8px">
+            @foreach([
+                'profession' => __('Соответствие по профессии'),
+                'skills' => __('Соответствие по навыкам'),
+                'overall' => __('Общее соответствие вакансии'),
+            ] as $key => $label)
+                <div>
+                    <div class="rp-line" style="justify-content:space-between">
+                        <span style="font-size:13px; font-weight:{{ $key === 'overall' ? 700 : 600 }}">{{ $label }}</span>
+                        @if($percent[$key] !== null)
+                            <b style="font-size:15px">{{ $percent[$key] }}%</b>
+                        @else
+                            <span class="rp-hint">{{ __('критерии не размечены') }}</span>
+                        @endif
+                    </div>
+                    @if($percent[$key] !== null)
+                        <div class="sm-meter"><i style="width: {{ $percent[$key] }}%; background: {{ $percent[$key] >= 70 ? '#22C55E' : ($percent[$key] >= 40 ? '#F59E0B' : '#EF4444') }}"></i></div>
+                    @endif
+                </div>
+            @endforeach
+            <span class="rp-hint">{{ __('По сверке требований вакансии с документами и ответами: подтверждено — полностью, частично — наполовину, с весом каждого критерия.') }}</span>
+        </div>
+    @endif
+
+    {{-- портрет кандидата из разбора до собеседования --}}
+    @if(filled($analysis['specialization'] ?? null) || ! empty($analysis['strengths']) || ! empty($analysis['gaps']))
+        <div class="sm-grid">
+            @if(filled($analysis['specialization'] ?? null))
+                <div>
+                    <div style="font-size:13px; font-weight:700; margin-bottom:6px">🎯 {{ __('Специализация') }}</div>
+                    <div style="font-size:13px">{{ $analysis['specialization'] }}</div>
+                </div>
+            @endif
+            @if(! empty($analysis['strengths']))
+                <div>
+                    <div style="font-size:13px; font-weight:700; margin-bottom:6px">💪 {{ __('Сильные стороны по документам') }}</div>
+                    <ul class="sm-list">@foreach($analysis['strengths'] as $item)<li>{{ $item }}</li>@endforeach</ul>
+                </div>
+            @endif
+            @if(! empty($analysis['gaps']))
+                <div>
+                    <div style="font-size:13px; font-weight:700; margin-bottom:6px">🔍 {{ __('Пробелы — что проверить') }}</div>
+                    <ul class="sm-list">@foreach($analysis['gaps'] as $item)<li>{{ $item }}</li>@endforeach</ul>
+                </div>
+            @endif
         </div>
     @endif
 

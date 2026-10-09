@@ -625,11 +625,12 @@ test('после переопределения кандидат получае�
         ->assertSee('Поздравляем')
         ->assertDontSee('К сожалению…');
 
-    // работодатель видит оба письма
+    // работодатель видит оба письма: что ушло кандидату и что предлагал ИИ
     $this->actingAs($employerUser)
         ->get(route('employer.ai.candidate', [$vacancy, $interview]))
         ->assertSee('К сожалению…')
-        ->assertSee(__('После вашего решения кандидат получил'));
+        ->assertSee(__('Что получил кандидат'))
+        ->assertSee(__('Черновик, который предлагал ИИ'));
 });
 
 test('пока собеседование идёт, решение не принимается', function () {
@@ -662,8 +663,8 @@ test('отчёт открывается рекомендацией ИИ, соо�
         ->get(route('employer.ai.candidate', [$vacancy, $interview]))
         ->assertOk()
         ->assertSee(__('Рекомендация ИИ'))
-        ->assertSee(__('Рекомендую принять кандидата'))
-        ->assertSee(__('Соответствие требованиям вакансии'))
+        ->assertSee(__('Рекомендую принять'))
+        ->assertSee(__('Общее соответствие вакансии'))
         // PHP найдено (60), SQL нет (40) — 60%
         ->assertSee('60%')
         ->assertSee(__('Резюме кандидата'))
@@ -1235,4 +1236,99 @@ test('своё решение с исправленным письмом', funct
         ->assertJsonPath('released', true);
 
     expect($interview->latestDecision->fresh()->candidateMessage())->toBe('Приглашаем вас на встречу в понедельник.');
+});
+
+// ==================== отчёт для HR: проценты, рекомендация, черновик, почта ====================
+
+test('проценты соответствия: по профессии, по навыкам и общий — считает код', function () {
+    [$vacancy, $interview] = reportReady();
+    AiInterviewCriterion::where('vacancy_id', $vacancy->id)->where('key', 'php')->update(['basis' => 'title', 'weight' => 60]);
+    AiInterviewCriterion::where('vacancy_id', $vacancy->id)->where('key', 'sql')->update(['basis' => 'skills', 'weight' => 40]);
+
+    $criteria = AiInterviewCriterion::where('vacancy_id', $vacancy->id)->confirmed()->get();
+
+    // php найдено (1), sql не найдено (0)
+    expect(App\Support\MatchPercent::compute($criteria, $interview->requirementChecks()->get()))
+        ->toBe(['profession' => 100, 'skills' => 0, 'overall' => 60]);
+
+    // частично — наполовину
+    AiRequirementCheck::where('ai_interview_id', $interview->id)->where('requirement', 'SQL')->update(['status' => 'partial']);
+    expect(App\Support\MatchPercent::compute($criteria, $interview->requirementChecks()->get())['skills'])->toBe(50);
+});
+
+test('сводка: рекомендация словами, обоснование из расчёта и три процента', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    AiInterviewCriterion::where('vacancy_id', $vacancy->id)->where('key', 'php')->update(['basis' => 'title']);
+    AiInterviewCriterion::where('vacancy_id', $vacancy->id)->where('key', 'sql')->update(['basis' => 'skills']);
+    $interview->update(['analysis' => $interview->analysis + [
+        'specialization' => 'бэкенд, платежи', 'strengths' => ['Laravel в банке'], 'gaps' => ['очереди'],
+    ]]);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Рекомендую отказать'))
+        ->assertSee(__('Итоговый балл :total из 100 при пороге приёма :accept и пороге отказа :reject.', [
+            'total' => 62, 'accept' => $interview->config->threshold_accept, 'reject' => $interview->config->threshold_reject,
+        ]))
+        ->assertSee(__('Соответствие по профессии'))
+        ->assertSee(__('Соответствие по навыкам'))
+        ->assertSee(__('Общее соответствие вакансии'))
+        ->assertSee('бэкенд, платежи')
+        ->assertSee('очереди');
+});
+
+test('ручная проверка называется «Нужно дополнительное собеседование»', function () {
+    [$vacancy, $interview, $employerUser] = reportReady(outcome: 'manual_review');
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Нужно дополнительное собеседование'));
+});
+
+test('до отправки — «Черновик письма кандидату» с полем для правки, после — «Что получил кандидат»', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Черновик письма кандидату'))
+        ->assertSee('id="crDraft"', false)
+        ->assertDontSee(__('Что получил кандидат'));
+
+    $interview->latestDecision->update(['released_at' => now(), 'release_source' => 'employer']);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Что получил кандидат'))
+        ->assertDontSee('id="crDraft"', false);
+});
+
+test('почта не настроена — письмо не уходит, уведомление на сайте уходит', function () {
+    Illuminate\Support\Facades\Mail::fake();
+    config(['mail.default' => 'log']);
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $this->actingAs($employerUser)->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]))->assertOk();
+
+    Illuminate\Support\Facades\Mail::assertNothingSent();
+    expect(UserNotification::where('user_id', $interview->applicant->user_id)->where('type', 'response_status')->count())->toBe(1);
+});
+
+test('почта настроена — письмо с текстом черновика уходит кандидату один раз', function () {
+    Illuminate\Support\Facades\Mail::fake();
+    config(['mail.default' => 'smtp']);
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $approve = fn () => $this->actingAs($employerUser)->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]), [
+        'message' => 'Спасибо за время! Мы выбрали другого кандидата.',
+    ]);
+
+    $approve()->assertOk();
+    $approve()->assertOk();
+
+    Illuminate\Support\Facades\Mail::assertSent(App\Mail\DecisionLetter::class, 1);
+    Illuminate\Support\Facades\Mail::assertSent(App\Mail\DecisionLetter::class, fn ($mail) => $mail->hasTo($interview->applicant->user->email)
+        && $mail->text === 'Спасибо за время! Мы выбрали другого кандидата.');
 });

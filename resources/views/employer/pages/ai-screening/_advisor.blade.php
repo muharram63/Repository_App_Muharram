@@ -446,10 +446,9 @@
             if (!viaApprove) {
                 body.set('outcome', wanted);
                 if (!body.get('note')) { body.set('note', @json(__('Решение принято в разговоре с ИИ-помощником.'))); }
-                // письмо — то, что работодатель поправил в черновике
-                const draft = document.getElementById('crDraft');
-                if (draft) { body.set('message', draft.value); }
             }
+            // письмо — черновик под этот итог, с правками работодателя
+            if (window.CrDraft) { body.set('message', window.CrDraft.get(wanted)); }
 
             fetch(target.action, {
                 method: 'POST',
