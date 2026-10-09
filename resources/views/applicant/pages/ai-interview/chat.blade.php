@@ -99,8 +99,10 @@
         .ch-start h2 { font-size: 15px; }
         .ch-voice-toggle.is-on { background: var(--green, #16A34A); }
         .ch-voice-state { font-size: 13px; color: var(--gray-500); }
-        .ch-voice.is-listening .ch-voice-state { color: var(--green, #16A34A); font-weight: 600; }
-        .ch-voice.is-listening .ch-voice-state::before {
+        /* статус бота — тот же текст, что у аватара (data-ai-state) */
+        .ch-voice-status { font-size: 13px; font-weight: 700; color: var(--indigo-600); }
+        .ch-voice-status[data-ai-state="listening"] { color: var(--green, #16A34A); }
+        .ch-voice-status[data-ai-state="listening"]::before {
             content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px;
             border-radius: 50%; background: var(--green, #16A34A); vertical-align: middle;
             animation: chPulse 1.2s ease-in-out infinite;
@@ -126,6 +128,8 @@
                 @include('partials.ai-avatar', [
                     'avatarName' => $assistantName,
                     'avatarRole' => __($assistantRole).', ' . __('ИИ'),
+                    // один голос на всё собеседование
+                    'voiceKey' => 'interview-'.$interview->id,
                 ])
 
                 <div class="ch-panel">
@@ -595,8 +599,9 @@
             paintLeft();
             scroll();
 
-            // кандидат ответил — аватар слушает, пока идёт обработка
-            if (window.AiAvatar) { window.AiAvatar.setState('listening'); }
+            // ответ принят — бот думает над следующей репликой (не «слушает»:
+            // микрофон уже выключен, и подписи не должны говорить обратное)
+            if (window.AiAvatar) { window.AiAvatar.setState('thinking'); }
 
             ask(urls.answer, {text: value, question_id: questionId}, function () {
                 // ответ не ушёл — возвращаем его в поле и убираем из переписки

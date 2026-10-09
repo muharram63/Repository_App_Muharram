@@ -1123,7 +1123,10 @@ test('голос работодателя: «да» — только ясное 
     $this->actingAs($employerUser)
         ->get(route('employer.ai.candidate', [$vacancy, $interview]))
         ->assertOk()
-        ->assertSee('function answerKind(text)', false)
+        // согласие понимается и в длинной фразе («Да, отправляй уведомление кандидату»),
+        // а фраза о другом исходе согласием не считается
+        ->assertSee('function answerKind(text, action)', false)
+        ->assertSee('const SEND = /^(отправ|подтвержд', false)
         ->assertDontSee('/^(да|ҳа|ha|yes|подтверждаю|отправ|давай|ок|okay|ok)/', false)
         ->assertSee('function fallbackToServer()', false)
         // реплика ушла — микрофон и старая озвучка замолкают
@@ -1164,4 +1167,72 @@ test('без запасной модели предупреждения нет',
         ->assertOk()
         ->assertSee(__('Оценивала модель:'))
         ->assertDontSee(__('Часть оценок поставила запасная модель — основная была перегружена или исчерпала дневной лимит. Её разбор проще: такие ответы стоит просмотреть самому.'));
+});
+
+// ==================== подтверждение отправки: один раз ====================
+
+test('ответ уже отправлен — модель не может снова предложить отправку', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->latestDecision->update(['released_at' => now(), 'release_source' => 'employer']);
+
+    app()->instance(App\Services\Ai\HiringAdvisor::class, new class implements App\Services\Ai\HiringAdvisor
+    {
+        public function available(): bool { return true; }
+
+        public function advise(AiInterview $interview, array $history, string $message, string $locale): array
+        {
+            return ['reply' => 'Отправить кандидату ответ?', 'action' => 'reject'];
+        }
+    });
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.advise', [$vacancy, $interview]), ['message' => 'Да, отправляй отказ'])
+        ->assertOk()
+        ->assertJsonPath('action', 'none')
+        ->assertJsonPath('released', true);
+});
+
+test('подтверждение из разговора отправляет ответ один раз и отвечает странице без перезагрузки', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $approve = fn () => $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]));
+
+    $approve()->assertOk()->assertJsonPath('released', true)
+        ->assertJsonPath('message', __('Готово: ответ «:outcome» отправлен кандидату.', ['outcome' => $interview->latestDecision->fresh()->outcomeLabel()]));
+
+    // второе «да» ничего не отправляет
+    $approve()->assertOk()->assertJsonPath('message', __('Ответ кандидату уже отправлен.'));
+
+    expect(UserNotification::where('user_id', $interview->applicant->user_id)->where('type', 'response_status')->count())->toBe(1);
+});
+
+test('исправленный черновик письма уходит кандидату вместо текста ИИ', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.approve', [$vacancy, $interview]), ['message' => 'Спасибо! Мы решили продолжить с другим кандидатом.'])
+        ->assertOk();
+
+    $decision = $interview->latestDecision->fresh();
+
+    expect($decision->candidateMessage())->toBe('Спасибо! Мы решили продолжить с другим кандидатом.')
+        // текст ИИ сохранён для истории
+        ->and($decision->message_to_candidate)->toBe('Спасибо за собеседование. К сожалению…');
+});
+
+test('своё решение с исправленным письмом', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->update(['stage' => 'decision']);
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.override', [$vacancy, $interview]), [
+            'outcome' => 'passed', 'message' => 'Приглашаем вас на встречу в понедельник.',
+        ])
+        ->assertOk()
+        ->assertJsonPath('released', true);
+
+    expect($interview->latestDecision->fresh()->candidateMessage())->toBe('Приглашаем вас на встречу в понедельник.');
 });

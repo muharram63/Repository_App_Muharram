@@ -2153,5 +2153,16 @@
     "основная": "main",
     ":count оценка|:count оценки|:count оценок": ":count score|:count scores",
     "Часть оценок поставила запасная модель — основная была перегружена или исчерпала дневной лимит. Её разбор проще: такие ответы стоит просмотреть самому.": "Some scores were given by the fallback model — the main one was overloaded or used up its daily limit. Its review is simpler: check those answers yourself.",
-    "Оценено запасной моделью :model": "Scored by the fallback model :model"
+    "Оценено запасной моделью :model": "Scored by the fallback model :model",
+    "Отвечайте — отправлю сам, когда вы замолчите.": "Go ahead and answer — I will send it when you stop speaking.",
+    "Ожидание": "Waiting",
+    "Думаю": "Thinking",
+    "Слушаю вас": "Listening",
+    "Говорю": "Speaking",
+    "Не получилось отправить — воспользуйтесь кнопками решения ниже.": "Could not send — use the decision buttons below.",
+    "Не получилось отправить — попробуйте ещё раз.": "Could not send — please try again.",
+    "Готово: ответ отправлен кандидату.": "Done: the answer has been sent to the candidate.",
+    "Обновите страницу, чтобы увидеть отправленное письмо в отчёте.": "Refresh the page to see the sent letter in the report.",
+    "Говорите — отправлю сам, когда вы замолчите.": "Go ahead — I will send it when you stop speaking.",
+    "Готово: ответ «:outcome» отправлен кандидату.": "Done: the answer “:outcome” has been sent to the candidate."
 }

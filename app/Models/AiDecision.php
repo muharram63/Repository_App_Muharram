@@ -34,6 +34,8 @@ class AiDecision extends Model
         'override_outcome',
         'override_note',
         'override_message',
+        // письмо, исправленное работодателем перед отправкой
+        'edited_message',
         'released_at',
         'release_source',
     ];
@@ -48,6 +50,7 @@ class AiDecision extends Model
         'message_to_candidate' => 'encrypted',
         'override_note' => 'encrypted',
         'override_message' => 'encrypted',
+        'edited_message' => 'encrypted',
         'requires_manual_review' => 'boolean',
         'overridden_at' => 'datetime',
         'released_at' => 'datetime',
@@ -133,6 +136,11 @@ class AiDecision extends Model
      */
     public function candidateMessage(): ?string
     {
+        // работодатель поправил черновик — уходит его текст
+        if (filled($this->edited_message)) {
+            return $this->edited_message;
+        }
+
         return $this->isOverridden() && $this->override_message
             ? $this->override_message
             : $this->message_to_candidate;

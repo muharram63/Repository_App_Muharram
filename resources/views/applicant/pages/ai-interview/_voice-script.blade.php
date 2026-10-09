@@ -17,6 +17,8 @@
 
             // сколько тишины после речи считаем «договорил»
             const SILENCE_MS = 2500;
+            // браузер сам сказал «фраза закончилась» — ждём лишь короткую паузу
+            const SETTLE_MS = 1200;
             // дольше трёх минут один ответ не записываем
             const MAX_RECORD_MS = 180000;
             const PREF = 'ai-voice-mode';
@@ -66,7 +68,22 @@
             let proc = null;
             let chunks = [];
 
+            // Подсказка и ошибки — отдельной строкой. Сам статус («Слушаю вас»,
+            // «Думаю») пишет только аватар: у него единый источник состояния.
             function say(message) { stateOut.textContent = message || ''; }
+
+            /** Статус бота — только через аватар, чтобы подписи не расходились. */
+            function setBotState(next) {
+                if (window.AiAvatar) { window.AiAvatar.setState(next); }
+            }
+
+            // Последний результат распознавания был финальным: браузер сам
+            // решил, что фраза закончилась, — долго ждать тишины не нужно.
+            let lastFinal = false;
+            // браузер сообщил, что речь закончилась
+            let speechEnded = false;
+            // микрофон действительно слышит: только тогда «Слушаю вас»
+            let micLive = false;
 
             function paint() {
                 toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -74,9 +91,17 @@
                 toggleLabel.textContent = on
                     ? @json(__('Голосовой режим включён'))
                     : @json(__('Включить голосовой режим'));
-                box.classList.toggle('is-listening', listening);
+                box.classList.toggle('is-listening', listening && micLive);
                 sendNow.hidden = !listening;
                 levelWrap.hidden = !(listening && engine === 'server');
+            }
+
+            /** Микрофон включился и слышит — теперь бот действительно слушает. */
+            function micStarted() {
+                if (!listening) { return; }
+                micLive = true;
+                paint();
+                setBotState('listening');
             }
 
             if (!engine) {
@@ -101,12 +126,24 @@
                 watch = setInterval(function () {
                     if (!listening) { return; }
 
-                    if (spoke && Date.now() - heardAt > SILENCE_MS) {
+                    const quiet = Date.now() - heardAt;
+
+                    /*
+                     * Когда считать, что человек договорил.
+                     *
+                     * Раньше — только по 2,5 секунды тишины после последнего
+                     * распознанного куска. Но браузер сам сообщает и «фраза
+                     * закончилась» (финальный результат), и «речь закончилась»:
+                     * по ним ответ уходит быстрее, и «Слушаю вас» не висит.
+                     */
+                    if (spoke && (speechEnded || lastFinal) && quiet > SETTLE_MS) {
+                        submit();
+                    } else if (spoke && quiet > SILENCE_MS) {
                         submit();
                     } else if (Date.now() - startedAt > MAX_RECORD_MS) {
                         submit();
                     }
-                }, 300);
+                }, 200);
             }
 
             function listen() {
@@ -114,12 +151,15 @@
 
                 listening = true;
                 spoke = false;
+                lastFinal = false;
+                speechEnded = false;
+                micLive = false;
                 startedAt = Date.now();
                 base = text.value.trim();
                 paint();
-                say(@json(__('Слушаю — отвечайте. Отправлю сам, когда вы замолчите.')));
+                say(@json(__('Отвечайте — отправлю сам, когда вы замолчите.')));
 
-                if (window.AiAvatar) { window.AiAvatar.setState('listening'); }
+                // «Слушаю вас» — когда микрофон включится (micStarted), а не раньше
 
                 if (engine === 'browser') {
                     startBrowser();
@@ -163,7 +203,15 @@
                 const mine = rec;
 
                 // служба запустилась и слышит микрофон — она жива
-                rec.onaudiostart = function () { heardAudio = true; };
+                rec.onaudiostart = function () {
+                    heardAudio = true;
+                    if (rec === mine) { micStarted(); }
+                };
+
+                // браузер услышал конец речи — ответ уйдёт после короткой паузы
+                rec.onspeechend = function () {
+                    if (rec === mine) { speechEnded = true; }
+                };
 
                 // за шесть секунд распознавание так и не взяло звук — служба
                 // недоступна, хотя ошибки не сообщила (так ведут себя браузеры,
@@ -173,6 +221,9 @@
                 }, 6000);
 
                 rec.onresult = function (event) {
+                    // после остановки служба ещё может прислать хвост — он не наш
+                    if (rec !== mine || !listening) { return; }
+
                     let interim = '';
 
                     for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -188,6 +239,9 @@
                     text.value = (base ? base + ' ' : '') + (finals + interim).trim();
                     paintLeft();
                     spoke = true;
+                    // снова заговорил — прежний «конец речи» уже не действует
+                    speechEnded = false;
+                    lastFinal = interim === '';
                     heardAt = Date.now();
                 };
 
@@ -263,6 +317,7 @@
                     chunks = [];
                     source = c.createMediaStreamSource(s);
                     proc = c.createScriptProcessor(4096, 1, 1);
+                    const noise = noiseMeter();
 
                     proc.onaudioprocess = function (event) {
                         if (!listening) { return; }
@@ -276,8 +331,9 @@
 
                         level.style.width = Math.min(100, Math.round(rms * 600)) + '%';
 
-                        // порог голоса: тише — фон и дыхание
-                        if (rms > 0.02) {
+                        // голос — громче фона этой комнаты, а не громче
+                        // постоянного числа (см. noiseMeter)
+                        if (noise.isVoice(rms)) {
                             spoke = true;
                             heardAt = Date.now();
                         }
@@ -285,9 +341,40 @@
 
                     source.connect(proc);
                     proc.connect(c.destination);
+                    micStarted();
                 }).catch(function () {
                     off(@json(__('Браузер не дал доступ к микрофону. Разрешите его в настройках сайта или отвечайте текстом.')));
                 });
+            }
+
+            /*
+             * Порог голоса по фону комнаты.
+             *
+             * Раньше голосом считалось всё громче постоянного 0,02. В шумной
+             * комнате — кондиционер, улица — фон был громче порога, тишина не
+             * наступала никогда, и запись не заканчивалась: «Слушаю вас» висело,
+             * а ответ не уходил. Теперь первые полсекунды меряем фон, и голос —
+             * это то, что заметно громче него.
+             */
+            function noiseMeter() {
+                const begun = Date.now();
+                let sum = 0;
+                let count = 0;
+
+                return {
+                    isVoice: function (rms) {
+                        if (Date.now() - begun < 500) {
+                            sum += rms;
+                            count++;
+
+                            return false;
+                        }
+
+                        const floor = count ? sum / count : 0;
+
+                        return rms > Math.max(0.02, floor * 2.5);
+                    },
+                };
             }
 
             function stopRecording() {
@@ -379,10 +466,14 @@
 
             function halt() {
                 listening = false;
+                micLive = false;
                 clearInterval(watch);
                 stopBrowser();
                 stopRecording();
                 paint();
+
+                // микрофон выключен — «Слушаю вас» больше не правда
+                if (window.AiAvatar && window.AiAvatar.state() === 'listening') { setBotState('idle'); }
             }
 
             function submit() {
@@ -390,6 +481,9 @@
 
                 const wasServer = engine === 'server';
                 halt();
+
+                // ответ принят: дальше бот думает — распознаёт и готовит реплику
+                setBotState('thinking');
 
                 const finalize = function (heard) {
                     if (heard) {
@@ -402,6 +496,7 @@
                         form.requestSubmit();
                     } else {
                         // ничего не услышали — слушаем снова
+                        setBotState('idle');
                         listen();
                     }
                 };

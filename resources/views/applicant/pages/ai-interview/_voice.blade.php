@@ -16,6 +16,8 @@
     <button type="button" class="ch-btn ch-voice-toggle" id="chVoiceToggle" aria-pressed="false">
         🎙 <span id="chVoiceToggleLabel">{{ __('Включить голосовой режим') }}</span>
     </button>
+    {{-- статус — тот же, что у аватара: его пишет только аватар (data-ai-state) --}}
+    <span class="ch-voice-status" data-ai-state="idle"></span>
     <span class="ch-voice-state" id="chVoiceState"></span>
     <span class="ch-voice-level" id="chVoiceLevelWrap" hidden><i id="chVoiceLevel"></i></span>
     <button type="button" class="ch-btn ch-btn-ghost" id="chVoiceSend" hidden>{{ __('Готово, отправить') }}</button>

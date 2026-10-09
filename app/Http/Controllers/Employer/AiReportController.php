@@ -92,6 +92,17 @@ class AiReportController extends Controller
 
         $decision = $interview->latestDecision;
 
+        /*
+         * Ответ кандидату уже отправлен — отправку больше не предлагаем.
+         *
+         * Модель могла снова поставить action = accept, и на странице опять
+         * появлялось «Отправить?». Повторно отправить ответ одному кандидату
+         * нельзя: это решает код, а не модель.
+         */
+        if ($decision?->isReleased()) {
+            $answer['action'] = 'none';
+        }
+
         return response()->json($answer + [
             // как исполнить решение: подтвердить ИИ или выбрать свой итог
             'can_approve' => $decision && ! $decision->isReleased()
@@ -239,10 +250,14 @@ class AiReportController extends Controller
         $validated = $request->validate([
             'outcome' => 'required|in:passed,rejected',
             'note' => 'nullable|string|max:1000',
+            // письмо кандидату, исправленное работодателем в черновике
+            'message' => 'nullable|string|max:5000',
         ]);
 
         if (! $interview->awaitsEmployer()) {
-            return back()->with('error', __('Собеседование ещё идёт — решение можно будет принять, когда оно закончится или потребует вашей проверки.'));
+            $error = __('Собеседование ещё идёт — решение можно будет принять, когда оно закончится или потребует вашей проверки.');
+
+            return $request->expectsJson() ? response()->json(['error' => $error], 422) : back()->with('error', $error);
         }
 
         /*
@@ -274,6 +289,11 @@ class AiReportController extends Controller
             $outcome === 'rejected' && $decision->outcome === 'rejected' ? ($decision->reasons ?? []) : [],
         );
 
+        // работодатель поправил черновик — уходит его текст, а не шаблон
+        if (filled($validated['message'] ?? null)) {
+            $message = trim($validated['message']);
+        }
+
         /*
          * Переопределение дописывается к решению, а не заменяет его. В отчёте
          * должно быть видно и что посчитал ИИ, и что решил человек: иначе через
@@ -285,6 +305,8 @@ class AiReportController extends Controller
             'override_outcome' => $outcome,
             'override_note' => $validated['note'] ?? null,
             'override_message' => $message,
+            // правка прежнего черновика к новому исходу не относится
+            'edited_message' => null,
         ]);
 
         $interview->update([
@@ -311,28 +333,57 @@ class AiReportController extends Controller
             );
         }
 
+        $done = __('Готово: ответ «:outcome» отправлен кандидату.', ['outcome' => $decision->fresh()->outcomeLabel()]);
+
+        // обсуждение с Анной отправляет решение в фоне — ему нужен ответ, а не страница
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $done, 'released' => true]);
+        }
+
         return back()->with('status', __('Решение изменено: :outcome.', ['outcome' => $decision->fresh()->outcomeLabel()]));
     }
 
     /**
      * Работодатель согласен с ИИ — ответ уходит кандидату.
+     *
+     * Повторно не уходит: release() отправляет решение один раз, и второе
+     * нажатие (или голосовое «да» следом за кнопкой) ничего не отправит.
      */
-    public function approve(Vacancy $vacancy, AiInterview $interview)
+    public function approve(Request $request, Vacancy $vacancy, AiInterview $interview)
     {
         $this->authorizeVacancy($vacancy);
         $this->authorizeInterview($vacancy, $interview);
 
         $decision = $interview->latestDecision;
+        $json = $request->expectsJson();
 
         if (! $decision || ! in_array($decision->effectiveOutcome(), ['passed', 'rejected'], true)) {
-            return back()->with('error', __('ИИ не взялся решать сам — выберите итог ниже.'));
+            $error = __('ИИ не взялся решать сам — выберите итог ниже.');
+
+            return $json ? response()->json(['error' => $error], 422) : back()->with('error', $error);
         }
 
-        if (! $this->release->release($decision, 'employer')) {
-            return back()->with('status', __('Ответ кандидату уже отправлен.'));
+        // работодатель поправил черновик письма — уходит его текст
+        $edited = trim((string) $request->input('message', ''));
+
+        if ($edited !== '' && ! $decision->isReleased() && $edited !== trim((string) $decision->candidateMessage())) {
+            $decision->update(['edited_message' => mb_substr($edited, 0, 5000)]);
+        }
+
+        if (! $this->release->release($decision->fresh(), 'employer')) {
+            $already = __('Ответ кандидату уже отправлен.');
+
+            return $json ? response()->json(['message' => $already, 'released' => true]) : back()->with('status', $already);
         }
 
         $interview->update(['requires_review' => false, 'stage' => 'done']);
+
+        if ($json) {
+            return response()->json([
+                'message' => __('Готово: ответ «:outcome» отправлен кандидату.', ['outcome' => $decision->fresh()->outcomeLabel()]),
+                'released' => true,
+            ]);
+        }
 
         return back()->with('status', __('Решение подтверждено и отправлено кандидату.'));
     }

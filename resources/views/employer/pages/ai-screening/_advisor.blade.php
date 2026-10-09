@@ -62,6 +62,8 @@
     @media (prefers-reduced-motion: reduce) { .ad-icon.is-on { animation: none; } }
 
     .ad-state { font-size: 12px; color: var(--gray-500, #6B7280); min-height: 16px; }
+    .ad-status { font-size: 12px; font-weight: 700; color: var(--indigo-600, #4F46E5); }
+    .ad-status[data-ai-state="listening"] { color: #16A34A; }
     .ad-confirm {
         padding: 12px 14px; border-radius: 12px; border: 1px solid #FCD34D;
         background: var(--wash-warn, #FEF3C7); color: var(--ink-warn, #92400E);
@@ -80,6 +82,7 @@
             @include('partials.ai-avatar', [
                 'avatarName' => \App\Services\Ai\GeminiInterviewer::NAME,
                 'avatarRole' => __(\App\Services\Ai\GeminiInterviewer::ROLE).', '.__('ИИ'),
+                'voiceKey' => 'advisor-'.$interview->id,
             ])
         </div>
 
@@ -118,7 +121,11 @@
                                placeholder="{{ __('Спросите Анну или скажите решение: «принимаем», «отказываем»') }}">
                         <button type="submit" class="cr-btn" id="adSend">{{ __('Отправить') }}</button>
                     </form>
-                    <span class="ad-state" id="adState"></span>
+                    <div class="ad-row">
+                        {{-- статус — тот же, что у аватара: его пишет только аватар --}}
+                        <span class="ad-status" data-ai-state="idle"></span>
+                        <span class="ad-state" id="adState"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -209,6 +216,14 @@
 
             if (!window.AiAvatar) { done(); return; }
 
+            // голос на этот разговор уже закреплён за браузером — к Gemini не
+            // обращаемся: иначе следующая реплика зазвучала бы другим голосом
+            if (window.AiAvatar.usesBrowserVoice()) {
+                window.AiAvatar.speak({text: text, lang: locale, onEnd: done});
+
+                return;
+            }
+
             window.AiAvatar.setState('thinking');
 
             speechFetch = window.AbortController ? new AbortController() : null;
@@ -224,13 +239,14 @@
                     if (mine !== speechTicket) { return; }
                     speechFetch = null;
                     const options = {text: text, lang: locale, onEnd: done};
-                    if (blob) { options.audioUrl = URL.createObjectURL(blob); }
+                    // нет файла — Gemini не смог: дальше весь разговор голосом браузера
+                    if (blob) { options.audioUrl = URL.createObjectURL(blob); } else { options.serverFailed = true; }
                     window.AiAvatar.speak(options);
                 })
                 .catch(function () {
                     if (mine !== speechTicket) { return; }
                     speechFetch = null;
-                    window.AiAvatar.speak({text: text, lang: locale, onEnd: done});
+                    window.AiAvatar.speak({text: text, lang: locale, onEnd: done, serverFailed: true});
                 });
         }
 
@@ -250,7 +266,9 @@
             stopListening();
             silence();
             window.AiAdvisorBusy = true;
-            say(@json(__('Анна думает…')));
+            // статус «Думаю» — у аватара и под микрофоном одновременно
+            say('');
+            if (window.AiAvatar) { window.AiAvatar.setState('thinking'); }
 
             // вопрос без ответа из ленты убираем: он вернётся в поле, и
             // повторная отправка не задвоит его в переписке
@@ -263,7 +281,8 @@
             fetch(urls.advise, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
-                body: JSON.stringify({message: message || '', history: history}),
+                // ждём «да» на отправку — сервер скажет модели не переспрашивать
+                body: JSON.stringify({message: message || '', history: history, awaiting: pending ? pending.action : null}),
             })
                 .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); })
                 .then(function (res) {
@@ -348,6 +367,12 @@
             reject: @json(__('Отказ')),
         };
 
+        /*
+         * Ответ кандидату по этому собеседованию уже ушёл — второй раз ни
+         * предлагать, ни отправлять нельзя. Знает и страница, и сервер.
+         */
+        let sent = @json((bool) $interview->latestDecision?->isReleased());
+
         function propose(data) {
             // кандидат ещё не прошёл все шаги — решать пока нечего
             if (!data.awaits) {
@@ -356,9 +381,16 @@
                 return;
             }
 
-            if (data.released) {
+            // ответ уже отправлен — подтверждения больше не предлагаем
+            if (data.released || sent) {
+                sent = true;
                 say(@json(__('Ответ кандидату уже отправлен — изменить его можно формой «Ваше решение» ниже.')));
+
+                return;
             }
+
+            // то же предложение уже ждёт ответа — второй вопрос не задаём
+            if (pending && pending.action === data.action) { return; }
 
             pending = {
                 action: data.action,
@@ -367,6 +399,7 @@
             };
             confirmText.textContent = @json(__('Отправить кандидату ответ:')) + ' ' + OUTCOME[data.action] + '?';
             confirmBox.hidden = false;
+            yesBtn.disabled = false;
         }
 
         function cancel() {
@@ -374,56 +407,124 @@
             confirmBox.hidden = true;
         }
 
-        /** Отправить ответ кандидату — теми же кнопками, что и на странице. */
+        /*
+         * Отправить ответ кандидату — один раз, без перезагрузки страницы.
+         *
+         * Раньше «да» отправляло форму, страница перезагружалась, и разговор
+         * с Анной пропадал; а нажатие и голосовое «да» подряд могли отправить
+         * её дважды. Теперь запрос уходит в фоне, кнопка блокируется сразу,
+         * а Анна говорит, чем кончилось.
+         */
+        let executing = false;
+
         function execute() {
-            if (!pending) { return; }
+            if (!pending || executing || sent) { return; }
+            executing = true;
+            yesBtn.disabled = true;
 
             const wanted = pending.action === 'accept' ? 'passed' : 'rejected';
             const approve = document.getElementById('crApprove');
             const override = document.getElementById('crOverride');
 
             stopListening();
+            silence();
             say(@json(__('Отправляю ответ кандидату…')));
+            if (window.AiAvatar) { window.AiAvatar.setState('thinking'); }
 
-            // ИИ рекомендовал то же самое — подтверждаем его решение
-            if (pending.canApprove && pending.recommended === wanted && approve) {
-                approve.submit();
+            // ИИ рекомендовал то же самое — подтверждаем его решение, иначе — своё
+            const viaApprove = pending.canApprove && pending.recommended === wanted && approve;
+            const target = viaApprove ? approve : override;
+
+            if (!target) {
+                executing = false;
+                say(@json(__('Не получилось отправить — воспользуйтесь кнопками решения ниже.')));
 
                 return;
             }
 
-            if (override) {
-                override.querySelector('[name=outcome]').value = wanted;
-                const note = override.querySelector('[name=note]');
-                if (note && !note.value) { note.value = @json(__('Решение принято в разговоре с ИИ-помощником.')); }
-                override.submit();
+            const body = new FormData(target);
+            if (!viaApprove) {
+                body.set('outcome', wanted);
+                if (!body.get('note')) { body.set('note', @json(__('Решение принято в разговоре с ИИ-помощником.'))); }
+                // письмо — то, что работодатель поправил в черновике
+                const draft = document.getElementById('crDraft');
+                if (draft) { body.set('message', draft.value); }
             }
+
+            fetch(target.action, {
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+                body: body,
+            })
+                .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); })
+                .then(function (res) {
+                    executing = false;
+
+                    if (!res.ok) {
+                        yesBtn.disabled = false;
+                        say(res.data.error || res.data.message || @json(__('Не получилось отправить — попробуйте ещё раз.')));
+                        if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
+
+                        return;
+                    }
+
+                    sent = true;
+                    cancel();
+
+                    const done = res.data.message || @json(__('Готово: ответ отправлен кандидату.'));
+                    bubble('ai', done);
+                    history.push({role: 'ai', text: done});
+                    say(@json(__('Обновите страницу, чтобы увидеть отправленное письмо в отчёте.')));
+                    speak(done, afterSpeech);
+                })
+                .catch(function () {
+                    executing = false;
+                    yesBtn.disabled = false;
+                    say(@json(__('Связь прервалась — попробуйте ещё раз.')));
+                    if (window.AiAvatar) { window.AiAvatar.setState('idle'); }
+                });
         }
 
-        document.getElementById('adYes').addEventListener('click', execute);
+        const yesBtn = document.getElementById('adYes');
+        yesBtn.addEventListener('click', execute);
         document.getElementById('adNo').addEventListener('click', function () {
             cancel();
             handle(@json(__('Нет, не отправляй пока.')));
         });
 
         /*
-         * «Да» — только короткое и ясное согласие.
+         * Согласие на отправку.
          *
-         * Раньше хватало, чтобы реплика начиналась с «да», «ок» или «отправ»:
-         * «дальше расскажи», «давайте подумаем», «отправлять пока не надо»
-         * отправляли кандидату ответ без всякого согласия. Теперь согласие —
-         * это первое слово из списка, не больше четырёх слов и ни одного
-         * «не», «но», «подожди». Всё прочее уходит Анне как обычный вопрос.
+         * Раньше согласием считалась только короткая фраза — до четырёх слов. «Да,
+         * отправляй уведомление кандидату» длиннее, уходила модели как вопрос,
+         * модель снова спрашивала «Отправить?», и так по кругу. Теперь:
+         * — «отправляй», «подтверждаю» и подобные — согласие при любой длине;
+         * — голое «да», «ок», «конечно» — согласие, если фраза короткая (до трёх
+         *   слов): «да, расскажи подробнее» — это уже просьба, а не согласие;
+         * — «нет», «не», «но», «подожди» где угодно — не согласие;
+         * — фраза о другом исходе («отправляй отказ», когда предложен приём) —
+         *   не согласие, а новый вопрос Анне.
          */
-        const YES = ['да', 'ҳа', 'ha', 'yes', 'подтверждаю', 'отправляй', 'отправь', 'отправить', 'давай', 'ок', 'ok', 'okay', 'конечно', 'ага', 'согласен', 'согласна'];
-        const NO = ['нет', 'не', 'но', 'на', 'no', 'not', 'отмена', 'отмени', 'подожди', 'погоди', 'стоп', 'пока'];
+        const YES = ['да', 'ҳа', 'ha', 'yes', 'ок', 'ok', 'okay', 'давай', 'конечно', 'ага', 'согласен', 'согласна'];
+        const SEND = /^(отправ|подтвержд|send|confirm|фирист|тасдиқ)/;
+        const NO = ['нет', 'не', 'но', 'no', 'not', "don't", 'отмена', 'отмени', 'подожди', 'погоди', 'стоп'];
+        // таджикское «на» — «нет»; по-русски это предлог («отправляй на почту»)
+        if (locale === 'tg') { NO.push('на'); }
+        const OTHER = {
+            accept: /^(отказ|откаж|reject|рад)/,
+            reject: /^(прин|приня|пригла|accept|hire|қабул)/,
+        };
 
-        function answerKind(text) {
-            const words = text.toLowerCase().replace(/[.,!?…;:«»"]/g, ' ').trim().split(/\s+/).filter(Boolean);
+        function answerKind(text, action) {
+            if (/\?/.test(text)) { return null; }
+
+            const words = text.toLowerCase().replace(/[.,!…;:«»"]/g, ' ').trim().split(/\s+/).filter(Boolean);
 
             if (!words.length) { return null; }
             if (words.some(function (w) { return NO.indexOf(w) !== -1; })) { return 'no'; }
-            if (YES.indexOf(words[0]) !== -1 && words.length <= 4) { return 'yes'; }
+            if (action && OTHER[action] && words.some(function (w) { return OTHER[action].test(w); })) { return null; }
+            if (words.some(function (w) { return SEND.test(w); })) { return 'yes'; }
+            if (YES.indexOf(words[0]) !== -1 && words.length <= 3) { return 'yes'; }
 
             return null;
         }
@@ -431,7 +532,7 @@
         /** Реплика работодателя: «да»/«нет» в ответ на предложение — иначе вопрос Анне. */
         function handle(text) {
             if (pending) {
-                const reply = answerKind(text);
+                const reply = answerKind(text, pending.action);
                 if (reply === 'yes') { execute(); return; }
                 if (reply === 'no') { cancel(); }
             }
@@ -454,8 +555,14 @@
         let talking = false;
         let engine = Recognition && browserLang && window.isSecureContext ? 'browser' : (serverCapable ? 'server' : null);
         const SILENCE_MS = 2000;
+        // браузер сам сказал «фраза закончилась» — ждём лишь короткую паузу
+        const SETTLE_MS = 1000;
+        // дольше трёх минут одну реплику не записываем: раньше у записи на
+        // сервер предела не было, и в шумной комнате она не кончалась никогда
+        const MAX_RECORD_MS = 180000;
 
         let rec = null, listening = false, heard = '', heardAt = 0, spoke = false, watch = null;
+        let startedAt = 0, lastFinal = false, speechEnded = false;
         let ctx = null, stream = null, source = null, proc = null, chunks = [];
 
         if (!engine) {
@@ -523,8 +630,11 @@
             listening = true;
             heard = '';
             spoke = false;
-            say(@json(__('Слушаю — говорите. Отправлю сам, когда вы замолчите.')));
-            if (window.AiAvatar) { window.AiAvatar.setState('listening'); }
+            lastFinal = false;
+            speechEnded = false;
+            startedAt = Date.now();
+            say(@json(__('Говорите — отправлю сам, когда вы замолчите.')));
+            // «Слушаю вас» — когда микрофон действительно включится (micStarted)
 
             if (engine === 'browser') {
                 rec = new Recognition();
@@ -537,7 +647,15 @@
                 let runStarted = Date.now();
                 const mine = rec;
 
-                rec.onaudiostart = function () { heardAudio = true; };
+                rec.onaudiostart = function () {
+                    heardAudio = true;
+                    if (rec === mine) { micStarted(); }
+                };
+
+                // браузер услышал конец речи — ответ уйдёт после короткой паузы
+                rec.onspeechend = function () {
+                    if (rec === mine) { speechEnded = true; }
+                };
 
                 // служба так и не взяла звук — она недоступна, хоть и молчит об этом
                 setTimeout(function () {
@@ -545,6 +663,9 @@
                 }, 6000);
 
                 rec.onresult = function (event) {
+                    // после остановки служба ещё может прислать хвост — он не наш
+                    if (rec !== mine || !listening) { return; }
+
                     let interim = '';
                     for (let i = event.resultIndex; i < event.results.length; i++) {
                         if (event.results[i].isFinal) { finals += event.results[i][0].transcript + ' '; }
@@ -553,6 +674,8 @@
                     heard = (finals + interim).trim();
                     input.value = heard;
                     spoke = true;
+                    speechEnded = false;
+                    lastFinal = interim === '';
                     heardAt = Date.now();
                 };
                 rec.onend = function () {
@@ -598,16 +721,33 @@
                     chunks = [];
                     source = ctx.createMediaStreamSource(s);
                     proc = ctx.createScriptProcessor(4096, 1, 1);
+
+                    /*
+                     * Голос — то, что заметно громче фона этой комнаты.
+                     * Раньше порог был постоянным (0,02), и в шумной комнате
+                     * фон считался речью: тишина не наступала, «Слушаю вас»
+                     * висело, а реплика не уходила никогда.
+                     */
+                    const begun = Date.now();
+                    let floorSum = 0, floorCount = 0;
+
                     proc.onaudioprocess = function (event) {
                         if (!listening) { return; }
                         const data = event.inputBuffer.getChannelData(0);
                         chunks.push(new Float32Array(data));
                         let sum = 0;
                         for (let i = 0; i < data.length; i++) { sum += data[i] * data[i]; }
-                        if (Math.sqrt(sum / data.length) > 0.02) { spoke = true; heardAt = Date.now(); }
+                        const rms = Math.sqrt(sum / data.length);
+
+                        // первые полсекунды — мерим фон
+                        if (Date.now() - begun < 500) { floorSum += rms; floorCount++; return; }
+
+                        const floor = floorCount ? floorSum / floorCount : 0;
+                        if (rms > Math.max(0.02, floor * 2.5)) { spoke = true; heardAt = Date.now(); }
                     };
                     source.connect(proc);
                     proc.connect(ctx.destination);
+                    micStarted();
                 }).catch(function () {
                     voiceOn = false;
                     mic.classList.remove('is-on');
@@ -618,8 +758,20 @@
 
             clearInterval(watch);
             watch = setInterval(function () {
-                if (listening && spoke && Date.now() - heardAt > SILENCE_MS) { finishListening(); }
-            }, 300);
+                if (!listening) { return; }
+
+                const quiet = Date.now() - heardAt;
+
+                // договорил: браузер сам сказал «конец фразы» — или долгая тишина
+                if (spoke && (speechEnded || lastFinal) && quiet > SETTLE_MS) { finishListening(); }
+                else if (spoke && quiet > SILENCE_MS) { finishListening(); }
+                else if (Date.now() - startedAt > MAX_RECORD_MS) { finishListening(); }
+            }, 200);
+        }
+
+        /** Микрофон включился и слышит — только теперь «Слушаю вас». */
+        function micStarted() {
+            if (listening && window.AiAvatar) { window.AiAvatar.setState('listening'); }
         }
 
         function stopListening() {
@@ -630,6 +782,9 @@
             try { proc && proc.disconnect(); } catch (e) {}
             source = null;
             proc = null;
+
+            // микрофон выключен — «Слушаю вас» больше не правда
+            if (window.AiAvatar && window.AiAvatar.state() === 'listening') { window.AiAvatar.setState('idle'); }
         }
 
         function finishListening() {
@@ -645,6 +800,7 @@
             }
 
             say(@json(__('Распознаю…')));
+            if (window.AiAvatar) { window.AiAvatar.setState('thinking'); }
             const body = new FormData();
             body.append('audio', toWav(recorded, ctx.sampleRate), 'speech.wav');
 

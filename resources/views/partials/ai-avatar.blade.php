@@ -26,7 +26,7 @@
     $muteKey = $muteKey ?? 'ai-avatar-voice';
 @endphp
 
-<div class="av-card" id="avCard" data-mute-key="{{ $muteKey }}">
+<div class="av-card" id="avCard" data-mute-key="{{ $muteKey }}" data-voice-key="{{ $voiceKey ?? '' }}">
     <div class="av-stage">
         {{--
             Фигура. Всё, что движется, двигается через transform: это единственное
@@ -99,7 +99,7 @@
                  title="{{ __('Озвучка Gemini временно недоступна (исчерпан лимит), поэтому вопросы читает голос браузера. Голос Анны вернётся, когда лимит обновится.') }}">
                 {{ __('упрощённый голос') }}
             </div>
-            <div class="av-state" id="avState">{{ __('Готов') }}</div>
+            <div class="av-state" id="avState" data-ai-state="idle">{{ __('Ожидание') }}</div>
         </div>
     </div>
 
@@ -274,12 +274,56 @@
         const muteBtn = document.getElementById('avMute');
         const muteKey = card.dataset.muteKey || 'ai-avatar-voice';
 
+        /*
+         * Четыре состояния бота — единственный источник статуса на странице.
+         *
+         * Раньше подпись у аватара и подпись под микрофоном писали разные
+         * скрипты, каждый своё: под микрофоном «Анна думает…», а у аватара в
+         * ту же секунду «Слушает вас». Теперь статус меняет только setState(),
+         * и он сам пишет его во все элементы с атрибутом data-ai-state.
+         */
         const STATE_LABELS = {
-            idle: @json(__('Готов')),
-            thinking: @json(__('Думает…')),
-            listening: @json(__('Слушает вас')),
-            speaking: @json(__('Говорит')),
+            idle: @json(__('Ожидание')),
+            thinking: @json(__('Думаю')),
+            listening: @json(__('Слушаю вас')),
+            speaking: @json(__('Говорю')),
         };
+
+        /*
+         * Голос — один на всё собеседование.
+         *
+         * Раньше голос выбирался для каждой реплики заново: одна звучала
+         * голосом Gemini, следующая, когда лимит озвучки кончался, — голосом
+         * браузера, а голос браузера каждый раз подбирался из списка, который
+         * браузер к первой реплике ещё не загрузил, — и первая звучала голосом
+         * по умолчанию, часто мужским. Теперь: пока Gemini озвучивает, звучит
+         * его голос; как только он хоть раз не смог, до конца собеседования
+         * звучит один и тот же голос браузера, выбранный один раз, с теми же
+         * скоростью и высотой. Выбор помнится до закрытия вкладки — перезагрузка
+         * страницы голос не меняет.
+         */
+        const voiceKey = card.dataset.voiceKey ? 'ai-voice:' + card.dataset.voiceKey : null;
+        const VOICE_RATE = 0.98;
+        const VOICE_PITCH = 1.0;
+        let voiceMode = null;          // 'browser' — Gemini больше не зовём
+        let browserVoice;              // undefined — ещё не выбран
+        let browserTicket = 0;         // новая реплика отменяет ожидание голосов
+
+        function remembered(suffix) {
+            try { return voiceKey ? sessionStorage.getItem(voiceKey + suffix) : null; } catch (e) { return null; }
+        }
+
+        function remember(suffix, value) {
+            try { if (voiceKey) { sessionStorage.setItem(voiceKey + suffix, value); } } catch (e) {}
+        }
+
+        if (remembered(':mode') === 'browser') { voiceMode = 'browser'; }
+
+        /** Gemini не смог — дальше только голос браузера, без возврата. */
+        function lockBrowser() {
+            voiceMode = 'browser';
+            remember(':mode', 'browser');
+        }
 
         /*
             Пороги громкости для трёх состояний рта. Гистерезис нужен, иначе на
@@ -309,10 +353,15 @@
         // ==================== состояние ====================
 
         function setState(next) {
-            if (!STATE_LABELS[next] || state === next) { return; }
+            if (!STATE_LABELS[next]) { return; }
             state = next;
             figure.setAttribute('data-state', next);
-            stateLabel.textContent = STATE_LABELS[next];
+
+            // подпись аватара и подписи под микрофоном — один и тот же текст
+            document.querySelectorAll('[data-ai-state]').forEach(function (node) {
+                node.textContent = STATE_LABELS[next];
+                node.setAttribute('data-ai-state', next);
+            });
         }
 
         function setMouth(value) {
@@ -480,6 +529,7 @@
             stopSynthetic();
             clearTimeout(statusPoll);
             waiting = null;
+            browserTicket++;
             closeMouth();
         }
 
@@ -516,7 +566,14 @@
 
             if (muted) { setState('idle'); finished(); return; }
 
-            if (opts.audioUrl) {
+            // страница сама не дозвалась до Gemini — дальше голос браузера
+            if (opts.serverFailed) { lockBrowser(); }
+
+            // голос на это собеседование уже закреплён за браузером: к Gemini
+            // не обращаемся, иначе следующая реплика зазвучала бы другим голосом
+            if (voiceMode === 'browser') {
+                speakByBrowser(opts.text, opts.lang);
+            } else if (opts.audioUrl) {
                 playFile(opts.audioUrl, opts.text, opts.lang);
             } else if (opts.statusUrl) {
                 // звук ещё готовится: аватар думает, текст уже на экране
@@ -572,7 +629,8 @@
 
             audio.onerror = function () {
                 // файл не дошёл или битый — читаем текстом, чтобы вопрос
-                // всё равно был произнесён
+                // всё равно был произнесён, и дальше тем же голосом
+                lockBrowser();
                 speakByBrowser(fallbackText, lang);
             };
         }
@@ -632,6 +690,38 @@
             if (note) { note.hidden = !browser; }
         }
 
+        /**
+         * Голос браузера на всё собеседование — выбирается один раз.
+         *
+         * Пока браузер не загрузил список голосов, выбор не фиксируем: иначе
+         * закрепился бы голос по умолчанию. Выбранный запоминается по имени,
+         * и после перезагрузки страницы берётся он же.
+         */
+        function sessionVoice(lang) {
+            if (browserVoice !== undefined) { return browserVoice; }
+
+            const voices = window.speechSynthesis.getVoices();
+            if (!voices.length) { return null; }
+
+            const saved = remembered(':name');
+            browserVoice = (saved && voices.find(function (v) { return v.name === saved; })) || pickVoice(lang);
+
+            if (browserVoice) { remember(':name', browserVoice.name); }
+
+            return browserVoice;
+        }
+
+        /** Дождаться списка голосов: Chrome отдаёт его не сразу. */
+        function whenVoicesReady(callback) {
+            if (window.speechSynthesis.getVoices().length) { callback(); return; }
+
+            let called = false;
+            const go = function () { if (!called) { called = true; callback(); } };
+
+            try { window.speechSynthesis.addEventListener('voiceschanged', go, {once: true}); } catch (e) {}
+            setTimeout(go, 1500);
+        }
+
         function speakByBrowser(text, lang) {
             if (!text || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') {
                 // говорить нечем — аватар стоит молча, вопрос читается глазами
@@ -642,15 +732,27 @@
                 return;
             }
 
+            markVoice(true);
+            const ticket = ++browserTicket;
+
+            whenVoicesReady(function () {
+                // пока ждали голоса, пришла новая реплика или «стоп»
+                if (ticket !== browserTicket) { return; }
+
+                sayByBrowser(text, lang);
+            });
+        }
+
+        function sayByBrowser(text, lang) {
             const utterance = new SpeechSynthesisUtterance(text);
             const code = lang || document.documentElement.lang || 'ru';
-            markVoice(true);
-            const voice = pickVoice(code);
+            const voice = sessionVoice(code);
 
             utterance.lang = voice ? voice.lang : (LOCALES[code] || 'ru-RU');
             if (voice) { utterance.voice = voice; }
-            utterance.rate = 0.98;
-            utterance.pitch = 1.0;
+            // скорость и высота — одни и те же на всё собеседование
+            utterance.rate = VOICE_RATE;
+            utterance.pitch = VOICE_PITCH;
 
             utterance.onstart = function () {
                 setState('speaking');
@@ -727,6 +829,7 @@
                 if (waiting !== ticket) { return; }
                 waiting = null;
                 clearTimeout(statusPoll);
+                lockBrowser();
                 speakByBrowser(opts.text, opts.lang);
             }, 45000);
 
@@ -735,6 +838,7 @@
 
                 if (Date.now() > deadline) {
                     clearTimeout(giveUp);
+                    lockBrowser();
                     speakByBrowser(opts.text, opts.lang);
 
                     return;
@@ -750,6 +854,7 @@
                             playFile(data.url, opts.text, opts.lang);
                         } else if (data && (data.status === 'failed' || data.status === 'none')) {
                             clearTimeout(giveUp);
+                            lockBrowser();
                             speakByBrowser(opts.text, opts.lang);
                         } else {
                             statusPoll = setTimeout(ask, 1500);
@@ -808,6 +913,10 @@
         paintMute();
         scheduleBlink();
         closeMouth();
+        // подписи статуса под микрофоном появляются в разметке раньше скрипта —
+        // сразу показываем в них то же, что у аватара
+        document.addEventListener('DOMContentLoaded', function () { setState(state); });
+        setState(state);
 
         // ==================== наружу ====================
 
@@ -830,6 +939,10 @@
             repeat: function () { if (last) { speak(last); } },
             // запомнить реплику для «Повторить», не произнося её сейчас
             remember: function (options) { last = options || null; },
+            // текущее состояние: страница сверяется с ним, а не держит своё
+            state: function () { return state; },
+            // голос закреплён за браузером — Gemini на этом собеседовании не зовём
+            usesBrowserVoice: function () { return voiceMode === 'browser'; },
             mute: function (value) {
                 muted = !!value;
                 try { localStorage.setItem(muteKey, muted ? 'off' : 'on'); } catch (e) {}

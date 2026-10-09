@@ -180,6 +180,7 @@
                         @include('partials.ai-avatar', [
                             'avatarName' => $assistantName,
                             'avatarRole' => __($assistantRole).', '.__('ИИ'),
+                            'voiceKey' => 'interview-'.$interview->id,
                         ])
                         <div class="tk-statement" id="tkFarewell">{{ $farewell->text }}</div>
                     @endif
