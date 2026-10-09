@@ -119,7 +119,42 @@ class AiChatController extends Controller
             return response()->json(['already' => true]);
         }
 
+        /*
+         * Первый вопрос — после разбора резюме и документов.
+         *
+         * Раньше разговор начинался сразу, а разбор подключался по ходу, и
+         * первые вопросы шли без него — общими. Теперь ждём разбор, но не
+         * дольше двух минут: на бесплатном ключе он бывает медленным или
+         * обрывается, и держать человека дольше нельзя. Не успел — начинаем
+         * по резюме, разбор подключится позже, как раньше.
+         */
+        if ($left = $this->analysisWait($interview, $last)) {
+            return response()->json([
+                'preparing' => true,
+                'left' => $left,
+            ]);
+        }
+
         return $this->proceed($interview);
+    }
+
+    /** Сколько ещё ждать разбор перед первым вопросом, секунд. */
+    public const ANALYSIS_WAIT_SECONDS = 120;
+
+    /**
+     * Сколько секунд осталось ждать разбор перед первым вопросом; 0 — не ждём.
+     */
+    private function analysisWait(AiInterview $interview, ?AiInterviewTurn $last): int
+    {
+        // ждём только перед самым первым вопросом и только пока разбор жив
+        if ($last !== null || ! $interview->analysisRunning()) {
+            return 0;
+        }
+
+        $since = $interview->analysis_started_at ?? $interview->updated_at;
+        $passed = $since ? (int) $since->diffInSeconds(now(), true) : self::ANALYSIS_WAIT_SECONDS;
+
+        return max(0, self::ANALYSIS_WAIT_SECONDS - $passed);
     }
 
     /** Предел записи устного ответа: около трёх минут WAV 16 кГц моно. */

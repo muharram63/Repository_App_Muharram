@@ -157,9 +157,15 @@ class GeminiDocumentAuditor implements DocumentAuditor
                 'inconsistencies.*' => 'string|max:300',
                 'questions' => 'nullable|array|max:8',
                 'questions.*' => 'string|max:300',
+                // портрет кандидата до собеседования: на нём строятся вопросы и отчёт
+                'specialization' => 'nullable|string|max:200',
+                'strengths' => 'nullable|array|max:6',
+                'strengths.*' => 'string|max:300',
+                'gaps' => 'nullable|array|max:6',
+                'gaps.*' => 'string|max:300',
             ],
             options: AiJournal::options('scoring'),
-            maxTokens: 2600,
+            maxTokens: 3200,
         );
 
         return [
@@ -167,6 +173,9 @@ class GeminiDocumentAuditor implements DocumentAuditor
             'checks' => $this->checks($answer['checks'] ?? [], $keys),
             'inconsistencies' => $this->strings($answer['inconsistencies'] ?? [], 8, 300),
             'questions' => $this->strings($answer['questions'] ?? [], 8, 300),
+            'specialization' => $this->line($answer['specialization'] ?? '', 200),
+            'strengths' => $this->strings($answer['strengths'] ?? [], 6, 300),
+            'gaps' => $this->strings($answer['gaps'] ?? [], 6, 300),
         ];
     }
 
@@ -440,7 +449,17 @@ class GeminiDocumentAuditor implements DocumentAuditor
         ВОПРОСЫ (questions). Из несостыковок и из статусов partial сделай уточняющие вопросы для
         собеседования: короткие, по одному предмету, в вежливом разговорном тоне. Не «объясните
         противоречие в датах», а «вижу, что периоды в двух компаниях пересекаются — расскажите,
-        как это было?». Вопросов не больше восьми.
+        как это было?». Вопросов не больше восьми. Вопрос опирается на конкретный факт из резюме
+        или документа и называет его: «В резюме указано, что вы три года работали с React, —
+        расскажите о самом сложном проекте». Общих вопросов («расскажите о себе») не надо.
+
+        ПОРТРЕТ КАНДИДАТА — по резюме и документам, до собеседования:
+        - specialization — узкая специализация внутри профессии («бэкенд на PHP, платежи»,
+          «бухгалтер по зарплате»), одной строкой; не знаешь — оставь пустым;
+        - strengths — до шести сильных сторон для этой вакансии, каждая с опорой на факт:
+          «пять лет на Laravel в банке», а не «опытный»;
+        - gaps — до шести пробелов: чего вакансия требует, а в документах нет или видно лишь
+          частично. Пробел — не приговор, это то, что надо проверить на собеседовании.
 
         enough_data = false, если данных так мало, что сверять нечего.
 
@@ -540,6 +559,9 @@ class GeminiDocumentAuditor implements DocumentAuditor
                 ],
                 'inconsistencies' => ['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 8],
                 'questions' => ['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 8],
+                'specialization' => ['type' => 'string', 'description' => 'Узкая специализация внутри профессии'],
+                'strengths' => ['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 6],
+                'gaps' => ['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 6],
             ],
             'required' => ['enough_data', 'checks'],
         ];

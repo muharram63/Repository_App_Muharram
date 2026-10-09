@@ -169,7 +169,7 @@
                 {{-- Разговор идёт, не дожидаясь разбора документов: пока он в
                      работе, ИИ спрашивает по резюме и специальности. --}}
                 @if($analysing ?? false)
-                    <div class="ch-note">
+                    <div class="ch-note" id="chAnalysing">
                         {{ __('ИИ ещё разбирает ваши документы — пока вопросы идут по резюме и вашей специальности, а разбор подключится по ходу разговора.') }}
                     </div>
                 @endif
@@ -193,6 +193,12 @@
                         <div class="ch-who">{{ mb_substr($assistantName, 0, 1) }}</div>
                         <div class="ch-body ch-typing"><i></i><i></i><i></i></div>
                     </div>
+                </div>
+
+                {{-- первый вопрос ждёт разбор резюме и документов — не дольше двух минут --}}
+                <div class="ch-note ch-warn" id="chPreparing" hidden>
+                    {{ __('Готовим собеседование: ИИ изучает ваше резюме и документы, чтобы вопросы были по делу. Это займёт до 2 минут.') }}
+                    <span style="white-space:nowrap">{{ __('Осталось не больше') }} <b id="chPreparingLeft">2</b> {{ __('мин.') }}</span>
                 </div>
 
                 <div class="ch-note ch-bad" id="chError" hidden></div>
@@ -421,6 +427,42 @@
 
         function isBusy() { return busy; }
 
+        /*
+         * Ждём разбор резюме и документов перед первым вопросом.
+         *
+         * Кандидат видит, что идёт подготовка и сколько примерно ждать, —
+         * иначе пустой экран выглядел бы зависанием. Сама страница двигает
+         * разбор (как и страница документов), а не только ждёт очередь: на
+         * однопоточном сервере без обработчика очереди его иначе не сделал бы
+         * никто. Сервер сам решает, когда ждать хватит.
+         */
+        const preparingNote = document.getElementById('chPreparing');
+        const preparingLeft = document.getElementById('chPreparingLeft');
+
+        function prepare(left) {
+            preparingNote.hidden = false;
+            // «вопросы идут по резюме» — пока неправда: мы как раз ждём разбор
+            const analysingNote = document.getElementById('chAnalysing');
+            if (analysingNote) { analysingNote.hidden = true; }
+            preparingLeft.textContent = Math.max(1, Math.ceil(left / 60));
+            busy = true;
+            send.disabled = true;
+            text.disabled = true;
+            if (window.AiAvatar) { window.AiAvatar.setState('thinking'); }
+
+            const again = function () {
+                busy = false;
+                ask(urls.begin, {});
+            };
+
+            fetch(pumpUrl, {
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+            })
+                .then(function () { setTimeout(again, 1500); })
+                .catch(function () { setTimeout(again, 4000); });
+        }
+
         function speakQuestion(question) { speak(question); }
 
         function paintProgress(asked) {
@@ -553,6 +595,15 @@
                         return;
                     }
                     if (result.data.already) { return; }
+
+                    // разбор резюме и документов ещё идёт — ждём его, не дольше двух минут
+                    if (result.data.preparing) {
+                        prepare(result.data.left);
+
+                        return;
+                    }
+
+                    preparingNote.hidden = true;
                     form.hidden = false;
 
                     if (result.data.question) {

@@ -127,6 +127,10 @@ class BuildRequirementMatrix implements ShouldQueue
                 'inconsistencies' => $matrix['inconsistencies'],
                 // вопросы лягут в основу собеседования: с них начнётся разговор
                 'questions' => $matrix['questions'],
+                // портрет до собеседования: специализация, сильные стороны и пробелы
+                'specialization' => $matrix['specialization'] ?? '',
+                'strengths' => $matrix['strengths'] ?? [],
+                'gaps' => $matrix['gaps'] ?? [],
                 'enough_data' => $matrix['enough_data'] && ($parsed['enough_data'] ?? false),
             ],
             'analysis_status' => 'ready',

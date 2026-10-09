@@ -2164,5 +2164,8 @@
     "Готово: ответ отправлен кандидату.": "Done: the answer has been sent to the candidate.",
     "Обновите страницу, чтобы увидеть отправленное письмо в отчёте.": "Refresh the page to see the sent letter in the report.",
     "Говорите — отправлю сам, когда вы замолчите.": "Go ahead — I will send it when you stop speaking.",
-    "Готово: ответ «:outcome» отправлен кандидату.": "Done: the answer “:outcome” has been sent to the candidate."
+    "Готово: ответ «:outcome» отправлен кандидату.": "Done: the answer “:outcome” has been sent to the candidate.",
+    "Готовим собеседование: ИИ изучает ваше резюме и документы, чтобы вопросы были по делу. Это займёт до 2 минут.": "Preparing your interview: the AI is studying your resume and documents so the questions are to the point. This takes up to 2 minutes.",
+    "Осталось не больше": "No more than",
+    "мин.": "min left"
 }

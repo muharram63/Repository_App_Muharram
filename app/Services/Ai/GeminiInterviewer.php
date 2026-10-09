@@ -182,6 +182,41 @@ class GeminiInterviewer implements Interviewer
         return 'РАЗГОВОР'.PHP_EOL.$lines->implode(PHP_EOL.PHP_EOL);
     }
 
+    /**
+     * Портрет кандидата из разбора до собеседования: специализация, места
+     * работы, сильные стороны и пробелы. По нему вопросы становятся
+     * конкретными — «в резюме указано…», а не «расскажите о себе».
+     */
+    private function portrait(array $analysis): string
+    {
+        $lines = [];
+
+        if (filled($analysis['specialization'] ?? null)) {
+            $lines[] = '- Специализация: '.$analysis['specialization'];
+        }
+
+        $positions = collect($analysis['resume']['positions'] ?? [])
+            ->filter(fn ($p) => is_array($p) && filled($p['role'] ?? null))
+            ->take(4)
+            ->map(fn ($p) => '  · '.trim(($p['role'] ?? '').(filled($p['period'] ?? null) ? ', '.$p['period'] : '')
+                .(filled($p['summary'] ?? null) ? ' — '.Str::limit((string) $p['summary'], 200) : '')));
+
+        if ($positions->isNotEmpty()) {
+            $lines[] = '- Места работы:'.PHP_EOL.$positions->implode(PHP_EOL);
+        }
+
+        foreach (['strengths' => 'Сильные стороны', 'gaps' => 'Пробелы — проверить на собеседовании'] as $key => $label) {
+            $items = collect($analysis[$key] ?? [])->filter()->take(6);
+
+            if ($items->isNotEmpty()) {
+                $lines[] = '- '.$label.':'.PHP_EOL.$items->map(fn ($i) => '  · '.$i)->implode(PHP_EOL);
+            }
+        }
+
+        // разбор — тоже слова о человеке: персональные данные вычищаем
+        return $lines === [] ? '' : $this->redactor->clean(implode(PHP_EOL, $lines));
+    }
+
     private function questionPrompt(AiInterview $interview, $criteria, int $asked, int $target): string
     {
         $left = max(0, $target - $asked);
@@ -206,6 +241,8 @@ class GeminiInterviewer implements Interviewer
         $profile = collect($interview->candidateProfile())
             ->map(fn ($value, $label) => '- '.$label.': '.$value)
             ->implode(PHP_EOL) ?: '- резюме почти пустое: спроси сам, кем человек работал и что умеет';
+
+        $portrait = $this->portrait($analysis);
 
         $analysing = $interview->analysis_status === 'ready'
             ? ''
@@ -257,6 +294,15 @@ class GeminiInterviewer implements Interviewer
 
         КАНДИДАТ (из резюме):
         {$profile}
+        {$portrait}
+
+        КОНКРЕТНЫЕ ВОПРОСЫ. Каждый вопрос опирается на конкретный факт — из резюме, документов
+        или требований вакансии — и называет его: «В резюме указано, что вы три года работали с
+        React. Расскажите о самом сложном проекте: что было трудным и как вы это решили?».
+        Проверяй заявленное: навыки, места работы, сроки, результаты. Пробелы из портрета
+        проверяй прямо и спокойно. Общих и расплывчатых вопросов не задавай: «расскажите о себе»,
+        «какие у вас сильные стороны», «почему вы хотите у нас работать» — только как знакомство в
+        самом первом вопросе, и тоже с опорой на резюме.
 
         Спрашивай по его специальности и опыту: про его инструменты, задачи и проекты, на
         языке его профессии. Требования вакансии проверяй через его реальный опыт — «как вы

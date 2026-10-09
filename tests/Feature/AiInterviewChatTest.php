@@ -174,18 +174,65 @@ test('без согласия в чат не попасть', function () {
  * Разговор не ждёт разбора документов: пока тот идёт, ИИ спрашивает по резюме
  * и специальности, а на странице сказано, что разбор подключится по ходу.
  */
-test('пока разбор идёт, чат уже открыт и задаёт вопросы', function () {
+test('первый вопрос ждёт разбор не дольше двух минут, потом — по резюме', function () {
     Queue::fake();
-    [$interview, $user] = chatReady();
+    [$interview, $user, $interviewer] = chatReady();
     $interview->update(['analysis_status' => 'pending', 'analysis_started_at' => now(), 'analysis' => null]);
 
     $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
         ->assertOk()
-        ->assertSee(__('ИИ ещё разбирает ваши документы — пока вопросы идут по резюме и вашей специальности, а разбор подключится по ходу разговора.'));
+        ->assertSee(__('Готовим собеседование: ИИ изучает ваше резюме и документы, чтобы вопросы были по делу. Это займёт до 2 минут.'));
+
+    // разбор ещё идёт — вопрос не задаём, модель не зовём
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
+        ->assertOk()
+        ->assertJsonPath('preparing', true)
+        ->assertJsonMissingPath('question');
+    expect($interviewer->questions)->toBe(0);
+
+    // две минуты прошли, разбор не готов — начинаем по резюме
+    $this->travel(App\Http\Controllers\Applicant\AiChatController::ANALYSIS_WAIT_SECONDS + 1)->seconds();
 
     $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
         ->assertOk()
         ->assertJsonStructure(['question' => ['id', 'text']]);
+});
+
+test('разбор готов раньше — первый вопрос сразу', function () {
+    Queue::fake();
+    [$interview, $user] = chatReady();
+    $interview->update(['analysis_status' => 'pending', 'analysis_started_at' => now()]);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))->assertJsonPath('preparing', true);
+
+    $interview->update(['analysis_status' => 'ready']);
+
+    $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview))
+        ->assertOk()
+        ->assertJsonStructure(['question' => ['id', 'text']]);
+});
+
+test('вопросы опираются на портрет кандидата: специализация, сильные стороны, пробелы', function () {
+    [$interview, , , $criteria] = chatReady();
+    $interview->update(['analysis' => [
+        'resume' => ['profession' => 'PHP-разработчик', 'positions' => [['role' => 'Backend-разработчик', 'period' => '2021–2025', 'summary' => 'платёжный шлюз на Laravel']]],
+        'specialization' => 'бэкенд на PHP, платежи',
+        'strengths' => ['четыре года на Laravel в банке'],
+        'gaps' => ['нет опыта с очередями'],
+        'questions' => [], 'inconsistencies' => [],
+    ]]);
+
+    Http::fake(['*' => Http::response(['steps' => [['type' => 'model_output', 'content' => [
+        ['type' => 'text', 'text' => json_encode(['text' => 'Вопрос', 'kind' => 'technical', 'criterion_key' => 'php', 'done' => false])],
+    ]]]])]);
+
+    realInterviewer()->nextQuestion($interview->fresh(), $criteria);
+
+    Http::assertSent(fn ($r) => str_contains($r['system_instruction'], 'Специализация: бэкенд на PHP, платежи')
+        && str_contains($r['system_instruction'], 'четыре года на Laravel в банке')
+        && str_contains($r['system_instruction'], 'нет опыта с очередями')
+        && str_contains($r['system_instruction'], 'Backend-разработчик, 2021–2025')
+        && str_contains($r['system_instruction'], 'КОНКРЕТНЫЕ ВОПРОСЫ'));
 });
 
 test('после разбора кандидата ведут прямо в чат', function () {
