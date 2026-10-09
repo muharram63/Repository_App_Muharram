@@ -2167,5 +2167,10 @@
     "Готово: ответ «:outcome» отправлен кандидату.": "Done: the answer “:outcome” has been sent to the candidate.",
     "Готовим собеседование: ИИ изучает ваше резюме и документы, чтобы вопросы были по делу. Это займёт до 2 минут.": "Preparing your interview: the AI is studying your resume and documents so the questions are to the point. This takes up to 2 minutes.",
     "Осталось не больше": "No more than",
-    "мин.": "min left"
+    "мин.": "min left",
+    "рубрика": "rubric",
+    "качество кода": "code quality",
+    "структура": "structure",
+    "обработка ошибок": "error handling",
+    "качество": "quality"
 }

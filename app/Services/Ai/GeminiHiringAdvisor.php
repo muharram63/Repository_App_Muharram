@@ -399,6 +399,12 @@ class GeminiHiringAdvisor implements HiringAdvisor
             $lines[] = 'Задание '.($i + 1).': '.Str::limit($item['statement'], 300).' — '.($part
                 ? 'балл '.$part['score'].' из 100. '.Str::limit((string) ($part['summary'] ?? ''), 300)
                     .(! empty($part['executed']) ? ' Код запускался по-настоящему.' : '')
+                    // качество кода: доля 20 % в балле
+                    .(is_array($part['quality'] ?? null)
+                        ? ' Рубрика '.($part['rubric_score'] ?? '—').' из 100, качество кода '.$part['quality']['score']
+                            .' из 100 (структура '.$part['quality']['structure'].', обработка ошибок '
+                            .$part['quality']['error_handling'].'). '.Str::limit((string) ($part['quality']['notes'] ?? ''), 200)
+                        : '')
                 : ($handedOver ? 'не проверено' : 'проверяется'));
         }
 

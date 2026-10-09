@@ -25,6 +25,13 @@ class GeminiTaskExaminer implements TaskExaminer
     /** Сколько знаков решения отдаём модели. Дальше это уже не решение задачи. */
     public const MAX_SOLUTION = 20000;
 
+    /**
+     * Доля качества кода в балле за задание: структура, обработка ошибок,
+     * качество. Остальное — рубрика (правильность по пунктам задания).
+     * Решение работодателя от 9 октября 2026: 80 / 20.
+     */
+    public const QUALITY_SHARE = 0.2;
+
     public function __construct(
         private readonly AiJournal $journal,
         private readonly PiiRedactor $redactor,
@@ -143,19 +150,32 @@ class GeminiTaskExaminer implements TaskExaminer
             $options['tools'] = [['type' => 'code_execution']];
         }
 
+        $rules = [
+            'score' => 'required|integer|min:0|max:100',
+            'summary' => 'required|string|min:5|max:800',
+            'review' => 'required|array|min:1|max:8',
+            'review.*.point' => 'required|string|max:300',
+            'review.*.passed' => 'required|boolean',
+            'review.*.note' => 'nullable|string|max:400',
+        ];
+
+        if ($isCode) {
+            $rules += [
+                // без оценки качества проверка не проваливается: балл тогда по рубрике
+                'quality' => 'nullable|array',
+                'quality.structure' => 'required_with:quality|integer|min:0|max:100',
+                'quality.error_handling' => 'required_with:quality|integer|min:0|max:100',
+                'quality.code_quality' => 'required_with:quality|integer|min:0|max:100',
+                'quality.notes' => 'nullable|string|max:600',
+            ];
+        }
+
         $answer = $this->journal->askDetailed(
             purpose: 'task_grade',
             system: $this->gradePrompt($isCode),
             turns: [['role' => 'user', 'text' => $this->describeSolution($item, $clean)]],
-            schema: $this->gradeSchema(),
-            rules: [
-                'score' => 'required|integer|min:0|max:100',
-                'summary' => 'required|string|min:5|max:800',
-                'review' => 'required|array|min:1|max:8',
-                'review.*.point' => 'required|string|max:300',
-                'review.*.passed' => 'required|boolean',
-                'review.*.note' => 'nullable|string|max:400',
-            ],
+            schema: $this->gradeSchema($isCode),
+            rules: $rules,
             interview: $task->interview,
             options: $options,
             // исполнение кода тратит токены на сам код и его вывод
@@ -165,8 +185,20 @@ class GeminiTaskExaminer implements TaskExaminer
         $verdict = $answer['data'];
         $execution = $answer['execution'];
 
+        $rubricScore = max(0, min(100, (int) $verdict['score']));
+        $quality = $isCode && is_array($verdict['quality'] ?? null) ? $this->quality($verdict['quality']) : null;
+
         return [
-            'score' => max(0, min(100, (int) $verdict['score'])),
+            /*
+             * Балл за код — 80 % рубрика, 20 % качество (структура, обработка
+             * ошибок, качество кода). Складывает код, а не модель: доля — условие
+             * работодателя, и модель не должна её «подкручивать».
+             */
+            'score' => $quality === null
+                ? $rubricScore
+                : (int) round($rubricScore * (1 - self::QUALITY_SHARE) + $quality['score'] * self::QUALITY_SHARE),
+            'rubric_score' => $rubricScore,
+            'quality' => $quality,
             'review' => $this->review($verdict['review']),
             'summary' => $this->text($verdict['summary'], 800),
             // Запускался ли код на самом деле. Если формат кодовый, а запуска
@@ -264,8 +296,17 @@ class GeminiTaskExaminer implements TaskExaminer
                 .'настоящий вывод. Оценка по чтению кода без запуска здесь не годится: '
                 .'работающий код отличается от правдоподобного, и увидеть разницу можно только '
                 .'запустив. Если код не запускается вовсе — это факт, и он важнее впечатления '
-                .'от его вида.'
-            : 'Запускать нечего: это не код. Оценивай по существу, сверяясь с рубрикой.';
+                .'от его вида.'.PHP_EOL.PHP_EOL
+                .'КАЧЕСТВО КОДА — отдельно от score. score ставь только по рубрике: правильность '
+                .'и соответствие заданию. Качество оцени в quality по трём осям от 0 до 100: '
+                .'structure — структура и читаемость (функции, разбиение, понятные имена); '
+                .'error_handling — обработка ошибок, пустых и неверных входных данных, крайних '
+                .'случаев (проверь их запуском); code_quality — простота, отсутствие дублирования '
+                .'и лишнего. В notes — что сделано хорошо и что улучшить. Итоговый балл сложит '
+                .'система: рубрика весит 80 %, качество — 20 %.'
+            : 'Запускать нечего: это не код. Оценивай по существу как опытный специалист этой '
+                .'профессии, сверяясь с рубрикой: верно ли по сути, полно ли, применимо ли на '
+                .'практике.';
 
         return <<<PROMPT
         Ты проверяешь решение тестового задания по заранее составленной рубрике.
@@ -423,7 +464,29 @@ class GeminiTaskExaminer implements TaskExaminer
         ];
     }
 
-    private function gradeSchema(): array
+    private function gradeSchema(bool $isCode = false): array
+    {
+        $schema = $this->baseGradeSchema();
+
+        // для кода — отдельная оценка качества: она идёт в балл долей QUALITY_SHARE
+        if ($isCode) {
+            $schema['properties']['quality'] = [
+                'type' => 'object',
+                'properties' => [
+                    'structure' => ['type' => 'integer', 'description' => 'Структура и читаемость 0-100'],
+                    'error_handling' => ['type' => 'integer', 'description' => 'Обработка ошибок и крайних случаев 0-100'],
+                    'code_quality' => ['type' => 'integer', 'description' => 'Качество кода: простота, имена, отсутствие дублирования 0-100'],
+                    'notes' => ['type' => 'string', 'description' => 'Что хорошо и что улучшить, 1-3 предложения'],
+                ],
+                'required' => ['structure', 'error_handling', 'code_quality', 'notes'],
+            ];
+            $schema['required'][] = 'quality';
+        }
+
+        return $schema;
+    }
+
+    private function baseGradeSchema(): array
     {
         return [
             'type' => 'object',
@@ -452,6 +515,25 @@ class GeminiTaskExaminer implements TaskExaminer
     /**
      * @return array<int,array{point:string,weight:int}>
      */
+    /**
+     * Оценка качества кода — три оси и их среднее.
+     *
+     * @return array{structure:int,error_handling:int,code_quality:int,score:int,notes:string}
+     */
+    private function quality(array $raw): array
+    {
+        $axes = [];
+
+        foreach (['structure', 'error_handling', 'code_quality'] as $axis) {
+            $axes[$axis] = max(0, min(100, (int) ($raw[$axis] ?? 0)));
+        }
+
+        return $axes + [
+            'score' => (int) round(array_sum($axes) / count($axes)),
+            'notes' => $this->text($raw['notes'] ?? '', 600),
+        ];
+    }
+
     private function rubric(mixed $rows): array
     {
         $clean = [];

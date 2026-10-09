@@ -382,6 +382,8 @@
                         </div>
                     @endforeach
                 @endif
+
+                @include('employer.pages.ai-screening._quality', ['part' => ($submission->details['parts'][0] ?? null)])
             @endif
 
             @php($details = $submission?->details ?? [])
@@ -435,6 +437,7 @@
                 @if($part['summary'] ?? null)
                     <div class="rp-quote">{{ $part['summary'] }}</div>
                 @endif
+                @include('employer.pages.ai-screening._quality', ['part' => $part])
                 @foreach($part['review'] ?? [] as $point)
                     <div class="rp-line">
                         <span class="rp-chip {{ ($point['passed'] ?? false) ? 'rp-ok' : 'rp-no' }}">

@@ -84,6 +84,9 @@ class TestGrader
                     'execution' => $verdict['execution'] ?? [],
                     'executed' => (bool) ($verdict['executed'] ?? false),
                     'model' => $verdict['model'] ?? null,
+                    // для кода: балл по рубрике и качество отдельно (итог — 80 / 20)
+                    'rubric_score' => $verdict['rubric_score'] ?? null,
+                    'quality' => $verdict['quality'] ?? null,
                 ];
             }
 

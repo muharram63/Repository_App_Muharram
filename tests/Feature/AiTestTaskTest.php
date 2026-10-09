@@ -1349,3 +1349,54 @@ test('кто прошёл всё, видит 100% и «ждём ответа», 
         // ИИ продолжает работу, пока открыт список
         ->assertSee(trim(json_encode(route('applicant.ai.pump', $interview)), '"'), false);
 });
+
+// ==================== качество кода: 80 % рубрика, 20 % качество ====================
+
+test('балл за код — 80 % рубрика и 20 % качество, складывает код', function () {
+    Queue::fake();
+    [$interview] = taskReady();
+
+    Http::fake(['*' => Http::response(taskGradeAnswer([
+        'score' => 90, 'summary' => 'Работает.', 'review' => [['point' => 'Убирает нецифровые', 'passed' => true]],
+        'quality' => ['structure' => 50, 'error_handling' => 20, 'code_quality' => 80, 'notes' => 'Нет проверки пустой строки.'],
+    ]))]);
+
+    $verdict = realTaskExaminer()->grade(issuedTask($interview), 'function norm($p) { return preg_replace("/\D+/", "", $p); }');
+
+    // качество = (50 + 20 + 80) / 3 = 50; итог = 90 × 0,8 + 50 × 0,2 = 82
+    expect($verdict['rubric_score'])->toBe(90)
+        ->and($verdict['quality']['score'])->toBe(50)
+        ->and($verdict['score'])->toBe(82)
+        ->and($verdict['quality']['notes'])->toBe('Нет проверки пустой строки.');
+
+    // модель просят оценить качество отдельно, и в схеме ответа есть поле quality
+    Http::assertSent(fn ($r) => str_contains($r['system_instruction'], 'КАЧЕСТВО КОДА — отдельно от score')
+        && str_contains(json_encode($r->data(), JSON_UNESCAPED_UNICODE), '"error_handling"'));
+});
+
+test('нет оценки качества — балл по рубрике, проверка не проваливается', function () {
+    Queue::fake();
+    [$interview] = taskReady();
+
+    Http::fake(['*' => Http::response(taskGradeAnswer([
+        'score' => 70, 'summary' => 'Частично.', 'review' => [['point' => 'пункт', 'passed' => true]],
+    ]))]);
+
+    $verdict = realTaskExaminer()->grade(issuedTask($interview), 'function norm($p) { return $p; }');
+
+    expect($verdict['score'])->toBe(70)->and($verdict['quality'])->toBeNull();
+});
+
+test('у кейса качество кода не оценивается', function () {
+    Queue::fake();
+    [$interview] = taskReady();
+
+    Http::fake(['*' => Http::response(taskGradeAnswer([
+        'score' => 75, 'summary' => 'Разумно.', 'review' => [['point' => 'пункт', 'passed' => true]],
+    ]))]);
+
+    $verdict = realTaskExaminer()->grade(issuedTask($interview, ['format' => 'case', 'language' => null]), 'Сначала позвоню клиенту и уточню сроки.');
+
+    expect($verdict['score'])->toBe(75)->and($verdict['quality'])->toBeNull();
+    Http::assertSent(fn ($r) => ! str_contains($r['system_instruction'], 'КАЧЕСТВО КОДА'));
+});
