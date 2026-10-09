@@ -449,3 +449,87 @@ test('без отклика ничего не ждёт', function () {
         ->assertSee('Собеседований пока нет', false)
         ->assertDontSee('Ждёт вас', false);
 });
+
+// ==================== весь путь: отклик → собеседование ====================
+
+/*
+ * Сквозной сценарий так, как его проходит человек: откликнулся — попал на
+ * собеседование — согласился — документы — разговор начался. Отдельные шаги
+ * покрыты и выше, но поломку «после отклика никуда не ведёт» ловит только
+ * путь целиком.
+ */
+test('после отклика соискатель сразу попадает на собеседование, и оно запускается', function () {
+    [$vacancy] = makeAiVacancy();
+    $user = User::factory()->applicant()->create();
+    makeResume(makeApplicant($user));
+
+    // 1. отклик ведёт на вход в собеседование
+    $this->actingAs($user)
+        ->post(route('public.vacancies.respond', $vacancy))
+        ->assertRedirect(route('applicant.ai.start', $vacancy))
+        ->assertSessionHas('status', __('Отклик отправлен. По этой вакансии собеседование проводит ИИ.'));
+
+    // 2. вход заводит собеседование и ведёт на его страницу
+    $this->actingAs($user)->get(route('applicant.ai.start', $vacancy))->assertRedirect();
+    $interview = AiInterview::sole();
+    expect($interview->vacancy_response_id)->not->toBeNull();
+
+    // 3. страница собеседования открывается — сначала согласие
+    $this->actingAs($user)->get(route('applicant.ai.interview', $interview))
+        ->assertOk()
+        ->assertSee(__('Согласен, начать'));
+
+    // 4. согласие → документы
+    $this->actingAs($user)->post(route('applicant.ai.consent', $interview), ['consent' => '1'])
+        ->assertRedirect(route('applicant.ai.documents', $interview));
+    $this->actingAs($user)->get(route('applicant.ai.documents', $interview))->assertOk();
+
+    // 5. «продолжить» → разговор, разбор идёт в фоне
+    $this->actingAs($user)->post(route('applicant.ai.proceed', $interview))
+        ->assertRedirect(route('applicant.ai.chat', $interview));
+
+    // 6. страница разговора открывается, даже пока разбор не готов, —
+    //    с сообщением «Готовим собеседование», а не блокировкой
+    $this->actingAs($user)->get(route('applicant.ai.chat', $interview))
+        ->assertOk()
+        ->assertSee(__('Готовим собеседование: ИИ изучает ваше резюме и документы, чтобы вопросы были по делу. Это займёт до 2 минут.'));
+
+    // 7. собеседование запускается: пока разбор идёт — «готовим», потом — вопрос
+    app()->instance(App\Services\Ai\Interviewer::class, new class implements App\Services\Ai\Interviewer
+    {
+        public function available(): bool { return true; }
+
+        public function nextQuestion(AiInterview $interview, $criteria): array
+        {
+            return ['text' => 'Здравствуйте! Расскажите о последней работе.', 'kind' => 'behavioral', 'criterion_key' => null, 'done' => false];
+        }
+
+        public function scoreAnswer(AiInterview $interview, string $question, string $answer, ?AiInterviewCriterion $criterion): array
+        {
+            return ['score' => 3, 'max' => 5, 'rationale' => 'ок'];
+        }
+    });
+
+    $begin = fn () => $this->actingAs($user)->postJson(route('applicant.ai.chat.begin', $interview));
+
+    if ($interview->fresh()->analysisRunning()) {
+        $begin()->assertOk()->assertJsonPath('preparing', true);
+        $this->travel(App\Http\Controllers\Applicant\AiChatController::ANALYSIS_WAIT_SECONDS + 1)->seconds();
+    }
+
+    $begin()->assertOk()->assertJsonPath('question.text', 'Здравствуйте! Расскажите о последней работе.');
+});
+
+test('вакансия без ИИ-собеседования: отклик остаётся на месте и не ведёт в пустоту', function () {
+    $employerUser = User::factory()->employer()->create();
+    $vacancy = makeVacancy(makeEmployer($employerUser));
+    $user = User::factory()->applicant()->create();
+    makeResume(makeApplicant($user));
+
+    $this->actingAs($user)->from(route('public.vacancies.show', $vacancy))
+        ->post(route('public.vacancies.respond', $vacancy))
+        ->assertRedirect(route('public.vacancies.show', $vacancy))
+        ->assertSessionHas('status', __('Отклик отправлен.'));
+
+    expect(AiInterview::count())->toBe(0);
+});
