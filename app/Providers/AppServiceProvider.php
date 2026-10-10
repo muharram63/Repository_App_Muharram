@@ -82,6 +82,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Ai\GeminiRecognizer::class,
         );
 
+        // Оплата пакетов тренажёра. Сейчас — ручной перевод по реквизитам;
+        // банк подключается заменой этой строки на свою реализацию интерфейса.
+        $this->app->bind(
+            \App\Services\Payments\PaymentGateway::class,
+            \App\Services\Payments\ManualTransferGateway::class,
+        );
+
         // Анна обсуждает кандидата с работодателем — голосом или текстом.
         $this->app->bind(
             \App\Services\Ai\HiringAdvisor::class,

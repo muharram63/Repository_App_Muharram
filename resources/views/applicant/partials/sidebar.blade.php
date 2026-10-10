@@ -49,6 +49,13 @@
       </span>
         <a href="{{route('applicant.ai.index')}}"> {{ __('ИИ-собеседования') }} </a>
     </div>
+    {{-- тренажёр собеседований: тренировки с разбором, результат видит только кандидат --}}
+    <div class="nav-item" data-section="trainer">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
+      </span>
+        <a href="{{route('applicant.trainer.index')}}"> {{ __('Тренажёр') }} </a>
+    </div>
     <div class="nav-item" data-section="orders">
       <span class="icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>

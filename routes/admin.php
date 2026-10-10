@@ -39,3 +39,17 @@ Route::patch('comments/{comment}/status', [\App\Http\Controllers\Admin\AdminComm
 Route::delete('comments/{comment}', [\App\Http\Controllers\Admin\AdminCommentController::class, 'destroy'])->name('comments.destroy');
 Route::post('complaints/{complaint}/restore', [\App\Http\Controllers\Admin\AdminComplaintController::class, 'restore'])->name('complaints.restore');
 Route::get('live-counters', [\App\Http\Controllers\LiveCounterController::class, 'admin'])->name('live.counters');
+
+// Тренажёр собеседований: заявки на оплату, ручное начисление попыток,
+// пакеты, реквизиты, направления и статистика
+Route::prefix('trainer')->name('trainer')->group(function () {
+    $trainer = \App\Http\Controllers\Admin\AdminTrainerController::class;
+
+    Route::get('/', [$trainer, 'index']);
+    Route::post('payments/{payment}/confirm', [$trainer, 'confirm'])->whereNumber('payment')->name('.confirm');
+    Route::post('payments/{payment}/reject', [$trainer, 'reject'])->whereNumber('payment')->name('.reject');
+    Route::post('grant', [$trainer, 'grant'])->name('.grant');
+    Route::post('packages', [$trainer, 'savePackage'])->name('.packages.store');
+    Route::post('packages/{package}', [$trainer, 'savePackage'])->whereNumber('package')->name('.packages.update');
+    Route::post('settings', [$trainer, 'saveSettings'])->name('.settings');
+});

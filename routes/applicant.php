@@ -112,6 +112,18 @@ Route::prefix('ai-interview')->name('ai.')->middleware(\App\Http\Middleware\Inte
         ->whereNumber('turn')->name('speech.status');
 });
 
+// Тренажёр собеседований: попытки, тренировки, оплата пакетов
+Route::prefix('trainer')->name('trainer.')->group(function () {
+    $trainer = \App\Http\Controllers\Applicant\TrainerController::class;
+
+    Route::get('/', [$trainer, 'index'])->name('index');
+    Route::post('buy/{package}', [$trainer, 'buy'])->whereNumber('package')
+        ->middleware('throttle:10,1')->name('buy');
+    Route::get('payments/{payment}', [$trainer, 'payment'])->whereNumber('payment')->name('payment');
+    Route::post('payments/{payment}/claim', [$trainer, 'claim'])->whereNumber('payment')
+        ->middleware('throttle:10,1')->name('claim');
+});
+
 // Проверка навыков делом: справочник, прохождение задания и разбор
 Route::prefix('skills')->name('skills')->group(function () {
     $skills = \App\Http\Controllers\Applicant\SkillCheckController::class;
