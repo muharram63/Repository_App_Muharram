@@ -2215,5 +2215,11 @@
     "Разрешить уведомления в браузере": "Allow browser notifications",
     "Разрешено — уведомления будут приходить.": "Allowed — notifications will arrive.",
     "Браузер запретил уведомления. Разрешите их в настройках сайта (значок замка в адресной строке).": "The browser blocked notifications. Allow them in the site settings (the lock icon in the address bar).",
-    "Этот браузер не умеет показывать уведомления.": "This browser cannot show notifications."
+    "Этот браузер не умеет показывать уведомления.": "This browser cannot show notifications.",
+    "Вакансия «:title» создана. Включить для неё ИИ-собеседование?": "The vacancy “:title” has been created. Turn on the AI interview for it?",
+    "ИИ сам проведёт первичный отбор: проверит документы, поговорит с кандидатами голосом, даст тестовое задание и подготовит для вас отчёт. Без него кандидаты после отклика просто ждут вашего ответа.": "The AI will run the first screening itself: check documents, talk to candidates by voice, give a test task and prepare a report for you. Without it, candidates just wait for your answer after applying.",
+    "Настроить ИИ-собеседование": "Set up the AI interview",
+    "Не сейчас": "Not now",
+    "ИИ-собеседование не включено.": "The AI interview is not turned on.",
+    "Включить": "Turn on"
 }

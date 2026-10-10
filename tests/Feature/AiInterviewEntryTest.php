@@ -533,3 +533,38 @@ test('вакансия без ИИ-собеседования: отклик ос
 
     expect(AiInterview::count())->toBe(0);
 });
+
+// ==================== вакансия без ИИ-собеседования: предлагаем включить ====================
+
+test('после создания вакансии работодателю предлагают включить ИИ-собеседование, но не включают', function () {
+    $employerUser = User::factory()->employer()->create();
+    makeEmployer($employerUser);
+    $city = App\Models\City::create(['country' => 'Таджикистан', 'region' => 'Худжанд']);
+
+    $this->actingAs($employerUser)->post(route('employer.vacancies.store'), [
+        'title' => 'Глазной врач', 'description' => 'Приём пациентов.',
+        'salary_from' => 5000, 'salary_to' => 8000, 'currency' => 'TJS',
+        'employment_type' => 'full-time', 'work_schedule' => 'full_day', 'experience_required' => 'year',
+        'skill' => 'офтальмология', 'status' => 'active', 'city_id' => $city->id,
+    ])->assertRedirect(route('employer.vacancies.index'))->assertSessionHas('ai_offer');
+
+    $vacancy = App\Models\Vacancy::where('title', 'Глазной врач')->sole();
+
+    $this->actingAs($employerUser)->withSession(['ai_offer' => $vacancy->id])
+        ->get(route('employer.vacancies.index'))
+        ->assertOk()
+        ->assertSee(__('Вакансия «:title» создана. Включить для неё ИИ-собеседование?', ['title' => 'Глазной врач']))
+        ->assertSee(route('employer.ai.show', $vacancy), false)
+        ->assertSee(__('ИИ-собеседование не включено.'));
+
+    // только предлагаем: настройки ИИ-собеседования сами не появились
+    expect(AiInterviewConfig::where('vacancy_id', $vacancy->id)->exists())->toBeFalse();
+});
+
+test('у вакансии с работающим ИИ-собеседованием «Включить» не предлагают', function () {
+    [$vacancy, , $employerUser] = makeAiVacancy();
+
+    $this->actingAs($employerUser)->get(route('employer.vacancies.index'))
+        ->assertOk()
+        ->assertDontSee(__('ИИ-собеседование не включено.'));
+});

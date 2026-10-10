@@ -22,6 +22,11 @@ class VacancyController extends Controller
         return view('employer.pages.vacancies.index',compact('vacancies'),[
             'user' => $user,
             'employer' => $employer,
+            // какие вакансии уже отбирает ИИ: остальным предлагаем его включить
+            'aiReady' => \App\Models\AiInterviewConfig::whereIn('vacancy_id', $vacancies->pluck('id'))
+                ->get()->filter->isUsable()->pluck('vacancy_id')->all(),
+            // только что созданная вакансия — сразу предлагаем включить ИИ-собеседование
+            'aiOffer' => $vacancies->firstWhere('id', session('ai_offer')),
 
         ]);
     }
@@ -67,8 +72,15 @@ class VacancyController extends Controller
             'city_id' => 'required|exists:cities,id',
               ]);
         $validated['employer_id'] = $employer->id;
-        Vacancy::create($validated);
-        return redirect()->route('employer.vacancies.index');
+        $vacancy = Vacancy::create($validated);
+
+        /*
+         * Новая вакансия — сразу предлагаем включить ИИ-собеседование, но не
+         * включаем сами: это решение работодателя. Без него кандидат после
+         * отклика просто ждёт ответа, а работодатель мог об этом не знать —
+         * так и вышло с вакансией, у которой отбор остался ненастроенным.
+         */
+        return redirect()->route('employer.vacancies.index')->with('ai_offer', $vacancy->id);
     }
 
     /**

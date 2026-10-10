@@ -41,6 +41,30 @@
         <!-- ---------- SECTION: VACANCIES ---------- -->
         <section class="section active" id="section-vacancies">
 
+            {{--
+                Вакансия только что создана — предлагаем включить ИИ-собеседование.
+                Сами не включаем: решение за работодателем. Без ИИ кандидат после
+                отклика просто ждёт ответа; с ним — сразу проходит отбор.
+            --}}
+            @if($aiOffer ?? null)
+                <div class="card" id="aiOffer" style="border:1px solid #C7D2FE; background:var(--indigo-50,#EEF0FF); margin-bottom:16px">
+                    <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; justify-content:space-between">
+                        <div style="flex:1; min-width:240px">
+                            <div style="font-weight:700; font-size:15px; margin-bottom:4px">
+                                🤖 {{ __('Вакансия «:title» создана. Включить для неё ИИ-собеседование?', ['title' => $aiOffer->title]) }}
+                            </div>
+                            <div class="hint">
+                                {{ __('ИИ сам проведёт первичный отбор: проверит документы, поговорит с кандидатами голосом, даст тестовое задание и подготовит для вас отчёт. Без него кандидаты после отклика просто ждут вашего ответа.') }}
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap">
+                            <a class="btn btn-primary" href="{{ route('employer.ai.show', $aiOffer) }}">{{ __('Настроить ИИ-собеседование') }}</a>
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('aiOffer').remove()">{{ __('Не сейчас') }}</button>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             <div class="stat-row">
                 <div class="stat-card">
                     <div class="label">{{ __('Всего вакансий') }}</div>
@@ -87,6 +111,13 @@
                                     <span>📍 {{ __($vacancy->city->country) }} , {{ __($vacancy->city->region) }}</span>| <span>👥 {{ $vacancy->responses_count ?? 0 }} {{ __('откликов') }}</span>| <span>👁 {{ $vacancy->views }} {{ __('просмотров') }}</span>|
                                     <span>{{ $vacancy->created_at->format('d M Y') }}</span>
                                 </div>
+                                {{-- активная вакансия без работающего ИИ-собеседования — предлагаем включить --}}
+                                @if($vacancy->status === 'active' && ! in_array($vacancy->id, $aiReady ?? [], true))
+                                    <div class="hint" style="margin-top:6px">
+                                        🤖 {{ __('ИИ-собеседование не включено.') }}
+                                        <a href="{{ route('employer.ai.show', $vacancy) }}" style="font-weight:600">{{ __('Включить') }}</a>
+                                    </div>
+                                @endif
                             </div>
                         </div>
 
