@@ -106,17 +106,8 @@ class EmployerResponseController extends Controller
             'rejected' => 'Приглашение отклонено.',
         ];
 
-        UserNotification::deliver(
-            $resumeResponse->employer?->user_id,
-            'response_status',
-            UserNotification::text('Ответ на ваше приглашение'),
-            UserNotification::text(':title: :status', [
-                'title' => $resumeResponse->resume?->profession ?? UserNotification::text('Резюме'),
-                'status' => UserNotification::text($labels[$validated['status']]),
-            ]),
-            route('public.responses.index'),
-            'mail_responses',
-        );
+        // работодателю — по его настройкам видов и каналов, без дублей
+        \App\Support\EmployerAlerts::invitationReply($resumeResponse, $validated['status']);
 
         return back()->with('status', __($labels[$validated['status']]));
     }

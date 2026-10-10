@@ -35,6 +35,20 @@ class EmployerAlerts
         );
     }
 
+    /**
+     * Соискатель ответил на приглашение работодателя. Каждый ответ — одно
+     * уведомление: «просмотрел» и затем «принял» — два разных события, а
+     * повтор того же статуса — нет.
+     */
+    public static function invitationReply(\App\Models\ResumeResponse $invitation, string $status): bool
+    {
+        return self::send(
+            $invitation->employer?->user,
+            new \App\Notifications\InvitationReplyAlert($invitation, $status),
+            'invitation:'.$invitation->id.':'.$status,
+        );
+    }
+
     /** Кандидат прошёл ИИ-собеседование, отчёт готов. */
     public static function reportReady(AiInterview $interview, AiDecision $decision): bool
     {

@@ -283,3 +283,45 @@ test('«Кандидат ждёт ручной проверки» идёт по 
     $interview->update(['analysis_started_at' => now()->addMinutes(2)]);
     expect(EmployerAlerts::manualReview($interview->fresh(), 'опять'))->toBeFalse();
 });
+
+// ==================== ответ на приглашение — тоже по настройкам ====================
+
+test('«Ответ на ваше приглашение» идёт по настройкам, каждый ответ — один раз', function () {
+    $employerUser = User::factory()->employer()->create();
+    $employer = makeEmployer($employerUser);
+    $applicantUser = User::factory()->applicant()->create();
+    $resume = makeResume(makeApplicant($applicantUser));
+    $invitation = App\Models\ResumeResponse::create(['employer_id' => $employer->id, 'resume_id' => $resume->id]);
+
+    $reply = fn (string $status) => $this->actingAs($applicantUser)
+        ->patch('/resume-responses/'.$invitation->id.'/status', ['status' => $status])
+        ->assertRedirect();
+
+    $reply('viewed');
+    $reply('accepted');
+    // тот же ответ ещё раз — без второго уведомления
+    $reply('accepted');
+
+    $notes = UserNotification::where('user_id', $employerUser->id)->where('title', 'Ответ на ваше приглашение')->get();
+    expect($notes)->toHaveCount(2)
+        ->and($notes->pluck('type')->unique()->all())->toBe(['candidate'])
+        ->and($notes->last()->body)->toContain('Приглашение принято.');
+
+    // выключил «Новый кандидат» — об ответах на приглашения не пишем
+    UserSetting::create(['user_id' => $employerUser->id, 'notify_new_candidates' => false]);
+    $reply('rejected');
+    expect(UserNotification::where('user_id', $employerUser->id)->where('title', 'Ответ на ваше приглашение')->count())->toBe(2);
+});
+
+test('ответ на приглашение — и на почту, если она включена', function () {
+    Notification::fake();
+    $employerUser = User::factory()->employer()->create();
+    $employer = makeEmployer($employerUser);
+    $resume = makeResume(makeApplicant(User::factory()->applicant()->create()));
+    $invitation = App\Models\ResumeResponse::create(['employer_id' => $employer->id, 'resume_id' => $resume->id]);
+
+    EmployerAlerts::invitationReply($invitation, 'accepted');
+
+    Notification::assertSentTo($employerUser, App\Notifications\InvitationReplyAlert::class,
+        fn ($note, $channels) => in_array('mail', $channels, true));
+});
