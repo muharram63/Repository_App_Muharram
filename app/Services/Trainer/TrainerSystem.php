@@ -41,12 +41,20 @@ class TrainerSystem
             // роль и статус вне массового заполнения — ставим явно
             $user->role = 'employer';
             $user->save();
-
-            UserSetting::updateOrCreate(['user_id' => $user->id], [
-                'notify_new_candidates' => false, 'notify_reports' => false, 'notify_reminders' => false,
-                'channel_site' => false, 'channel_browser' => false, 'channel_email' => false,
-            ]);
         }
+
+        /*
+         * Каждый раз, а не только при создании: аккаунт, заведённый до этой
+         * правки, оставался видимым — и с каждой тренировкой (новой учебной
+         * вакансией) поднимался в «топ компаний» на главной.
+         */
+        UserSetting::updateOrCreate(['user_id' => $user->id], [
+            'notify_new_candidates' => false, 'notify_reports' => false, 'notify_reminders' => false,
+            'channel_site' => false, 'channel_browser' => false, 'channel_email' => false,
+            'mail_responses' => false, 'mail_messages' => false,
+            // не показывать в каталоге компаний и в «топе» на главной
+            'hide_company' => true,
+        ]);
 
         $employer = Employer::where('user_id', $user->id)->first() ?? Employer::create([
             'user_id' => $user->id,

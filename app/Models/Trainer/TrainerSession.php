@@ -72,11 +72,25 @@ class TrainerSession extends Model
         return $this->status === self::STATUS_REFUNDED;
     }
 
+    /**
+     * Шла, но собеседования больше нет: кандидат удалил его (отказ, удаление
+     * данных). Продолжить нечего — без этой проверки ссылка «Продолжить»
+     * строилась на пустой номер и страница падала.
+     */
+    public function isAborted(): bool
+    {
+        return $this->status === self::STATUS_ACTIVE && $this->ai_interview_id === null;
+    }
+
     public function statusLabel(): string
     {
+        if ($this->isAborted()) {
+            return __('Прервана');
+        }
+
         return match ($this->status) {
             self::STATUS_FINISHED => __('Завершена'),
-            self::STATUS_REFUNDED => __('Сорвалась — попытка возвращена'),
+            self::STATUS_REFUNDED => __('Попытка возвращена'),
             default => __('Идёт'),
         };
     }

@@ -2332,5 +2332,14 @@
     "Отличный результат: :total из 100. Вы уверенно отвечаете по теме — ниже детали и что ещё можно отточить.": "Excellent result: :total out of 100. You answer confidently on the topic — details below and what else you can polish.",
     "Хороший результат: :total из 100. Основа есть — ниже видно, где теряются баллы и как их добрать.": "Good result: :total out of 100. The basics are there — below you can see where points are lost and how to win them back.",
     "Результат :total из 100. Часть тем даётся хорошо, а над некоторыми стоит поработать — ниже разобрано по шагам.": "Result: :total out of 100. Some topics go well, others need work — broken down step by step below.",
-    "Результат :total из 100. Это тренировка — как раз для того, чтобы найти пробелы. Ниже разобрано, с чего начать.": "Result: :total out of 100. This is practice — exactly for finding the gaps. Below is where to start."
+    "Результат :total из 100. Это тренировка — как раз для того, чтобы найти пробелы. Ниже разобрано, с чего начать.": "Result: :total out of 100. This is practice — exactly for finding the gaps. Below is where to start.",
+    "сразу после проверки — разбор появится в «Тренажёре»": "right after the check — your review will appear in the Trainer",
+    "Разбор тренировки": "Practice review",
+    "Прервана": "Interrupted",
+    "Тренировка не засчитана: попытка вернулась на счёт — можно пройти заново.": "The practice session was not counted: the attempt has been returned — you can take it again.",
+    "Тренировка прервана: собеседование по ней удалено. Продолжить её нельзя — начните новую.": "Practice interrupted: its interview was deleted. It cannot be continued — start a new one.",
+    "Составить задание не удалось из-за сбоя на нашей стороне. Если тренировку не получится оценить, попытка вернётся на счёт сама.": "We could not prepare the task because of a failure on our side. If the practice session cannot be scored, the attempt will be returned automatically.",
+    "К тренировке": "Back to the practice session",
+    "Решение не было отправлено вовремя, и задание засчитано нулём. Разбор разговора с Анной всё равно будет — он появится в «Тренажёре».": "The solution was not submitted in time, so the task scored zero. You will still get a review of your conversation with Anna — it will appear in the Trainer.",
+    "Эта заявка уже не ждёт оплаты: :status.": "This request is no longer awaiting payment: :status."
 }

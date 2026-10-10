@@ -161,7 +161,8 @@ class TrainerSessions
         foreach ($criteria as $i => $criterion) {
             AiInterviewCriterion::create($criterion + [
                 'vacancy_id' => $vacancy->id,
-                'source' => 'manual',
+                // критерии направления задаёт администратор — как работодатель свои
+                'source' => 'employer',
                 // первый навык — сама профессия направления, остальные — навыки
                 'basis' => $i === 0 ? 'title' : 'skills',
                 'confirmed_at' => now(),

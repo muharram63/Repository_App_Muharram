@@ -111,6 +111,12 @@
                 <div class="tk-note tk-bad">{{ session('error') }}</div>
             @endif
 
+            {{-- тренировка тренажёра: выходы ведут к её разбору, а не к «Моим ИИ-собеседованиям», где тренировок нет --}}
+            @php
+                $trainerSession = $interview->trainerSession;
+                $trainerUrl = $trainerSession ? route('applicant.trainer.show', $trainerSession) : null;
+            @endphp
+
             @if(! $task && ($testSkipped ?? false))
                 {{-- Работодатель не включил задание в оценку: его и не дают. --}}
                 <div class="tk-panel">
@@ -129,6 +135,14 @@
                      нельзя — человек иначе ждёт вечно. --}}
                 <div class="tk-panel">
                     <h1>{{ __('Задание не понадобится') }}</h1>
+                    @if($trainerSession)
+                        <p class="tk-hint">
+                            {{ __('Составить задание не удалось из-за сбоя на нашей стороне. Если тренировку не получится оценить, попытка вернётся на счёт сама.') }}
+                        </p>
+                        <div class="tk-row">
+                            <a class="tk-btn" href="{{ $trainerUrl }}">{{ __('К тренировке') }}</a>
+                        </div>
+                    @else
                     <p class="tk-hint">
                         {{ __('Составить задание не удалось, и система не стала решать сама — вашу кандидатуру рассматривает человек.') }}
                     </p>
@@ -140,6 +154,7 @@
                             {{ __('К моим собеседованиям') }}
                         </a>
                     </div>
+                    @endif
                 </div>
             @elseif(! $task)
                 {{-- Задание готовится. Самый долгий вызов в модуле: модель пишет
@@ -186,13 +201,12 @@
                     @endif
 
                     {{-- тренировка: никакого «ответа о приёме» — разбор в «Тренажёре» --}}
-                    @php $trainerSession = $interview->trainerSession; @endphp
                     @if($trainerSession)
                         <p class="tk-hint" id="tkGradeState">
                             {{ __('Тренировка закончена. ИИ проверяет решения — через пару минут подробный разбор появится в «Тренажёре»: баллы, что получилось, где ошибки и как правильно.') }}
                         </p>
                         <div class="tk-row">
-                            <a class="tk-btn" href="{{ Route::has('applicant.trainer.show') ? route('applicant.trainer.show', $trainerSession) : route('applicant.trainer.index') }}">
+                            <a class="tk-btn" href="{{ $trainerUrl }}">
                                 {{ __('К разбору тренировки') }}
                             </a>
                         </div>
@@ -225,11 +239,15 @@
                 <div class="tk-panel">
                     <h1>{{ __('Время на задание вышло') }}</h1>
                     <p class="tk-hint">
+                        @if($trainerSession)
+                            {{ __('Решение не было отправлено вовремя, и задание засчитано нулём. Разбор разговора с Анной всё равно будет — он появится в «Тренажёре».') }}
+                        @else
                         {{ __('Решение не было отправлено вовремя. Это не отказ: задание — лишь часть итога, и решение принимается по совокупности с документами и собеседованием.') }}
+                        @endif
                     </p>
                     <div class="tk-row">
-                        <a class="tk-btn" href="{{ route('applicant.ai.index') }}">
-                            {{ __('К моим собеседованиям') }}
+                        <a class="tk-btn" href="{{ $trainerUrl ?? route('applicant.ai.index') }}">
+                            {{ $trainerSession ? __('К тренировке') : __('К моим собеседованиям') }}
                         </a>
                     </div>
                 </div>

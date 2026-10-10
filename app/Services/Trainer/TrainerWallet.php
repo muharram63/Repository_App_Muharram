@@ -86,11 +86,17 @@ class TrainerWallet
         ]);
     }
 
-    /** Тренировок за сегодня — для предела в сутки. */
+    /**
+     * Тренировок за сегодня — для предела в сутки.
+     *
+     * Возвращённые не считаются: тренировка, сорвавшаяся по нашей вине, не
+     * должна отнимать у человека место в дневном пределе.
+     */
     public function startedToday(User $user): int
     {
         return TrainerSession::where('user_id', $user->id)
             ->where('demo', false)
+            ->where('status', '!=', TrainerSession::STATUS_REFUNDED)
             ->where('created_at', '>=', now()->startOfDay())
             ->count();
     }

@@ -59,11 +59,15 @@ class TrainerPayments
         ]);
     }
 
-    /** Кандидат нажал «Я оплатил». */
-    public function claim(TrainerPayment $payment, ?string $note): void
+    /**
+     * Кандидат нажал «Я оплатил».
+     *
+     * @return bool принята ли отметка (false — заявка уже не ждёт оплаты)
+     */
+    public function claim(TrainerPayment $payment, ?string $note): bool
     {
         if ($payment->status !== TrainerPayment::PENDING) {
-            return;
+            return false;
         }
 
         $payment->update([
@@ -71,6 +75,8 @@ class TrainerPayments
             'payer_note' => $note ? mb_substr(trim($note), 0, 255) : null,
             'claimed_at' => now(),
         ]);
+
+        return true;
     }
 
     /**

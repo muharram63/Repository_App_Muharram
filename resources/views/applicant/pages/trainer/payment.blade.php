@@ -18,6 +18,7 @@
             <a href="{{ route('applicant.trainer.index') }}" class="tr-muted" style="text-decoration:none">← {{ __('К тренажёру') }}</a>
 
             @if(session('status'))<div class="tr-note tr-good">{{ session('status') }}</div>@endif
+            @if(session('error'))<div class="tr-note tr-bad">{{ session('error') }}</div>@endif
 
             <div class="tr-card">
                 <div class="tr-row" style="justify-content:space-between">

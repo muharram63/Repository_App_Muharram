@@ -31,43 +31,6 @@ beforeEach(function () {
     Illuminate\Support\Facades\Http::preventStrayRequests();
 });
 
-/** Тренировка, пройденная до конца: ответ оценён, тест и задание проверены. */
-function playedSession($test): TrainerSession
-{
-    $user = trainingUser();
-    startTraining($test, $user, phpTrack());
-    $session = TrainerSession::sole();
-    $interview = $session->interview;
-
-    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 1, 'role' => 'ai',
-        'text' => 'Чем отличается INNER JOIN от LEFT JOIN?']);
-    AiInterviewTurn::create(['ai_interview_id' => $interview->id, 'position' => 2, 'role' => 'candidate',
-        'text' => 'LEFT JOIN берёт все строки слева', 'score' => 4, 'max_score' => 10,
-        'rationale' => 'Про INNER JOIN не сказано ничего.', 'scored_by' => 'ai']);
-
-    $task = AiTestTask::create([
-        'ai_interview_id' => $interview->id, 'kind' => AiTestTask::KIND_MAIN,
-        'statement' => 'Напишите функцию суммы чётных чисел.', 'format' => 'code', 'language' => 'php',
-        'reference_solution' => 'function evenSum(array $a): int { return array_sum(array_filter($a, fn ($x) => $x % 2 === 0)); }',
-        'rubric' => [['point' => 'Верный результат', 'weight' => 100]],
-        'quiz' => [['question' => 'Что вернёт count([])?', 'options' => ['0', 'null', 'ошибка'], 'answer' => 0]],
-        'time_limit_minutes' => 30, 'issued_at' => now(),
-    ]);
-
-    AiTestSubmission::create([
-        'ai_test_task_id' => $task->id, 'content' => 'function evenSum($a) { return 0; }',
-        'answers' => ['quiz' => [1]],
-        'details' => [
-            'quiz' => ['correct' => 0, 'total' => 1, 'items' => [['correct' => false]]],
-            'parts' => [['score' => 30, 'summary' => 'Функция всегда возвращает 0.', 'executed' => true,
-                'review' => [['point' => 'Верный результат', 'passed' => false, 'note' => 'Сумма не считается']]]],
-        ],
-        'score' => 30, 'submitted_at' => now(), 'graded_at' => now(),
-    ]);
-
-    return $session->fresh();
-}
-
 /** Объявить решение так, как это делает движок. */
 function decideTraining(TrainerSession $session, ?string $gate = null, int $total = 42): void
 {

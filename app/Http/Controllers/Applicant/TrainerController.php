@@ -140,7 +140,11 @@ class TrainerController extends Controller
             'payer_note' => 'nullable|string|max:255',
         ]);
 
-        $this->payments->claim($payment, $validated['payer_note'] ?? null);
+        // заявка уже решена или уже отмечена: «спасибо, проверим» было бы неправдой
+        if (! $this->payments->claim($payment, $validated['payer_note'] ?? null)) {
+            return redirect()->route('applicant.trainer.payment', $payment)
+                ->with('error', __('Эта заявка уже не ждёт оплаты: :status.', ['status' => $payment->statusLabel()]));
+        }
 
         return redirect()->route('applicant.trainer.payment', $payment)
             ->with('status', __('Спасибо! Мы проверим оплату и начислим попытки — придёт уведомление.'));
