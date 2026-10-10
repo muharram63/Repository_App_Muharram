@@ -57,7 +57,9 @@ class AiInterviewController extends Controller
             return $applicant;
         }
 
+        // тренировки живут в «Тренажёре», а не среди собеседований по вакансиям
         $interviews = AiInterview::where('applicant_id', $applicant->id)
+            ->withoutTraining()
             ->with('vacancy.employer', 'latestDecision')
             ->latest('updated_at')
             ->get();

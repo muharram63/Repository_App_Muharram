@@ -18,7 +18,9 @@ class AdminCompanyController extends Controller
             : null;
         $search = trim((string) $request->query('q', ''));
 
+        // служебный «Тренажёр Workio» — не компания
         $companies = Employer::with('user', 'city', 'industry')
+            ->when(\App\Services\Trainer\TrainerSystem::employerId(), fn ($q, $id) => $q->whereKeyNot($id))
             ->when($status, fn ($q) => $q->whereHas('user', fn ($u) => $u->where('status', $status)))
             ->when($search !== '', fn ($q) => $q->where(function ($x) use ($search) {
                 $x->where('company_name', 'like', '%'.$search.'%')

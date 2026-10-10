@@ -21,6 +21,8 @@ class DatabaseSeeder extends Seeder
             // без справочника навыков проверка навыков нерабочая: на чистой
             // установке выбирать было бы не из чего
             SkillsSeeder::class,
+            // тренажёр: направления и пакеты попыток по умолчанию
+            TrainerSeeder::class,
         ]);
 
 //        User::factory()->create([

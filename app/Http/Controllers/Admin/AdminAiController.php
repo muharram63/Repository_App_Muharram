@@ -26,7 +26,8 @@ class AdminAiController extends Controller
 
     public function index()
     {
-        $interviews = AiInterview::with('vacancy.employer', 'applicant.user', 'testTasks.submissions')
+        // учебные собеседования тренажёра — не отбор, здесь их нет
+        $interviews = AiInterview::withoutTraining()->with('vacancy.employer', 'applicant.user', 'testTasks.submissions')
             ->latest('updated_at')
             ->limit(100)
             ->get();
@@ -36,11 +37,11 @@ class AdminAiController extends Controller
 
         return view('admin.pages.ai.index', [
             'counts' => [
-                'all' => AiInterview::count(),
-                'running' => AiInterview::whereNull('outcome')->count(),
-                'passed' => AiInterview::where('outcome', 'passed')->count(),
-                'rejected' => AiInterview::where('outcome', 'rejected')->count(),
-                'manual' => AiInterview::where('requires_review', true)->count(),
+                'all' => AiInterview::withoutTraining()->count(),
+                'running' => AiInterview::withoutTraining()->whereNull('outcome')->count(),
+                'passed' => AiInterview::withoutTraining()->where('outcome', 'passed')->count(),
+                'rejected' => AiInterview::withoutTraining()->where('outcome', 'rejected')->count(),
+                'manual' => AiInterview::withoutTraining()->where('requires_review', true)->count(),
             ],
             'stuck' => $interviews->filter(fn (AiInterview $i) => $this->problem($i) !== null)->count(),
             'interviews' => $interviews,

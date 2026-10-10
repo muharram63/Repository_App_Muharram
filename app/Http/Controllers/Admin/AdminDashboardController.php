@@ -56,7 +56,7 @@ class AdminDashboardController extends Controller
         $categoriesSum = (int) $categories->sum('vacancies_count');
 
         // ===== свежие данные для таблиц =====
-        $latestVacancies = Vacancy::with('employer', 'city')
+        $latestVacancies = Vacancy::withoutTraining()->with('employer', 'city')
             ->withCount('responses')
             ->latest()
             ->take(5)

@@ -20,7 +20,8 @@ class AdminVacancyController extends Controller
 
         // employer.user и city подгружаем сразу: без этого шаблон делал
         // по три запроса на каждую строку
-        $vacancies = Vacancy::with('employer.user', 'city')
+        // учебные вакансии тренажёра — не настоящие, в списке их нет
+        $vacancies = Vacancy::withoutTraining()->with('employer.user', 'city')
             ->when($status, fn ($q) => $q->where('status', $status))
             ->when($search !== '', fn ($q) => $q->where(function ($x) use ($search) {
                 $x->where('title', 'like', '%'.$search.'%')

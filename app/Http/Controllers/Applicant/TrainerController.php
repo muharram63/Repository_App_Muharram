@@ -50,6 +50,36 @@ class TrainerController extends Controller
         ]);
     }
 
+    /**
+     * Начать тренировку: списать попытку и сразу в разговор с Анной.
+     */
+    public function start(Request $request, \App\Services\Trainer\TrainerSessions $sessions)
+    {
+        $validated = $request->validate([
+            'track_id' => 'required|integer',
+            'level' => 'required|in:'.implode(',', array_keys(config('trainer.levels'))),
+            // без согласия на обработку ответов моделью тренировка не начинается
+            'consent' => 'accepted',
+        ], [
+            'consent.accepted' => __('Чтобы начать, отметьте согласие на тренировочное собеседование с ИИ.'),
+        ]);
+
+        $track = TrainerTrack::find($validated['track_id']);
+
+        if (! $track) {
+            return back()->withInput()->with('error', __('Это направление сейчас недоступно. Выберите другое.'));
+        }
+
+        try {
+            $session = $sessions->start(auth()->user(), $track, $validated['level'], $request->ip());
+        } catch (TrainerException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        return redirect()->route('applicant.ai.chat', $session->ai_interview_id)
+            ->with('status', __('Тренировка началась. Отвечайте как на настоящем собеседовании — результат увидите только вы.'));
+    }
+
     /** Выбрать пакет: создаётся заявка, и кандидат видит реквизиты. */
     public function buy(TrainerPackage $package)
     {

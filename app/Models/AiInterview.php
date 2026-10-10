@@ -154,6 +154,23 @@ class AiInterview extends Model
     /**
      * Последнее по счёту решение — оно и есть действующее.
      */
+    /** Тренировка тренажёра, если это учебное собеседование. */
+    public function trainerSession()
+    {
+        return $this->hasOne(\App\Models\Trainer\TrainerSession::class, 'ai_interview_id');
+    }
+
+    public function isTraining(): bool
+    {
+        return $this->trainerSession()->exists();
+    }
+
+    /** Без учебных собеседований тренажёра: их видит только сам кандидат. */
+    public function scopeWithoutTraining($query)
+    {
+        return $query->whereDoesntHave('trainerSession');
+    }
+
     public function latestDecision()
     {
         return $this->hasOne(AiDecision::class)->latestOfMany('round');
@@ -313,6 +330,12 @@ class AiInterview extends Model
     public function farewellRemark(): string
     {
         $locale = $this->config?->candidateLocale() ?? 'ru';
+
+        // тренировка: никакого «ответа о приёме» — только разбор для самого кандидата
+        if ($this->isTraining()) {
+            return __('Спасибо, ваши решения приняты — тренировка закончена. Я проверю тест и задания, и через пару минут подробный разбор появится в разделе «Тренажёр»: что получилось, где ошибки и как сделать лучше. Удачи!', [], $locale);
+        }
+
         $sla = __($this->config?->response_sla ?: 'в течение 24 часов', [], $locale);
 
         return __('Спасибо, ваши решения приняты — на этом наше собеседование закончено. Я проверю тест и задания и вместе с нашей беседой передам на рассмотрение. Ответ мы пришлём вам :sla: он придёт в уведомления и появится в разделе «Мои ИИ-собеседования». Спасибо за ваше время и удачи!', [

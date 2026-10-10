@@ -185,13 +185,26 @@
                         <div class="tk-statement" id="tkFarewell">{{ $farewell->text }}</div>
                     @endif
 
+                    {{-- тренировка: никакого «ответа о приёме» — разбор в «Тренажёре» --}}
+                    @php $trainerSession = $interview->trainerSession; @endphp
+                    @if($trainerSession)
+                        <p class="tk-hint" id="tkGradeState">
+                            {{ __('Тренировка закончена. ИИ проверяет решения — через пару минут подробный разбор появится в «Тренажёре»: баллы, что получилось, где ошибки и как правильно.') }}
+                        </p>
+                        <div class="tk-row">
+                            <a class="tk-btn" href="{{ Route::has('applicant.trainer.show') ? route('applicant.trainer.show', $trainerSession) : route('applicant.trainer.index') }}">
+                                {{ __('К разбору тренировки') }}
+                            </a>
+                        </div>
+                    @else
                     <p class="tk-hint" id="tkGradeState">
                         {{ __('Ваши ответы переданы на рассмотрение. Итог — принят ли вы на работу — придёт в уведомления в течение 24 часов. Эту страницу можно закрыть.') }}
                     </p>
                     <p class="tk-hint">
                         {{ __('Оценка вам не показывается: её увидит работодатель в отчёте.') }}
                     </p>
-                    <div class="tk-row">
+                    @endif
+                    <div class="tk-row" @if($trainerSession) hidden @endif>
                         <a class="tk-btn" href="{{ route('applicant.ai.index') }}">
                             {{ __('К моим собеседованиям') }}
                         </a>

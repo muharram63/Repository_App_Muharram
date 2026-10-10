@@ -96,6 +96,69 @@ class AdminTrainerController extends Controller
         return back()->with('status', __('Начислено :n попыток: :email.', ['n' => $validated['attempts'], 'email' => $user->email]));
     }
 
+    // ==================== направления ====================
+
+    /**
+     * Направление: название, описание, язык и навыки.
+     *
+     * Навыки — по одному в строке: «Навык; обязательный; 30». Вид и вес
+     * необязательны: по умолчанию — желательный, вес 20. Первый навык —
+     * сама профессия направления.
+     */
+    public function saveTrack(Request $request, ?TrainerTrack $track = null)
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:120',
+            'description' => 'nullable|string|max:2000',
+            'language' => 'required|in:ru,tg,en',
+            'skills' => 'required|string|max:4000',
+            'position' => 'nullable|integer|min:0|max:1000',
+        ]);
+
+        $skills = self::parseSkills($validated['skills']);
+
+        if ($skills === []) {
+            return back()->withInput()->with('error', __('Укажите хотя бы один навык направления.'));
+        }
+
+        $data = [
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'language' => $validated['language'],
+            'skills' => $skills,
+            'position' => (int) ($validated['position'] ?? 0),
+            'active' => $request->boolean('active'),
+        ];
+
+        $track && $track->exists ? $track->update($data) : TrainerTrack::create($data);
+
+        return back()->with('status', __('Направление сохранено.'));
+    }
+
+    /** «PHP и Laravel; обязательный; 40» → {label, kind, weight}. */
+    public static function parseSkills(string $text): array
+    {
+        return collect(preg_split('/\r\n|\r|\n/', $text))
+            ->map(fn ($line) => array_map('trim', explode(';', $line)))
+            ->filter(fn ($parts) => filled($parts[0] ?? null))
+            ->take(10)
+            ->map(fn ($parts) => [
+                'label' => mb_substr($parts[0], 0, 120),
+                'kind' => preg_match('/^(обяз|must|ҳатм)/iu', $parts[1] ?? '') ? 'must' : 'nice',
+                'weight' => max(1, min(100, (int) ($parts[2] ?? 20) ?: 20)),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** Навыки обратно в строки — для формы правки. */
+    public static function skillsText(array $skills): string
+    {
+        return collect($skills)
+            ->map(fn ($s) => $s['label'].'; '.(($s['kind'] ?? 'nice') === 'must' ? 'обязательный' : 'желательный').'; '.($s['weight'] ?? 20))
+            ->implode("\n");
+    }
+
     // ==================== пакеты и реквизиты ====================
 
     public function savePackage(Request $request, ?TrainerPackage $package = null)

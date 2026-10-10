@@ -79,7 +79,7 @@ class AdminNumbers
             $responsesTotal = VacancyResponse::count() + ResumeResponse::count();
             $accepted = VacancyResponse::where('status', 'accepted')->count()
                 + ResumeResponse::where('status', 'accepted')->count();
-            $vacanciesTotal = Vacancy::count();
+            $vacanciesTotal = Vacancy::withoutTraining()->count();
             $responsesVacancy = VacancyResponse::count();
             $responsesOnActive = VacancyResponse::whereIn(
                 'vacancy_id',
@@ -88,11 +88,11 @@ class AdminNumbers
             return [
                 'activeVacancies' => Vacancy::where('status', 'active')->count(),
                 'vacanciesTotal' => $vacanciesTotal,
-                'vacanciesMonth' => Vacancy::where('created_at', '>=', $monthAgo)->count(),
-                'usersTotal' => User::count(),
-                'usersMonth' => User::where('created_at', '>=', $monthAgo)->count(),
+                'vacanciesMonth' => Vacancy::withoutTraining()->where('created_at', '>=', $monthAgo)->count(),
+                'usersTotal' => self::base(User::class)->count(),
+                'usersMonth' => self::base(User::class)->where('created_at', '>=', $monthAgo)->count(),
                 'applicantsTotal' => Applicant::count(),
-                'employersTotal' => Employer::count(),
+                'employersTotal' => self::base(Employer::class)->count(),
                 'resumesTotal' => Resume::count(),
                 'resumesMonth' => Resume::where('created_at', '>=', $monthAgo)->count(),
                 'responsesTotal' => $responsesVacancy,
@@ -130,7 +130,7 @@ class AdminNumbers
             // один запрос на таблицу: текущий период, предыдущий и сегодня сразу.
             // case when вместо sum(условие): булево сложение понимает только MySQL
             $count = function (string $model) use ($curFrom, $prevFrom, $today) {
-                $row = $model::selectRaw(
+                $row = self::base($model)->selectRaw(
                     'sum(case when created_at >= ? then 1 else 0 end) as cur,
                      sum(case when created_at >= ? and created_at < ? then 1 else 0 end) as prev,
                      sum(case when created_at >= ? then 1 else 0 end) as today',
@@ -249,12 +249,29 @@ class AdminNumbers
     }
 
     /**
+     * Запрос к таблице без служебного тренажёра: его учебные вакансии,
+     * служебный пользователь и служебный работодатель — не площадка, и в
+     * статистике их быть не должно.
+     */
+    private static function base(string $model)
+    {
+        $trainerUser = \App\Services\Trainer\TrainerSystem::userId();
+
+        return match ($model) {
+            Vacancy::class => Vacancy::withoutTraining(),
+            User::class => User::query()->when($trainerUser, fn ($q) => $q->whereKeyNot($trainerUser)),
+            Employer::class => Employer::query()->when($trainerUser, fn ($q) => $q->where('user_id', '!=', $trainerUser)),
+            default => $model::query(),
+        };
+    }
+
+    /**
      * Распределение записей по колонке с человекочитаемыми подписями.
      */
     public function distribution(string $model, string $column, array $labels): array
     {
         return $this->once('dist:'.$model.':'.$column, function () use ($model, $column, $labels) {
-            $rows = $model::select($column, DB::raw('count(*) as total'))
+            $rows = self::base($model)->select($column, DB::raw('count(*) as total'))
                 ->groupBy($column)
                 ->pluck('total', $column);
 

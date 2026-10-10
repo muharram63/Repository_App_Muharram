@@ -2286,5 +2286,17 @@
     "Начислено попыток: :count. Можно тренироваться.": "Attempts added: :count. You can practice now.",
     "Оплата не подтверждена": "Payment not confirmed",
     "Заявка :ref: :reason": "Request :ref: :reason",
-    "Тренажёр": "Trainer"
+    "Тренажёр": "Trainer",
+    "Это тренировка: работодатели её не видят. Баллы и подробный разбор появятся в «Тренажёре», когда закончите.": "This is a practice session: employers cannot see it. Your scores and a detailed review will appear in the Trainer when you finish.",
+    "Тренировка:": "Practice:",
+    "Тренировка закончена. ИИ проверяет решения — через пару минут подробный разбор появится в «Тренажёре»: баллы, что получилось, где ошибки и как правильно.": "Practice is over. The AI is checking your solutions — in a couple of minutes a detailed review will appear in the Trainer: scores, what went well, where the mistakes are and how to do it right.",
+    "К разбору тренировки": "Go to the practice review",
+    "Чтобы начать, отметьте согласие на тренировочное собеседование с ИИ.": "To start, tick your consent to a practice interview with the AI.",
+    "Это направление сейчас недоступно. Выберите другое.": "This track is not available right now. Please choose another one.",
+    "Тренировка началась. Отвечайте как на настоящем собеседовании — результат увидите только вы.": "Practice has started. Answer as you would in a real interview — only you will see the result.",
+    "Укажите хотя бы один навык направления.": "Specify at least one skill for the track.",
+    "Направление сохранено.": "Track saved.",
+    "Сначала заполните анкету соискателя — по ней Анна задаёт вопросы.": "Fill in your candidate profile first — Anna asks questions based on it.",
+    "Выберите уровень: Junior, Middle или Senior.": "Choose a level: Junior, Middle or Senior.",
+    "Спасибо, ваши решения приняты — тренировка закончена. Я проверю тест и задания, и через пару минут подробный разбор появится в разделе «Тренажёр»: что получилось, где ошибки и как сделать лучше. Удачи!": "Thank you, your solutions have been received — the practice session is over. I will check the test and tasks, and in a couple of minutes a detailed review will appear in the Trainer section: what went well, where the mistakes are and how to do better. Good luck!"
 }

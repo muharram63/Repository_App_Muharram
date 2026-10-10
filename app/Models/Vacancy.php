@@ -50,6 +50,18 @@ class Vacancy extends Model
      * Только вакансии в сомони — чтобы не складывать разные валюты
      * в одно среднее.
      */
+    /**
+     * Без учебных вакансий тренажёра — для каталогов, админки и статистики.
+     * Учебные принадлежат служебному работодателю «Тренажёр Workio»; пока
+     * тренировок не было, его нет, и условие ничего не меняет.
+     */
+    public function scopeWithoutTraining($query)
+    {
+        $trainer = \App\Services\Trainer\TrainerSystem::employerId();
+
+        return $trainer ? $query->where($query->qualifyColumn('employer_id'), '!=', $trainer) : $query;
+    }
+
     public function scopeInSomoni($query)
     {
         return $query->whereIn('currency', self::SOMONI);
