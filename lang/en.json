@@ -2232,5 +2232,7 @@
     "Оплата пакета": "Package payment",
     "Начислено администратором": "Added by the administrator",
     "Тренировка": "Practice session",
-    "Возврат: тренировка сорвалась по нашей вине": "Refund: the session failed through our fault"
+    "Возврат: тренировка сорвалась по нашей вине": "Refund: the session failed through our fault",
+    "На сегодня тренировок достаточно: не больше :limit в сутки. Возвращайтесь завтра.": "That is enough practice for today: no more than :limit per day. Come back tomorrow.",
+    "Попытки закончились. Купите пакет попыток, чтобы продолжить.": "You are out of attempts. Buy an attempt package to continue."
 }
