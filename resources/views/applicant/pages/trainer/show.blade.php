@@ -187,7 +187,7 @@
 
                 <div class="tr-row">
                     <a class="tr-btn" href="{{ route('applicant.trainer.index') }}#start">{{ __('Ещё одна тренировка') }}</a>
-                    @if(($feedback['source'] ?? '') !== 'ai')
+                    @if(($feedback['source'] ?? '') === 'basic')
                         <span class="tr-muted">{{ __('Разбор собран по оценкам без подробного текста ИИ — модель была недоступна.') }}</span>
                     @endif
                 </div>
