@@ -57,6 +57,7 @@ class AiInteraction extends Model
         'speech_synthesis' => 'Озвучка вопроса',
         'answer_transcribe' => 'Распознавание устного ответа',
         'employer_advice' => 'Разговор с работодателем о кандидате',
+        'trainer_feedback' => 'Разбор тренировки',
     ];
 
     /**

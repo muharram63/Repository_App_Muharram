@@ -51,6 +51,7 @@ class AdminTrainerController extends Controller
             'settings' => collect(TrainerSetting::KEYS)->mapWithKeys(fn ($label, $key) => [$key => TrainerSetting::get($key)]),
             'stats' => $this->stats(),
             'ledger' => TrainerLedgerEntry::with('user')->latest('id')->take(30)->get(),
+            'sessions' => TrainerSession::with('user')->latest('id')->take(30)->get(),
         ]);
     }
 
@@ -94,6 +95,22 @@ class AdminTrainerController extends Controller
         $this->wallet->credit($user, (int) $validated['attempts'], 'manual', null, $validated['note'] ?? null, $request->user()->id);
 
         return back()->with('status', __('Начислено :n попыток: :email.', ['n' => $validated['attempts'], 'email' => $user->email]));
+    }
+
+    /**
+     * Вернуть попытку вручную: тренировка сорвалась по нашей вине, а
+     * автоматический возврат её не поймал (например, Анна замолчала посреди
+     * разговора). Дважды не вернуть — защищает уникальный ключ журнала.
+     */
+    public function refund(Request $request, TrainerSession $session)
+    {
+        $validated = $request->validate(['note' => 'required|string|min:3|max:255']);
+
+        $done = $this->wallet->refund($session, $validated['note'], $request->user()->id);
+
+        return back()->with($done ? 'status' : 'error', $done
+            ? __('Попытка возвращена: :email.', ['email' => $session->user?->email ?? '—'])
+            : __('За эту тренировку попытка уже возвращалась.'));
     }
 
     // ==================== направления ====================

@@ -2,12 +2,14 @@
 
 namespace App\Services\Trainer;
 
+use App\Jobs\BuildTrainerFeedback;
 use App\Models\AiInterview;
 use App\Models\AiInterviewConfig;
 use App\Models\AiInterviewCriterion;
 use App\Models\Trainer\TrainerSession;
 use App\Models\Trainer\TrainerTrack;
 use App\Models\User;
+use App\Models\UserNotification;
 use App\Models\Vacancy;
 
 /**
@@ -77,6 +79,45 @@ class TrainerSessions
                 'status' => TrainerSession::STATUS_ACTIVE,
             ]);
         });
+    }
+
+    /**
+     * Движок объявил решение — тренировка окончена.
+     *
+     * Если решить не удалось по нашей вине (модель не оценила ответы или не
+     * проверила задание), попытка возвращается сама: кандидат не платит за
+     * наш сбой. Иначе — балл движка и разбор в очередь.
+     */
+    public function finish(TrainerSession $session, AiInterview $interview): void
+    {
+        if ($session->isRefunded() || $session->isFinished()) {
+            return;
+        }
+
+        $gate = $interview->latestDecision()->value('gate_reason');
+
+        if ($gate === 'invalid_ai_response') {
+            $this->wallet->refund($session, 'Сбой проверки ИИ: тренировка не засчитана');
+
+            UserNotification::deliver(
+                $session->user_id,
+                'trainer',
+                UserNotification::text('Попытка возвращена'),
+                UserNotification::text('Тренировку «:track» не удалось проверить из-за сбоя на нашей стороне. Попытка вернулась на счёт — можно пройти заново.', ['track' => $session->track_title]),
+                route('applicant.trainer.index'),
+            );
+
+            return;
+        }
+
+        $session->update([
+            'status' => TrainerSession::STATUS_FINISHED,
+            'score' => $interview->total_score,
+            'finished_at' => now(),
+            'feedback_status' => 'pending',
+        ]);
+
+        BuildTrainerFeedback::dispatch($session->id);
     }
 
     /** Учебная вакансия под тренировку: своя на каждую, скрытая. */

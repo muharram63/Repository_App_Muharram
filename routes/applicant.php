@@ -119,6 +119,7 @@ Route::prefix('trainer')->name('trainer.')->group(function () {
     Route::get('/', [$trainer, 'index'])->name('index');
     // тренировка — полтора-два десятка обращений к модели: частоту ограничиваем
     Route::post('start', [$trainer, 'start'])->middleware('throttle:6,1')->name('start');
+    Route::get('sessions/{session}', [$trainer, 'show'])->whereNumber('session')->name('show');
     Route::post('buy/{package}', [$trainer, 'buy'])->whereNumber('package')
         ->middleware('throttle:10,1')->name('buy');
     Route::get('payments/{payment}', [$trainer, 'payment'])->whereNumber('payment')->name('payment');

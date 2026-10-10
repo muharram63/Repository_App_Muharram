@@ -117,6 +117,38 @@
             </form>
         </div>
 
+        {{-- ==================== тренировки ==================== --}}
+        {{-- ответы и разборы здесь не показываются: только статус, балл и возврат --}}
+        <div class="tn-card" id="sessions">
+            <h2>Тренировки <span class="tn-muted">последние 30</span></h2>
+            @if($sessions->isEmpty())
+                <div class="tn-body tn-muted">Тренировок пока не было.</div>
+            @else
+                <table>
+                    <tr><th>Когда</th><th>Кандидат</th><th>Направление</th><th>Статус</th><th>Балл</th><th></th></tr>
+                    @foreach($sessions as $s)
+                        <tr>
+                            <td>{{ $s->created_at->format('d.m.Y H:i') }}</td>
+                            <td>{{ $s->user?->email ?? '—' }}@if($s->demo) <span class="tn-tag pending">демо</span>@endif</td>
+                            <td>{{ $s->track_title }} · {{ $s->levelLabel() }}</td>
+                            <td><span class="tn-tag {{ $s->isRefunded() ? 'rejected' : ($s->isFinished() ? 'confirmed' : 'claimed') }}">{{ $s->statusLabel() }}</span></td>
+                            <td>{{ $s->score ?? '—' }}</td>
+                            <td>
+                                @unless($s->isRefunded())
+                                    <form method="POST" action="{{ route('superadmin.trainer.sessions.refund', $s) }}" class="tn-row"
+                                          onsubmit="return confirm('Вернуть кандидату попытку за эту тренировку?')">
+                                        @csrf
+                                        <input class="tn-in" name="note" placeholder="Причина" required maxlength="255" style="width:170px">
+                                        <button class="tn-btn danger" type="submit">Вернуть попытку</button>
+                                    </form>
+                                @endunless
+                            </td>
+                        </tr>
+                    @endforeach
+                </table>
+            @endif
+        </div>
+
         {{-- ==================== направления ==================== --}}
         @includeWhen(Route::has('superadmin.trainer.tracks.store'), 'admin.pages.trainer._tracks')
 

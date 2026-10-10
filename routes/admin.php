@@ -52,6 +52,7 @@ Route::prefix('trainer')->name('trainer')->group(function () {
     Route::post('packages', [$trainer, 'savePackage'])->name('.packages.store');
     Route::post('packages/{package}', [$trainer, 'savePackage'])->whereNumber('package')->name('.packages.update');
     Route::post('settings', [$trainer, 'saveSettings'])->name('.settings');
+    Route::post('sessions/{session}/refund', [$trainer, 'refund'])->whereNumber('session')->name('.sessions.refund');
     Route::post('tracks', [$trainer, 'saveTrack'])->name('.tracks.store');
     Route::post('tracks/{track}', [$trainer, 'saveTrack'])->whereNumber('track')->name('.tracks.update');
 });

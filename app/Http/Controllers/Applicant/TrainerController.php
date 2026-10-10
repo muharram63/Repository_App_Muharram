@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Applicant;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\BuildTrainerFeedback;
 use App\Models\Trainer\TrainerPackage;
 use App\Models\Trainer\TrainerPayment;
 use App\Models\Trainer\TrainerSession;
@@ -78,6 +79,30 @@ class TrainerController extends Controller
 
         return redirect()->route('applicant.ai.chat', $session->ai_interview_id)
             ->with('status', __('Тренировка началась. Отвечайте как на настоящем собеседовании — результат увидите только вы.'));
+    }
+
+    /**
+     * Тренировка: идёт — ссылка вернуться к Анне; окончена — разбор.
+     *
+     * Если разбор застрял (очередь не запущена или упала), страница собирает
+     * его сама: кандидат не должен ждать вечно из-за нашей очереди.
+     */
+    public function show(TrainerSession $session)
+    {
+        $this->mine($session->user_id);
+
+        if ($session->isFinished() && $session->feedback_status === 'pending'
+            && $session->finished_at?->lt(now()->subSeconds(90))) {
+            // прямо здесь, мимо очереди: страница не должна зависеть от того, запущена ли она
+            app()->call([new BuildTrainerFeedback($session->id), 'handle']);
+            $session->refresh();
+        }
+
+        return view('applicant.pages.trainer.show', [
+            'user' => auth()->user(),
+            'session' => $session,
+            'feedback' => $session->feedback_status === 'ready' ? ($session->feedback ?? []) : null,
+        ]);
     }
 
     /** Выбрать пакет: создаётся заявка, и кандидат видит реквизиты. */

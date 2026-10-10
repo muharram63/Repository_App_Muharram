@@ -202,3 +202,40 @@ function offerPayload(array $extra = []): array
     return $extra + ['message' => 'Приеду с запчастями, опыт 7 лет.', 'price' => 250, 'can_start' => 'today'];
 }
 
+
+/*
+| Тренажёр: направление, кандидат с анкетой и старт тренировки через страницу.
+*/
+
+function phpTrack(array $fields = []): App\Models\Trainer\TrainerTrack
+{
+    return App\Models\Trainer\TrainerTrack::create($fields + [
+        'title' => 'PHP-разработчик',
+        'description' => 'Бэкенд на PHP и Laravel',
+        'language' => 'ru',
+        'skills' => [
+            ['label' => 'PHP и Laravel', 'kind' => 'must', 'weight' => 40],
+            ['label' => 'SQL', 'kind' => 'must', 'weight' => 30],
+            ['label' => 'REST API', 'kind' => 'nice', 'weight' => 20],
+        ],
+        'active' => true,
+    ]);
+}
+
+function trainingUser(): App\Models\User
+{
+    $user = App\Models\User::factory()->applicant()->create();
+    makeResume(makeApplicant($user));
+
+    return $user->fresh();
+}
+
+/** Начать тренировку через страницу, как кандидат. */
+function startTraining($test, App\Models\User $user, App\Models\Trainer\TrainerTrack $track, string $level = 'junior')
+{
+    $test->actingAs($user)->get(route('applicant.trainer.index')); // бесплатная попытка
+
+    return $test->actingAs($user)->post(route('applicant.trainer.start'), [
+        'track_id' => $track->id, 'level' => $level, 'consent' => '1',
+    ]);
+}

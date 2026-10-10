@@ -22,40 +22,10 @@ use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     Queue::fake();
+    // ключ из .env не должен уводить тесты к настоящей модели: квота не бесконечна
+    config(['services.gemini.key' => null]);
+    Illuminate\Support\Facades\Http::preventStrayRequests();
 });
-
-function phpTrack(array $fields = []): TrainerTrack
-{
-    return TrainerTrack::create($fields + [
-        'title' => 'PHP-разработчик',
-        'description' => 'Бэкенд на PHP и Laravel',
-        'language' => 'ru',
-        'skills' => [
-            ['label' => 'PHP и Laravel', 'kind' => 'must', 'weight' => 40],
-            ['label' => 'SQL', 'kind' => 'must', 'weight' => 30],
-            ['label' => 'REST API', 'kind' => 'nice', 'weight' => 20],
-        ],
-        'active' => true,
-    ]);
-}
-
-function trainingUser(): User
-{
-    $user = User::factory()->applicant()->create();
-    makeResume(makeApplicant($user));
-
-    return $user->fresh();
-}
-
-/** Начать тренировку через страницу, как кандидат. */
-function startTraining($test, User $user, TrainerTrack $track, string $level = 'junior')
-{
-    $test->actingAs($user)->get(route('applicant.trainer.index')); // бесплатная попытка
-
-    return $test->actingAs($user)->post(route('applicant.trainer.start'), [
-        'track_id' => $track->id, 'level' => $level, 'consent' => '1',
-    ]);
-}
 
 // ==================== запуск ====================
 

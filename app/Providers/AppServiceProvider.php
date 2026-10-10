@@ -112,6 +112,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // тренажёр закрывает тренировку, когда движок объявил решение
+        \App\Models\AiInterview::observe(\App\Observers\TrainerInterviewObserver::class);
+
         /*
          * Напоминания работодателям о кандидатах, ждущих ответа больше суток.
          *

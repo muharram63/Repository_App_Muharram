@@ -37,7 +37,7 @@
 
             {{-- ==================== начать тренировку ==================== --}}
             @if(Route::has('applicant.trainer.start'))
-                <div class="tr-card">
+                <div class="tr-card" id="start">
                     <h2>{{ __('Новая тренировка') }}</h2>
 
                     @if($tracks->isEmpty())
