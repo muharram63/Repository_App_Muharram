@@ -1441,3 +1441,20 @@ test('в списке кандидатов и откликов — зелёна�
         ->assertOk()
         ->assertSee(__('Отказ — уведомление отправлено'));
 });
+
+test('задание, оценённое запасной моделью, помечено в разделе задания', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $submission = $interview->testTasks()->sole()->submission()->first();
+    $submission->update(['details' => ['parts' => [['score' => 55, 'summary' => 'Частично.', 'model' => 'gemini-3.5-flash-lite']]]]);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertSee(__('Оценено запасной моделью :model', ['model' => 'gemini-3.5-flash-lite']));
+
+    // основной моделью — без пометки
+    $submission->update(['details' => ['parts' => [['score' => 55, 'summary' => 'Частично.', 'model' => config('services.gemini.model_scoring')]]]]);
+
+    $this->actingAs($employerUser)->get(route('employer.ai.candidate', [$vacancy, $interview]))
+        ->assertOk()
+        ->assertDontSee(__('Оценено запасной моделью :model', ['model' => config('services.gemini.model_scoring')]));
+});

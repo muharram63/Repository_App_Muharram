@@ -274,18 +274,9 @@ class BuildRequirementMatrix implements ShouldQueue
             'reason' => $reason,
         ]);
 
-        // Работодателю сообщаем: кандидат ждёт, а система не берётся решать.
-        UserNotification::deliver(
-            $interview->vacancy?->employer?->user_id,
-            'interview',
-            UserNotification::text('Кандидат ждёт ручной проверки'),
-            UserNotification::text('По вакансии «:title» не удалось разобрать документы: :reason', [
-                'title' => $interview->vacancy?->title ?? '—',
-                'reason' => $reason,
-            ]),
-            // в отчёт по кандидату: решать надо там, а не в настройках вакансии
-            route('employer.ai.candidate', [$interview->vacancy_id, $interview->id]),
-        );
+        // Работодателю сообщаем: кандидат ждёт, а система не берётся решать —
+        // по его настройкам видов и каналов, один раз на каждый запуск разбора
+        \App\Support\EmployerAlerts::manualReview($interview, $reason);
     }
 
     /**

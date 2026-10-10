@@ -49,6 +49,20 @@ class EmployerAlerts
         );
     }
 
+    /** Разбор документов не удался — кандидата решает работодатель. */
+    public static function manualReview(AiInterview $interview, string $reason): bool
+    {
+        // ключ — с моментом запуска разбора: перезапущенный и снова
+        // сорвавшийся разбор — новое событие, о нём тоже надо сказать
+        $attempt = $interview->analysis_started_at?->timestamp ?? 0;
+
+        return self::send(
+            $interview->vacancy?->employer?->user,
+            new \App\Notifications\ManualReviewAlert($interview, $reason),
+            'manual:'.$interview->id.':'.$attempt,
+        );
+    }
+
     /**
      * Напомнить о кандидатах, ждущих решения дольше суток, — не чаще раза в
      * сутки на работодателя. $employerUserId — только ему (из страницы),

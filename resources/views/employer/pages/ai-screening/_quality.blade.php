@@ -6,6 +6,13 @@
 
     $part — разбор одного задания из details.parts
 --}}
+{{-- задание оценила запасная модель — так же, как у ответов в стенограмме --}}
+@if(filled($part['model'] ?? null) && $part['model'] !== ($scoringModel ?? config('services.gemini.model_scoring')))
+    <div class="rp-why" style="color:var(--ink-warn,#B45309)">
+        {{ __('Оценено запасной моделью :model', ['model' => $part['model']]) }}
+    </div>
+@endif
+
 @if(is_array($part['quality'] ?? null))
     @php($q = $part['quality'])
     <div class="rp-line">

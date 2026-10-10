@@ -34,5 +34,10 @@
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <!-- страница встречи не спрашивает сервер Jitsi из тестов: сеть не нужна -->
         <env name="JITSI_EMBED" value="never"/>
+        <!-- тесты не пишут в рабочий журнал сайта: раньше каждый прогон добавлял
+             в storage/logs/laravel.log сотни записей testing.*, и настоящие
+             ошибки сайта тонули среди них. Log::fake и проверки логов работают
+             и с этим каналом. -->
+        <env name="LOG_CHANNEL" value="null"/>
     </php>
 </phpunit>

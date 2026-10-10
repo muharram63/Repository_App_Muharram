@@ -5,7 +5,6 @@ namespace App\Services\Scoring;
 use App\Models\AiDecision;
 use App\Models\AiInterview;
 use App\Models\UserNotification;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**

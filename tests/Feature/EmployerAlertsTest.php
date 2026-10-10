@@ -258,3 +258,28 @@ test('страница показывает уведомление браузе�
         ->assertSee('function notifyBrowser(note)', false)
         ->assertSee('const browserOn = true;', false);
 });
+
+// ==================== ручная проверка — тоже по настройкам ====================
+
+test('«Кандидат ждёт ручной проверки» идёт по настройкам и без дублей', function () {
+    [$interview] = awaitingDecision('manual_review');
+    $interview->update(['analysis_started_at' => now()]);
+    $employer = employerOf($interview);
+
+    expect(EmployerAlerts::manualReview($interview, 'документ не читается'))->toBeTrue()
+        ->and(EmployerAlerts::manualReview($interview, 'документ не читается'))->toBeFalse();
+
+    $note = UserNotification::where('user_id', $employer->id)->sole();
+    expect($note->title)->toBe('Кандидат ждёт ручной проверки')
+        ->and($note->body)->toContain('документ не читается')
+        ->and($note->type)->toBe('candidate');
+
+    // перезапущенный и снова сорвавшийся разбор — новое событие
+    $interview->update(['analysis_started_at' => now()->addMinute()]);
+    expect(EmployerAlerts::manualReview($interview->fresh(), 'снова не читается'))->toBeTrue();
+
+    // выключил «Отчёт готов» — и о ручной проверке не пишем
+    UserSetting::create(['user_id' => $employer->id, 'notify_reports' => false]);
+    $interview->update(['analysis_started_at' => now()->addMinutes(2)]);
+    expect(EmployerAlerts::manualReview($interview->fresh(), 'опять'))->toBeFalse();
+});
