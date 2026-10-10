@@ -2221,5 +2221,16 @@
     "Настроить ИИ-собеседование": "Set up the AI interview",
     "Не сейчас": "Not now",
     "ИИ-собеседование не включено.": "The AI interview is not turned on.",
-    "Включить": "Turn on"
+    "Включить": "Turn on",
+    "Ждёт оплаты": "Awaiting payment",
+    "Проверяем оплату": "Checking the payment",
+    "Оплачено — попытки начислены": "Paid — attempts added",
+    "Завершена": "Finished",
+    "Сорвалась — попытка возвращена": "Interrupted — attempt refunded",
+    "Идёт": "In progress",
+    "Бесплатная попытка": "Free attempt",
+    "Оплата пакета": "Package payment",
+    "Начислено администратором": "Added by the administrator",
+    "Тренировка": "Practice session",
+    "Возврат: тренировка сорвалась по нашей вине": "Refund: the session failed through our fault"
 }
