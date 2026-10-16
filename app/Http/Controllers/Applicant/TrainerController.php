@@ -33,6 +33,8 @@ class TrainerController extends Controller
     {
         $user = auth()->user();
 
+        $this->payments->expireStale();
+
         // первая попытка — бесплатно, один раз на человека
         $freeNow = $this->wallet->grantFree($user);
         $limit = (int) config('trainer.daily_limit', 3);
@@ -42,6 +44,7 @@ class TrainerController extends Controller
             'applicant' => $user->applicant,
             'balance' => $this->wallet->balance($user),
             'freeNow' => $freeNow,
+            'freeNeedsPhone' => ! $freeNow && $this->wallet->freeNeedsPhone($user),
             'tracks' => TrainerTrack::active()->get(),
             'levels' => config('trainer.levels'),
             'packages' => TrainerPackage::active()->get(),

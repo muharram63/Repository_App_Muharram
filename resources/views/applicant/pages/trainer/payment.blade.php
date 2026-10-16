@@ -45,7 +45,10 @@
                     <div class="tr-note tr-warn" style="white-space:pre-line">{{ $pay['text'] }}</div>
                 @endif
 
-                @if($payment->status === \App\Models\Trainer\TrainerPayment::PENDING)
+                @if(in_array($payment->status, [\App\Models\Trainer\TrainerPayment::PENDING, \App\Models\Trainer\TrainerPayment::EXPIRED], true))
+                    @if($payment->status === \App\Models\Trainer\TrainerPayment::EXPIRED)
+                        <div class="tr-note tr-warn">{{ __('Срок заявки истёк. Если вы уже перевели деньги — нажмите «Я оплатил», мы проверим. Если нет — выберите пакет заново.') }}</div>
+                    @endif
                     <p class="tr-muted">
                         {{ __('Переведите сумму по реквизитам и укажите в назначении код :ref. Затем нажмите «Я оплатил» — мы проверим перевод и начислим попытки.', ['ref' => $pay['reference']]) }}
                     </p>

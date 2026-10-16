@@ -14,11 +14,14 @@ use App\Models\User;
 use App\Services\Trainer\TrainerException;
 use App\Services\Trainer\TrainerWallet;
 
-function trainee(?string $phone = null, ?string $email = null): User
+/** Кандидат с анкетой; телефон по умолчанию свой у каждого — без него бесплатной попытки нет. */
+function trainee(?string $phone = 'auto', ?string $email = null): User
 {
+    static $n = 0;
+
     $user = User::factory()->applicant()->create($email ? ['email' => $email] : []);
     $applicant = makeApplicant($user);
-    $applicant->update(['phone' => $phone]);
+    $applicant->update(['phone' => $phone === 'auto' ? '+992 90 '.str_pad((string) ++$n, 7, '0', STR_PAD_LEFT) : $phone]);
 
     return $user->fresh();
 }
@@ -136,4 +139,25 @@ test('каждое начисление и списание — в журнал�
 
     expect($reasons)->toBe(['free', 'purchase', 'start', 'refund'])
         ->and(wallet()->balance($user))->toBe(4);
+});
+
+test('без телефона в анкете бесплатную попытку не дают — и подсказывают, что сделать', function () {
+    $user = trainee(phone: null);
+
+    expect(wallet()->grantFree($user))->toBeFalse()
+        ->and(wallet()->freeNeedsPhone($user))->toBeTrue();
+
+    $this->actingAs($user)->get(route('applicant.trainer.index'))
+        ->assertOk()
+        ->assertSee('укажите телефон в анкете');
+
+    // указал телефон — попытка выдана и привязана к нему
+    $user->applicant->update(['phone' => '+992 93 555 11 22']);
+    $user = $user->fresh();
+
+    expect(wallet()->grantFree($user))->toBeTrue()
+        ->and(wallet()->freeNeedsPhone($user))->toBeFalse();
+
+    // новый аккаунт с тем же телефоном второй попытки не получает
+    expect(wallet()->grantFree(trainee('93-555-11-22')))->toBeFalse();
 });

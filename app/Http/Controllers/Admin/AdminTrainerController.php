@@ -10,6 +10,7 @@ use App\Models\Trainer\TrainerSession;
 use App\Models\Trainer\TrainerSetting;
 use App\Models\Trainer\TrainerTrack;
 use App\Models\User;
+use App\Models\UserNotification;
 use App\Services\Trainer\TrainerPayments;
 use App\Services\Trainer\TrainerWallet;
 use Illuminate\Http\Request;
@@ -33,6 +34,9 @@ class AdminTrainerController extends Controller
     {
         $filter = in_array($request->query('payments'), ['open', 'confirmed', 'rejected', 'all'], true)
             ? $request->query('payments') : 'open';
+
+        // неоплаченные дольше срока — из «Открытых» (если планировщик не запущен)
+        $this->payments->expireStale();
 
         $payments = TrainerPayment::with('user')
             ->when($filter === 'open', fn ($q) => $q->whereIn('status', [TrainerPayment::PENDING, TrainerPayment::CLAIMED]))
@@ -94,6 +98,15 @@ class AdminTrainerController extends Controller
 
         $this->wallet->credit($user, (int) $validated['attempts'], 'manual', null, $validated['note'] ?? null, $request->user()->id);
 
+        // как при оплате: кандидат узнаёт, что попытки появились
+        UserNotification::deliver(
+            $user->id,
+            'trainer',
+            UserNotification::text('Начислены попытки'),
+            UserNotification::text('Начислено попыток: :count. Можно тренироваться.', ['count' => (int) $validated['attempts']]),
+            route('applicant.trainer.index'),
+        );
+
         return back()->with('status', __('Начислено :n попыток: :email.', ['n' => $validated['attempts'], 'email' => $user->email]));
     }
 
@@ -106,7 +119,26 @@ class AdminTrainerController extends Controller
     {
         $validated = $request->validate(['note' => 'required|string|min:3|max:255']);
 
+        // идущую тренировку закрываем вместе с возвратом: иначе кандидат
+        // продолжал бы разговор, за который попытка уже вернулась, а в конце
+        // не получил бы разбора
+        $wasActive = $session->status === TrainerSession::STATUS_ACTIVE;
+
         $done = $this->wallet->refund($session, $validated['note'], $request->user()->id);
+
+        if ($done) {
+            if ($wasActive && $session->interview) {
+                $session->interview->eraseCompletely();
+            }
+
+            UserNotification::deliver(
+                $session->user_id,
+                'trainer',
+                UserNotification::text('Попытка возвращена'),
+                UserNotification::text('Попытка за тренировку «:track» вернулась на счёт — можно пройти заново.', ['track' => $session->track_title]),
+                route('applicant.trainer.index'),
+            );
+        }
 
         return back()->with($done ? 'status' : 'error', $done
             ? __('Попытка возвращена: :email.', ['email' => $session->user?->email ?? '—'])

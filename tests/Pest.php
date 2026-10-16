@@ -224,8 +224,13 @@ function phpTrack(array $fields = []): App\Models\Trainer\TrainerTrack
 
 function trainingUser(): App\Models\User
 {
+    static $n = 0;
+
     $user = App\Models\User::factory()->applicant()->create();
-    makeResume(makeApplicant($user));
+    $applicant = makeApplicant($user);
+    // свой телефон у каждого: без телефона бесплатной попытки нет
+    $applicant->update(['phone' => '+992 91 '.str_pad((string) ++$n, 7, '0', STR_PAD_LEFT)]);
+    makeResume($applicant);
 
     return $user->fresh();
 }

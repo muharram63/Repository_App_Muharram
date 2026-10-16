@@ -39,6 +39,10 @@ Schedule::command('orders:expire')->everyFiveMinutes()->withoutOverlapping();
 // не ждать до конкретного времени; дубль в тот же день не уйдёт.
 Schedule::command('employers:remind-awaiting')->hourly()->withoutOverlapping();
 
+// Тренажёр: заявки на оплату, по которым за неделю не нажали «Я оплатил», —
+// «Срок заявки истёк», чтобы не висели в открытых у администратора.
+Schedule::command('trainer:expire-payments')->hourly()->withoutOverlapping();
+
 Schedule::command('queue:work --stop-when-empty --max-time=55 --sleep=1')
     ->everyMinute()
     ->withoutOverlapping();

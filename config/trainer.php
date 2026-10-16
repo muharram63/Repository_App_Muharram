@@ -14,6 +14,9 @@
 return [
     'daily_limit' => (int) env('TRAINER_DAILY_LIMIT', 3),
 
+    // через сколько дней неоплаченная заявка («Я оплатил» не нажат) закрывается
+    'payment_ttl_days' => (int) env('TRAINER_PAYMENT_TTL_DAYS', 7),
+
     'system_email' => env('TRAINER_SYSTEM_EMAIL', 'trainer@workio.system'),
 
     // уровни: сколько вопросов и минут на задание

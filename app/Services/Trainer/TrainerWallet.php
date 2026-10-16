@@ -31,6 +31,10 @@ class TrainerWallet
      * зарегистрироваться снова с тем же email или телефоном — второй
      * бесплатной попытки не даст. Храним не сами данные, а их хеши.
      *
+     * Без телефона в анкете попытку не выдаём: раньше её давали по одному
+     * email, телефон к выдаче так и не привязывался, и с новым email и тем
+     * же телефоном получалась вторая бесплатная попытка.
+     *
      * @return bool выдана ли попытка сейчас
      */
     public function grantFree(User $user): bool
@@ -40,13 +44,15 @@ class TrainerWallet
         }
 
         $email = self::hash(mb_strtolower(trim((string) $user->email)));
-        $digits = preg_replace('/\D+/', '', (string) $user->applicant?->phone);
-        // короткий номер — не телефон: по нему не отличить людей
-        $phone = strlen($digits) >= 7 ? self::hash(substr($digits, -9)) : null;
+        $phone = self::phoneHash($user);
+
+        if ($phone === null) {
+            return false;
+        }
 
         $taken = DB::table('trainer_free_claims')
             ->where('email_hash', $email)
-            ->when($phone, fn ($q) => $q->orWhere('phone_hash', $phone))
+            ->orWhere('phone_hash', $phone)
             ->exists();
 
         if ($taken) {
@@ -71,6 +77,28 @@ class TrainerWallet
         }
 
         return true;
+    }
+
+    /**
+     * Бесплатная попытка ждёт только телефона в анкете: выдачи ещё не было,
+     * а телефона нет. Страница тренажёра подсказывает, что сделать.
+     */
+    public function freeNeedsPhone(User $user): bool
+    {
+        return $user->role === 'applicant'
+            && self::phoneHash($user) === null
+            && ! DB::table('trainer_free_claims')
+                ->where('email_hash', self::hash(mb_strtolower(trim((string) $user->email))))
+                ->orWhere('user_id', $user->id)
+                ->exists();
+    }
+
+    /** Хеш телефона из анкеты; короткий номер — не телефон: по нему не отличить людей. */
+    private static function phoneHash(User $user): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $user->applicant?->phone);
+
+        return strlen($digits) >= 7 ? self::hash(substr($digits, -9)) : null;
     }
 
     /** Начислить попытки: оплата пакета или вручную администратором. */

@@ -20,6 +20,13 @@
             @if($freeNow)
                 <div class="tr-note tr-good">🎁 {{ __('Первая тренировка — бесплатно. Попытка уже начислена.') }}</div>
             @endif
+            @if($freeNeedsPhone)
+                {{-- бесплатная попытка привязана к телефону: без него её не выдаём --}}
+                <div class="tr-note tr-warn">
+                    🎁 {{ __('Первая тренировка — бесплатно. Чтобы её получить, укажите телефон в анкете.') }}
+                    <a href="{{ $applicant ? route('applicant.dashboard') : route('public.applicants.create') }}">{{ $applicant ? __('Открыть анкету') : __('Заполнить анкету') }}</a>
+                </div>
+            @endif
 
             {{-- ==================== заголовок и попытки ==================== --}}
             <div class="tr-head">
@@ -136,7 +143,8 @@
                             </div>
                             <div class="tr-row">
                                 <span class="tr-tag tr-{{ $payment->status }}">{{ $payment->statusLabel() }}</span>
-                                @if($payment->isOpen())
+                                {{-- истёкшую тоже можно открыть: вдруг перевод уже был --}}
+                                @if($payment->isOpen() || $payment->status === \App\Models\Trainer\TrainerPayment::EXPIRED)
                                     <a class="tr-btn tr-ghost" href="{{ route('applicant.trainer.payment', $payment) }}">{{ __('Реквизиты') }}</a>
                                 @endif
                             </div>

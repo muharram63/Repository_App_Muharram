@@ -85,7 +85,14 @@ class PublicNumbers
             'hired' => $hired,
             'vacancies' => self::visibleVacancies()->count(),
             'resumes' => DB::table('resumes')->count(),
-            'companies' => DB::table('employers')->count(),
+            // как в каталоге компаний: без заблокированных и скрытых
+            'companies' => DB::table('employers')
+                ->join('users', 'employers.user_id', '=', 'users.id')
+                ->whereNotIn('users.status', \App\Models\User::BLOCKED_STATUSES)
+                ->whereNotExists(fn ($q) => $q->from('user_settings')
+                    ->whereColumn('user_settings.user_id', 'users.id')
+                    ->where('user_settings.hide_company', true))
+                ->count(),
             'responses' => $responses,
             'interviews' => DB::table('interviews')->count(),
             // сколько городов реально охвачено активными вакансиями

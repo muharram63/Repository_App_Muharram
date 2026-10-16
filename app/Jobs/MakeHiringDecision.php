@@ -219,7 +219,12 @@ class MakeHiringDecision implements ShouldQueue
         array $reasons,
         string $fallback,
     ): string {
-        if (! $writer->available()) {
+        /*
+         * Тренировке письмо кандидату не нужно: разбор пишет тренажёр, а этот
+         * текст никто не прочтёт. Без этой проверки каждая тренировка тратила
+         * лишний запрос из суточной квоты модели.
+         */
+        if (! $writer->available() || $interview->isTraining()) {
             return $fallback;
         }
 

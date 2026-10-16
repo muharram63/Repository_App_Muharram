@@ -66,7 +66,9 @@ class TrainerPayments
      */
     public function claim(TrainerPayment $payment, ?string $note): bool
     {
-        if ($payment->status !== TrainerPayment::PENDING) {
+        // и после истечения срока: человек мог перевести деньги, просто не
+        // нажал вовремя — деньги не должны пропасть
+        if (! in_array($payment->status, [TrainerPayment::PENDING, TrainerPayment::EXPIRED], true)) {
             return false;
         }
 
@@ -115,6 +117,22 @@ class TrainerPayments
         }
 
         return $done;
+    }
+
+    /**
+     * Закрыть заявки, по которым так и не нажали «Я оплатил».
+     *
+     * Без срока они висели в «Открытых» у администратора вечно. Каждый час
+     * из планировщика и при открытии страниц тренажёра — на случай, если
+     * планировщик не запущен.
+     *
+     * @return int сколько закрыто
+     */
+    public function expireStale(): int
+    {
+        return TrainerPayment::where('status', TrainerPayment::PENDING)
+            ->where('created_at', '<', now()->subDays(max(1, (int) config('trainer.payment_ttl_days', 7))))
+            ->update(['status' => TrainerPayment::EXPIRED, 'updated_at' => now()]);
     }
 
     /** Отклонить заявку с причиной. */

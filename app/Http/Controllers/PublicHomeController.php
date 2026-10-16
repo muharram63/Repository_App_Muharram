@@ -14,9 +14,16 @@ class PublicHomeController extends Controller
     public function index()
     {
         // ===== цифры для блока статистики =====
-        $activeVacancies = Vacancy::where('status', 'active')->count();
+        // считаем то же, что показывают списки: без вакансий заблокированных
+        // работодателей и без скрытых компаний (в том числе служебной
+        // «Тренажёр Workio») — иначе цифра расходилась со списком
+        $activeVacancies = Vacancy::where('status', 'active')
+            ->whereHas('employer.user', fn ($u) => $u->activeAccount())
+            ->count();
         $resumesCount = Resume::count();
-        $companiesCount = Employer::count();
+        $companiesCount = Employer::whereHas('user', fn ($u) => $u->activeAccount())
+            ->whereDoesntHave('user.settings', fn ($s) => $s->where('hide_company', true))
+            ->count();
 
         $responsesToday = VacancyResponse::whereDate('created_at', today())->count()
             + ResumeResponse::whereDate('created_at', today())->count();

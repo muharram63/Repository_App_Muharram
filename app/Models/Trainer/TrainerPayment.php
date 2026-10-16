@@ -11,7 +11,9 @@ use Illuminate\Database\Eloquent\Model;
  * pending  — заявка создана, кандидат видит реквизиты;
  * claimed  — кандидат нажал «Я оплатил», ждёт проверки;
  * confirmed — админ подтвердил, попытки начислены;
- * rejected — админ отклонил (с причиной).
+ * rejected — админ отклонил (с причиной);
+ * expired  — «Я оплатил» так и не нажали за TTL дней: заявка уходит из
+ *            открытых. Нажать «Я оплатил» можно и после — вдруг перевод был.
  */
 class TrainerPayment extends Model
 {
@@ -24,6 +26,8 @@ class TrainerPayment extends Model
     public const CONFIRMED = 'confirmed';
 
     public const REJECTED = 'rejected';
+
+    public const EXPIRED = 'expired';
 
     protected $fillable = [
         'user_id', 'package_id', 'package_title', 'attempts', 'amount', 'gateway', 'status',
@@ -65,6 +69,7 @@ class TrainerPayment extends Model
             self::CLAIMED => __('Проверяем оплату'),
             self::CONFIRMED => __('Оплачено — попытки начислены'),
             self::REJECTED => __('Отклонено'),
+            self::EXPIRED => __('Срок заявки истёк'),
             default => $this->status,
         };
     }

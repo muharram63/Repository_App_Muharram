@@ -2341,5 +2341,11 @@
     "Составить задание не удалось из-за сбоя на нашей стороне. Если тренировку не получится оценить, попытка вернётся на счёт сама.": "We could not prepare the task because of a failure on our side. If the practice session cannot be scored, the attempt will be returned automatically.",
     "К тренировке": "Back to the practice session",
     "Решение не было отправлено вовремя, и задание засчитано нулём. Разбор разговора с Анной всё равно будет — он появится в «Тренажёре».": "The solution was not submitted in time, so the task scored zero. You will still get a review of your conversation with Anna — it will appear in the Trainer.",
-    "Эта заявка уже не ждёт оплаты: :status.": "This request is no longer awaiting payment: :status."
+    "Эта заявка уже не ждёт оплаты: :status.": "This request is no longer awaiting payment: :status.",
+    "Первая тренировка — бесплатно. Чтобы её получить, укажите телефон в анкете.": "Your first practice is free. To get it, add a phone number to your profile.",
+    "Открыть анкету": "Open profile",
+    "Заполнить анкету": "Fill in profile",
+    "Срок заявки истёк. Если вы уже перевели деньги — нажмите «Я оплатил», мы проверим. Если нет — выберите пакет заново.": "This request has expired. If you have already transferred the money, press “I have paid” and we will check. If not, choose a package again.",
+    "Начислены попытки": "Attempts added",
+    "Попытка за тренировку «:track» вернулась на счёт — можно пройти заново.": "The attempt for the “:track” practice is back in your balance — you can take it again."
 }

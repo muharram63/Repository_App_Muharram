@@ -19,8 +19,11 @@ use App\Services\Trainer\TrainerWallet;
 
 function buyer(): User
 {
+    static $n = 0;
+
     $user = User::factory()->applicant()->create();
-    makeApplicant($user);
+    // телефон — без него бесплатной попытки нет
+    makeApplicant($user)->update(['phone' => '+992 92 '.str_pad((string) ++$n, 7, '0', STR_PAD_LEFT)]);
 
     return $user->fresh();
 }

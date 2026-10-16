@@ -13,6 +13,7 @@
         .tn-tag.claimed { background: #FEF3C7; color: #B45309; }
         .tn-tag.confirmed { background: #DCFCE7; color: #15803D; }
         .tn-tag.rejected { background: #FEE2E2; color: #B91C1C; }
+        .tn-tag.expired { background: #F1F5F9; color: #475569; }
         .tn-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 3vh 18px 2vh; }
         .tn-stat { border: 1px solid #e2e8f0; background: #fff; border-radius: 12px; padding: 14px 16px; }
         .tn-stat b { display: block; font-size: 24px; color: #1e293b; }

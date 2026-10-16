@@ -57,6 +57,7 @@
     .tr-tag { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--gray-100); color: var(--gray-500); }
     .tr-tag.tr-confirmed { background: var(--wash-good); color: var(--ink-good); }
     .tr-tag.tr-rejected { background: var(--wash-danger); color: var(--danger); }
+    .tr-tag.tr-expired { background: var(--gray-100); color: var(--gray-500); }
     .tr-tag.tr-claimed { background: var(--wash-warn); color: var(--ink-warn); }
     .tr-req { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; font-size: 14px; }
     .tr-req dt { color: var(--gray-500); }
