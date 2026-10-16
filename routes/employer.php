@@ -50,7 +50,9 @@ Route::prefix('ai-screening')->name('ai.')->group(function () {
             ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.listen');
         // проверка теста и подготовка рекомендации — со страницы отчёта
         Route::post('{vacancy}/candidates/{interview}/pump', [$report, 'pump'])
-            ->whereNumber('vacancy')->whereNumber('interview')->name('candidate.pump');
+            ->whereNumber('vacancy')->whereNumber('interview')
+            // страница опрашивает каждые несколько секунд — как у кандидата, не чаще
+            ->middleware('throttle:40,1')->name('candidate.pump');
     });
 
     Route::post('{vacancy}/candidates/{interview}/approve', [$report, 'approve'])

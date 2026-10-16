@@ -580,3 +580,41 @@ test('каждая попытка попадает в журнал обраще�
         ->and(AiInteraction::where('status', 'failed')->count())->toBe(1)
         ->and(AiInteraction::where('status', 'ok')->count())->toBe(1);
 });
+
+test('кончились обе модели — следующие вызовы не идут в Google, пока лимит не обновится', function () {
+    Illuminate\Support\Sleep::fake();
+    Illuminate\Support\Facades\Cache::flush();
+
+    Http::fake(['*' => Http::response(
+        ['error' => ['message' => 'Rate limit exceeded. Please retry in 2h0m0s']], 429
+    )]);
+
+    $ask = fn () => journal()->ask(
+        purpose: 'task_grade',
+        system: 'Проверь.',
+        turns: [['role' => 'user', 'text' => 'решение']],
+        schema: ['type' => 'object'],
+        rules: scoreRules(),
+        options: ['model' => 'gemini-3.8-flash', 'fallback' => 'gemini-3.5-flash-lite'],
+    );
+
+    expect($ask)->toThrow(AiUnavailableException::class);
+    expect(Http::recorded())->toHaveCount(2);
+
+    // страница опрашивает каждые пять секунд — запросов больше нет
+    foreach (range(1, 5) as $_) {
+        try {
+            $ask();
+        } catch (AiUnavailableException $e) {
+            expect($e->rateLimited)->toBeTrue();
+        }
+    }
+
+    expect(Http::recorded())->toHaveCount(2)
+        ->and(AiInteraction::count())->toBe(2);
+
+    // лимит обновился — снова спрашиваем модель
+    $this->travel(3)->hours();
+    expect($ask)->toThrow(AiUnavailableException::class);
+    expect(Http::recorded())->toHaveCount(4);
+});

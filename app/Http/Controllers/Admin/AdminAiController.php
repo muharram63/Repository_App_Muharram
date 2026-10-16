@@ -24,6 +24,12 @@ class AdminAiController extends Controller
     /** За сколько дней считаем расход модели. */
     public const USAGE_DAYS = 30;
 
+    /** Дольше этого ни один запрос к модели не идёт (таймауты меньше), мс. */
+    public const LATENCY_CAP = 300000;
+
+    /** Сколько часов без движения считаем собеседование брошенным. */
+    public const IDLE_HOURS = 24;
+
     public function index()
     {
         // учебные собеседования тренажёра — не отбор, здесь их нет
@@ -46,18 +52,22 @@ class AdminAiController extends Controller
             'stuck' => $interviews->filter(fn (AiInterview $i) => $this->problem($i) !== null)->count(),
             'interviews' => $interviews,
             'problem' => fn (AiInterview $i) => $this->problem($i),
+            'idle' => fn (AiInterview $i) => $this->idle($i),
             'queue' => $this->queue(),
             'usage' => [
                 'calls' => (clone $usage)->count(),
                 'tokens' => (int) (clone $usage)->sum(DB::raw('coalesce(tokens_in, 0) + coalesce(tokens_out, 0)')),
                 'failed' => (clone $usage)->where('status', '!=', 'ok')->count(),
-                'latency' => (int) round((float) (clone $usage)->avg('latency_ms')),
+                // без записей дольше LATENCY_CAP: это компьютер уснул посреди
+                // запроса, а не модель думала часами — одна такая запись
+                // превращала среднее в «~123 с»
+                'latency' => (int) round((float) (clone $usage)->where('latency_ms', '<=', self::LATENCY_CAP)->avg('latency_ms')),
             ],
             'byPurpose' => (clone $usage)
                 ->selectRaw('purpose, count(*) as calls, sum(case when status = ? then 0 else 1 end) as failed', ['ok'])
                 ->groupBy('purpose')->orderByDesc('calls')->get(),
             'byModel' => (clone $usage)
-                ->selectRaw('model, count(*) as calls, avg(latency_ms) as latency')
+                ->selectRaw('model, count(*) as calls, avg(case when latency_ms <= ? then latency_ms end) as latency', [self::LATENCY_CAP])
                 ->groupBy('model')->orderByDesc('calls')->get(),
             'purposes' => AiInteraction::PURPOSES,
             'injections' => AiInjectionAttempt::with('interview.vacancy')
@@ -90,6 +100,19 @@ class AdminAiController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Кандидат ушёл и не вернулся. Это не сбой — исправлять тут нечего,
+     * поэтому в «Требуют внимания» не считается, но и «В порядке» не пишем.
+     */
+    private function idle(AiInterview $interview): ?string
+    {
+        if ($interview->isDecided() || ! $interview->updated_at?->lt(now()->subHours(self::IDLE_HOURS))) {
+            return null;
+        }
+
+        return 'Нет движения '.$interview->updated_at->diffForHumans(now(), true);
     }
 
     /**

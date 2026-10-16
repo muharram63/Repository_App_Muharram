@@ -117,6 +117,24 @@ class AiJournal
             $options['model'] = $options['fallback'];
         }
 
+        /*
+         * Исчерпана и та модель, к которой идём (запасная или единственная), —
+         * отказываем сразу, без запроса. Страница собеседования спрашивает
+         * следующий шаг раз в несколько секунд, и раньше каждый такой вопрос
+         * уходил в Google за заведомым 429: одно собеседование 4 октября
+         * сделало так 172 запроса за двадцать минут.
+         */
+        if (self::exhausted($options['model'] ?? null)) {
+            $left = self::exhaustedFor($options['model']);
+
+            throw new AiUnavailableException(
+                __('Бесплатный лимит запросов исчерпан. Продолжим через :seconds с — диалог сохранён.', ['seconds' => min(60, $left)]),
+                min(60, $left),
+                rateLimited: true,
+                resetIn: $left,
+            );
+        }
+
         while ($attempt < self::ATTEMPTS) {
             $attempt++;
             $startedAt = microtime(true);
@@ -147,6 +165,13 @@ class AiJournal
             } catch (AiUnavailableException $e) {
                 $this->record($purpose, $interview, $system, $turns, null, $startedAt, 'failed', $e->getMessage(), $options);
 
+                // исчерпание запоминаем у любой модели, у запасной тоже:
+                // иначе, когда кончились обе, каждый следующий вызов снова
+                // стучался бы в запасную
+                if ($e->rateLimited) {
+                    self::markExhausted($options['model'] ?? null, $e->resetIn ?? $e->retryAfter);
+                }
+
                 /*
                  * Лимит исчерпан — сразу на запасную модель.
                  *
@@ -159,9 +184,8 @@ class AiJournal
                  * запасную сразу. Какая модель ставила балл, видно в отчёте.
                  */
                 if ($e->rateLimited && filled($options['fallback'] ?? null)
-                    && ($options['model'] ?? null) !== $options['fallback']) {
-                    self::markExhausted($options['model'] ?? null, $e->resetIn ?? $e->retryAfter);
-
+                    && ($options['model'] ?? null) !== $options['fallback']
+                    && ! self::exhausted($options['fallback'])) {
                     Log::info('Лимит исчерпан: переходим на запасную модель', [
                         'purpose' => $purpose,
                         'from' => $options['model'] ?? null,
@@ -403,8 +427,19 @@ class AiJournal
     private static function markExhausted(?string $model, ?int $seconds): void
     {
         if (filled($model)) {
-            Cache::put('gemini-exhausted:'.$model, true, max(60, (int) $seconds));
+            $ttl = max(60, (int) $seconds);
+            // храним момент сброса: по нему видно, сколько ещё ждать
+            Cache::put('gemini-exhausted:'.$model, now()->getTimestamp() + $ttl, $ttl);
         }
+    }
+
+    /** Сколько секунд осталось до сброса лимита модели. */
+    private static function exhaustedFor(string $model): int
+    {
+        $until = Cache::get('gemini-exhausted:'.$model);
+
+        // запись старого вида (true) — срок неизвестен, считаем минуту
+        return is_int($until) ? max(1, $until - now()->getTimestamp()) : 60;
     }
 
     private function record(

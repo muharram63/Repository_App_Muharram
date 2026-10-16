@@ -115,6 +115,8 @@
                         <td>
                             @if($trouble)
                                 <span class="ai-tag bad">{{ $trouble }}</span>
+                            @elseif($quiet = $idle($interview))
+                                <span class="ai-tag muted" title="Кандидат не продолжает собеседование">{{ $quiet }}</span>
                             @else
                                 <span class="ai-tag ok">В порядке</span>
                             @endif

@@ -75,3 +75,36 @@ test('не администратору раздел закрыт', function () 
         ->get(route('superadmin.ai'))
         ->assertForbidden();
 });
+
+test('запрос, «длившийся» часами (компьютер уснул), не портит среднее время', function () {
+    $admin = User::factory()->admin()->create();
+
+    foreach ([4000, 6000, 66449174] as $ms) {
+        AiInteraction::create([
+            'purpose' => 'answer_score', 'model' => 'gemini-3.6-flash',
+            'latency_ms' => $ms, 'status' => 'ok',
+        ]);
+    }
+
+    $this->actingAs($admin)->get(route('superadmin.ai'))
+        ->assertOk()
+        ->assertSee('~5,0 с', false)
+        ->assertDontSee('22149');
+});
+
+test('брошенное кандидатом собеседование не выдаётся за «В порядке»', function () {
+    $admin = User::factory()->admin()->create();
+    [$interview] = makeAiInterview(state: ['consent_at' => now(), 'stage' => 'interview', 'analysis_status' => 'ready']);
+    $interview->forceFill(['updated_at' => now()->subDays(4)])->saveQuietly();
+
+    $this->actingAs($admin)->get(route('superadmin.ai'))
+        ->assertOk()
+        ->assertSee('Нет движения')
+        ->assertDontSee('В порядке');
+});
+
+test('частота опроса страницы отчёта работодателем ограничена', function () {
+    $route = collect(Route::getRoutes()->getRoutes())->first(fn ($r) => $r->getName() === 'employer.ai.candidate.pump');
+
+    expect($route->gatherMiddleware())->toContain('throttle:40,1');
+});
