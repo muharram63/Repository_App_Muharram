@@ -228,8 +228,17 @@
             .row{flex-direction:column;}
             .analytics-grid{grid-template-columns:1fr;}
         }
+        .nav-item.active{background:rgba(255,255,255,0.10); color:#fff;}
+        .nav-item.active i{opacity:1;}
+        .nav-toggle, .nav-backdrop{display:none;}
         @media (max-width:800px){
-            .sidebar{position:fixed; left:-260px; z-index:50;}
+            /* меню прячется за край — открывается кнопкой в шапке; раньше
+               кнопки не было, и с телефона в меню было не попасть */
+            .sidebar{position:fixed; left:-260px; z-index:50; transition:left .2s ease;}
+            .nav-open .sidebar{left:0;}
+            .nav-toggle{display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; margin-right:10px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink-700);}
+            .nav-open .nav-backdrop{display:block; position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:40;}
+            header{padding:0 14px;}
             .kpi-row{grid-template-columns:1fr;}
         }
     </style>
@@ -262,21 +271,43 @@
             </a>
         </div>
 
+        @php
+            /*
+             * Меню одним списком: по нему же подсвечивается текущий пункт и
+             * пишется название страницы в шапке. Раньше в шапке на всех
+             * страницах стояло «Пользователи», а текущий пункт не выделялся.
+             * Шаблон маршрута => [подпись, значок, бейдж].
+             */
+            $adminMenu = [
+                'superadmin.dashboard' => ['Обзор', 'fa-gauge-high', null],
+                'superadmin.vacancy*' => ['Вакансии', 'fa-briefcase', null],
+                'superadmin.users*' => ['Пользователи', 'fa-users', null],
+                'superadmin.applicants*' => ['Соискатели', 'fa-user-tie', null],
+                'superadmin.companies*' => ['Компании', 'fa-building', null],
+                'superadmin.resumes*' => ['Резюме', 'fa-file-lines', null],
+                'superadmin.responses*' => ['Отклики', 'fa-inbox', null],
+                'superadmin.analytics*' => ['Аналитика', 'fa-chart-simple', null],
+                'superadmin.ai' => ['ИИ-собеседования', 'fa-robot', null],
+                // заявки «Я оплатил» ждут администратора — как новые жалобы
+                'superadmin.trainer*' => ['Тренажёр', 'fa-dumbbell', ['nav-trainer', '#d97706',
+                    \App\Models\Trainer\TrainerPayment::where('status', \App\Models\Trainer\TrainerPayment::CLAIMED)->count()]],
+                'superadmin.complaints*' => ['Жалобы', 'fa-flag', ['nav-complaints', '#dc2626',
+                    \App\Models\Complaint::where('status', 'new')->count()]],
+                'superadmin.comments*' => ['Комментарии', 'fa-comment-dots', ['nav-comments', '#1656D6',
+                    \App\Models\AdminComment::whereIn('status', ['new', 'in_review'])->count()]],
+            ];
+            // справочники в меню не вынесены, но название в шапке им нужно
+            $adminPages = $adminMenu + [
+                'superadmin.categories.*' => ['Категории'],
+                'superadmin.cities.*' => ['Города'],
+                'superadmin.industries.*' => ['Отрасли'],
+            ];
+            $adminPage = collect($adminPages)->first(fn ($item, $pattern) => request()->routeIs($pattern))[0] ?? null;
+        @endphp
         <nav class="nav">
-            <a class="nav-item" href="{{ route('superadmin.dashboard') }}"><i class="fa-solid fa-gauge-high"></i><span class="label">Обзор</span></a>
-            <a class="nav-item" href="{{route('superadmin.vacancy')}}"><i class="fa-solid fa-briefcase"></i><span class="label">Вакансии</span></a>
-            <a class="nav-item" href="{{route('superadmin.users')}}"><i class="fa-solid fa-users"></i><span class="label">Пользователи</span></a>
-            <a class="nav-item" href="{{ route('superadmin.applicants') }}"><i class="fa-solid fa-user-tie"></i><span class="label">Соискатели</span></a>
-            <a class="nav-item" href="{{ route('superadmin.companies') }}"><i class="fa-solid fa-building"></i><span class="label">Компании</span></a>
-            <a class="nav-item" href="{{ route('superadmin.resumes') }}"><i class="fa-solid fa-file-lines"></i><span class="label">Резюме</span></a>
-            <a class="nav-item" href="{{ route('superadmin.responses') }}"><i class="fa-solid fa-inbox"></i><span class="label">Отклики</span></a>
-            <a class="nav-item" href="{{ route('superadmin.analytics') }}"><i class="fa-solid fa-chart-simple"></i><span class="label">Аналитика</span></a>
-            <a class="nav-item" href="{{ route('superadmin.ai') }}"><i class="fa-solid fa-robot"></i><span class="label">ИИ-собеседования</span></a>
-            <a class="nav-item" href="{{ route('superadmin.trainer') }}"><i class="fa-solid fa-dumbbell"></i><span class="label">Тренажёр</span></a>
-            @php($newComplaints = \App\Models\Complaint::where('status', 'new')->count())
-            <a class="nav-item" href="{{ route('superadmin.complaints') }}"><i class="fa-solid fa-flag"></i><span class="label">Жалобы</span><span data-live="nav-complaints" data-live-hide-zero style="margin-left:auto; background:#dc2626; color:#fff; font-size:11px; font-weight:700; border-radius:999px; padding:2px 7px;" @if(! $newComplaints) hidden @endif>{{ $newComplaints }}</span></a>
-            @php($newAdminComments = \App\Models\AdminComment::whereIn('status', ['new', 'in_review'])->count())
-            <a class="nav-item" href="{{ route('superadmin.comments') }}"><i class="fa-solid fa-comment-dots"></i><span class="label">Комментарии</span><span data-live="nav-comments" data-live-hide-zero style="margin-left:auto; background:#1656D6; color:#fff; font-size:11px; font-weight:700; border-radius:999px; padding:2px 7px;" @if(! $newAdminComments) hidden @endif>{{ $newAdminComments }}</span></a>
+            @foreach($adminMenu as $pattern => [$label, $icon, $badge])
+                <a class="nav-item {{ request()->routeIs($pattern) ? 'active' : '' }}" href="{{ route(rtrim($pattern, '*')) }}" @if(request()->routeIs($pattern)) aria-current="page" @endif><i class="fa-solid {{ $icon }}"></i><span class="label">{{ $label }}</span>@if($badge)<span data-live="{{ $badge[0] }}" data-live-hide-zero style="margin-left:auto; background:{{ $badge[1] }}; color:#fff; font-size:11px; font-weight:700; border-radius:999px; padding:2px 7px;" @if(! $badge[2]) hidden @endif>{{ $badge[2] }}</span>@endif</a>
+            @endforeach
         </nav>
 
 <form action="{{route('logout')}}" method="post">
@@ -285,21 +316,20 @@
 </form>
     </aside>
 
-    <div>
-        <header style="width: 177vh;">
+    {{-- затемнение под открытым меню на телефоне: нажатие закрывает меню --}}
+    <div class="nav-backdrop" data-nav-close></div>
 
-            <div class="breadcrumb">
-                Админ-панель <i class="fa-solid fa-chevron-right" style="font-size:10px; margin:0 10px;margin-top: 0.7vh;"></i>Пользователи
-                <b class="crumb crumb-dashboard">Обзор</b>
-                <b class="crumb crumb-vacancies">Вакансии</b>
-                <b class="crumb crumb-users">Пользователи</b>
-                <b class="crumb crumb-applicants">Соискатели</b>
-                <b class="crumb crumb-companies">Компании</b>
-                <b class="crumb crumb-resumes">Резюме</b>
-                <b class="crumb crumb-responses">Отклики</b>
-                <b class="crumb crumb-analytics">Аналитика</b>
-                <b class="crumb crumb-complaints">Жалобы</b>
-                <b class="crumb crumb-comments">Комментарии</b>
+    {{-- ширину задаёт .main (вся ширина справа от меню), а не жёсткие 177vh:
+         на мониторе других пропорций шапка выходила за край или не доходила --}}
+    <div class="main">
+        <header>
+
+            <div class="breadcrumb" style="display:flex; align-items:center;">
+                <button type="button" class="nav-toggle" data-nav-toggle aria-label="Открыть меню"><i class="fa-solid fa-bars"></i></button>
+                Админ-панель
+                @if($adminPage)
+                    <i class="fa-solid fa-chevron-right" style="font-size:10px; margin:0 10px;"></i><b>{{ $adminPage }}</b>
+                @endif
             </div>
 
             <div class="header-right">
@@ -358,6 +388,17 @@
 </div>
 
 @include('partials.live-counters', ['liveUrl' => route('superadmin.live.counters')])
+
+<script>
+    // меню на телефоне: кнопка в шапке открывает, затемнение — закрывает
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('[data-nav-toggle]')) {
+            document.body.classList.toggle('nav-open');
+        } else if (e.target.closest('[data-nav-close]')) {
+            document.body.classList.remove('nav-open');
+        }
+    });
+</script>
 
 </body>
 </html>

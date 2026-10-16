@@ -173,6 +173,7 @@ class LiveCounterController extends Controller
         $map = [
             // бейджи меню
             'nav-complaints' => fn () => Complaint::where('status', 'new')->count(),
+            'nav-trainer' => fn () => \App\Models\Trainer\TrainerPayment::where('status', \App\Models\Trainer\TrainerPayment::CLAIMED)->count(),
             'nav-comments' => fn () => (int) ($comments()['new'] ?? 0) + (int) ($comments()['in_review'] ?? 0),
 
             // раздел жалоб
