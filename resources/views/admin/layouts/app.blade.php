@@ -40,7 +40,10 @@
         .brand-icon{width:34px; height:34px; border-radius:10px; background:linear-gradient(145deg, var(--blue-soft), var(--blue)); display:flex; align-items:center; justify-content:center; font-size:15px; color:#fff; flex-shrink:0; box-shadow:0 4px 10px rgba(22,86,214,0.35);}
         .brand-name{font-weight:800; font-size:17px; color:#fff;}
 
-        .nav{display:flex; flex-direction:column; gap:2px; flex:1; overflow-y:auto;}
+        /* flex-wrap:nowrap — у Bootstrap .nav переносит пункты: когда они не
+           помещались по высоте, хвост меню уходил во вторую колонку */
+        .nav{display:flex; flex-direction:column; flex-wrap:nowrap; gap:2px; flex:1; min-height:0; overflow-y:auto; overflow-x:hidden;}
+        .nav-item{flex-shrink:0;}
         .nav-item{display:flex; align-items:center; gap:11px; text-decoration:none; cursor:pointer; color:#A7B0C4; font-size:13.5px; font-weight:500; padding:10px 12px; border-radius:9px; transition:background .15s ease, color .15s ease;}
         .nav-item i{width:17px; text-align:center; font-size:14px; color:inherit; opacity:.7;}
         .nav-item .label{flex:1;}
