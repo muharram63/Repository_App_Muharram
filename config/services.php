@@ -57,6 +57,18 @@ return [
     ],
 
     /*
+     * Вход через Google (Socialite). Ключи — в Google Cloud Console:
+     * «APIs & Services» → «Credentials» → «OAuth client ID» (Web application).
+     * Адрес возврата там должен совпадать с GOOGLE_REDIRECT_URI. Без ключей
+     * кнопка «Google» не уводит в Google, а честно говорит, что вход не настроен.
+     */
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', '/auth/google/callback'),
+    ],
+
+    /*
      * Gemini — диалоговый помощник по составлению резюме. Ключ бесплатного
      * тарифа выдаётся в Google AI Studio. Без ключа помощник выключается сам,
      * а обычная форма создания резюме продолжает работать как раньше.

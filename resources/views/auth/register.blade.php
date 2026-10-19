@@ -175,6 +175,7 @@
             cursor:pointer; transition:.15s;
         }
         .btn-social:hover{border-color:var(--accent);}
+        a.btn-social{text-decoration:none;}
         .btn-social svg{width:17px; height:17px;}
 
         .error-banner{
@@ -274,15 +275,13 @@
                 @csrf
 
 
-                <div class="field-row-2">
-                    <div class="field-group">
-                        <label class="field-label">{{ __('ФИО') }}</label>
-                        <div class="field-input-wrap">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                            <input type="text" name="name" class="field-input" placeholder="{{ __('Введите свое ФИО') }}" value="{{ old('name') }}" required>
-                        </div>
+                <div class="field-group">
+                    <label class="field-label">{{ __('ФИО') }}</label>
+                    <div class="field-input-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <input type="text" name="name" class="field-input" placeholder="{{ __('Введите свое ФИО') }}" value="{{ old('name') }}" required>
                     </div>
-                   </div>
+                </div>
 
                 <div class="field-group">
                     <label class="field-label">E-mail</label>
@@ -342,10 +341,10 @@
             <div class="divider">{{ __('или зарегистрируйтесь через') }}</div>
 
             <div class="social-row">
-                <button class="btn-social">
+                <a class="btn-social" href="{{ route('auth.google') }}" data-google-role>
                     <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.1V7.06H2.18A11 11 0 0 0 1 12c0 1.77.43 3.45 1.18 4.94z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
                     Google
-                </button>
+                </a>
                 <button class="btn-social">
                     <svg viewBox="0 0 24 24" fill="#171B2C"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.46-1.11-1.46-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.4 9.4 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.85V21c0 .27.18.58.69.48A10 10 0 0 0 22 12c0-5.52-4.48-10-10-10z"/></svg>
                     GitHub
@@ -436,6 +435,19 @@
         });
         hint.textContent = val.length === 0 ? 'Используйте буквы, цифры и спецсимволы' : labels[Math.max(score - 1, 0)];
     }
+
+    // «Google» на регистрации: передаём роль, выбранную в списке, — после
+    // Google аккаунт создастся сразу с ней, без лишнего вопроса
+    document.querySelectorAll('[data-google-role]').forEach(function (link) {
+        link.addEventListener('click', function () {
+            const role = document.querySelector('select[name="role"]');
+            if (role) {
+                const url = new URL(link.href);
+                url.searchParams.set('role', role.value);
+                link.href = url.toString();
+            }
+        });
+    });
 </script>
 </body>
 </html>
