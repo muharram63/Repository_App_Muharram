@@ -2347,5 +2347,12 @@
     "Заполнить анкету": "Fill in profile",
     "Срок заявки истёк. Если вы уже перевели деньги — нажмите «Я оплатил», мы проверим. Если нет — выберите пакет заново.": "This request has expired. If you have already transferred the money, press “I have paid” and we will check. If not, choose a package again.",
     "Начислены попытки": "Attempts added",
-    "Попытка за тренировку «:track» вернулась на счёт — можно пройти заново.": "The attempt for the “:track” practice is back in your balance — you can take it again."
+    "Попытка за тренировку «:track» вернулась на счёт — можно пройти заново.": "The attempt for the “:track” practice is back in your balance — you can take it again.",
+    "Вход через Google пока не настроен. Войдите по почте и паролю.": "Google sign-in is not set up yet. Please sign in with your email and password.",
+    "Не удалось войти через Google. Попробуйте ещё раз.": "Could not sign in with Google. Please try again.",
+    "Google не подтвердил адрес почты этого аккаунта. Зарегистрируйтесь по почте и паролю.": "Google has not confirmed this account's email address. Please register with your email and password.",
+    "Регистрация через Google — Workio": "Sign up with Google — Workio",
+    "Почти готово": "Almost done",
+    "Аккаунт :email ещё не зарегистрирован в Workio. Кто вы?": "The account :email is not registered on Workio yet. Who are you?",
+    "Чтобы ответ ушёл кандидату, подтвердите: нажмите «Да, отправить» или скажите «да».": "To send the answer to the candidate, confirm: press “Yes, send” or say “yes”."
 }

@@ -101,6 +101,8 @@ class AiReportController extends Controller
          */
         if ($decision?->isReleased()) {
             $answer['action'] = 'none';
+        } elseif ($interview->awaitsEmployer()) {
+            $answer = self::confirmable($answer, $decision?->outcome);
         }
 
         return response()->json($answer + [
@@ -111,6 +113,47 @@ class AiReportController extends Controller
             'released' => (bool) $decision?->isReleased(),
             'awaits' => $interview->awaitsEmployer(),
         ]);
+    }
+
+    /**
+     * Слова Анны об отправке и кнопка подтверждения должны говорить одно и то же.
+     *
+     * Модель то спрашивала «Отправить кандидату ответ? Скажите да или нет», не
+     * поставив action, — кнопки «Да, отправить» не было, и «да» работодателя
+     * уходило ей же новым вопросом, по кругу; то ставила action и говорила
+     * «хорошо, отправлю отказ» — работодатель думал, что ответ ушёл, а без
+     * подтверждения он не уходит никогда. Теперь это решает код:
+     * — спросила об отправке без action — action выводим из её же слов (или
+     *   из рекомендации ИИ), и кнопка появляется;
+     * — action стоит, а вопроса нет — добавляем просьбу подтвердить.
+     *
+     * @param  array{reply:string,action:string}  $answer
+     * @return array{reply:string,action:string}
+     */
+    public static function confirmable(array $answer, ?string $recommended): array
+    {
+        $reply = (string) $answer['reply'];
+        $action = $answer['action'];
+
+        $asksToSend = preg_match('/(отправ|фирист|send)/iu', $reply)
+            && (str_contains($reply, '?') || preg_match('/да или нет|ҳа ё не|yes or no/iu', $reply));
+
+        if ($action === 'none' && $asksToSend) {
+            $action = match (true) {
+                // «не подходит» проверяем раньше «подходит»
+                (bool) preg_match('/(отказ|не подход|не принят|рад кард|reject|not a fit|decline)/iu', $reply) => 'reject',
+                (bool) preg_match('/(принят|приглас|подходит|қабул|accept|hire)/iu', $reply) => 'accept',
+                $recommended === 'rejected' => 'reject',
+                $recommended === 'passed' => 'accept',
+                default => 'none',
+            };
+        }
+
+        if ($action !== 'none' && ! str_contains($reply, '?')) {
+            $reply = rtrim($reply).' '.__('Чтобы ответ ушёл кандидату, подтвердите: нажмите «Да, отправить» или скажите «да».');
+        }
+
+        return ['reply' => $reply, 'action' => $action] + $answer;
     }
 
     /**

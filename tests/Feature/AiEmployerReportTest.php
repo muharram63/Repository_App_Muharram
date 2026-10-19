@@ -1458,3 +1458,62 @@ test('задание, оценённое запасной моделью, пом
         ->assertOk()
         ->assertDontSee(__('Оценено запасной моделью :model', ['model' => config('services.gemini.model_scoring')]));
 });
+
+/*
+ * Слова Анны об отправке и кнопка подтверждения говорят одно и то же:
+ * спросила «Отправить?» без action — кнопка всё равно появляется; поставила
+ * action, но говорит «отправлю» — добавляется просьба подтвердить.
+ */
+test('Анна спросила «отправить отказ?», забыв action, — кнопка подтверждения всё равно появляется', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    fakeAdvisor('Да, я рекомендую отказать. Отправить кандидату ответ, что он нам не подходит? Скажите да или нет.', 'none');
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.advise', [$vacancy, $interview]), ['message' => 'Он точно не подходит?'])
+        ->assertOk()
+        ->assertJsonPath('action', 'reject');
+
+    // это всё ещё только предложение
+    expect($interview->fresh()->isAnnounced())->toBeFalse();
+});
+
+test('Анна говорит «отправлю отказ» — к ответу добавлена просьба подтвердить', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    fakeAdvisor('Хорошо, я поняла вас и отправлю кандидату вежливый отказ.', 'reject');
+
+    $reply = $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.advise', [$vacancy, $interview]), ['message' => 'Отправь вежливый отказ'])
+        ->assertOk()
+        ->assertJsonPath('action', 'reject')
+        ->json('reply');
+
+    expect($reply)->toContain('Да, отправить');
+    expect($interview->fresh()->isAnnounced())->toBeFalse();
+});
+
+test('обычный ответ без разговора об отправке не превращается в предложение', function () {
+    expect(App\Http\Controllers\Employer\AiReportController::confirmable(
+        ['reply' => 'Портфолио в отчёте нет — спросите на встрече. Что ещё обсудим?', 'action' => 'none'], 'rejected'
+    ))->toMatchArray(['action' => 'none'])
+        ->and(App\Http\Controllers\Employer\AiReportController::confirmable(
+            ['reply' => 'Отправить кандидату ответ, что он принят? Скажите да или нет.', 'action' => 'none'], 'manual_review'
+        ))->toMatchArray(['action' => 'accept']);
+});
+
+test('ручная проверка: «Да, отправить» уходит через «Изменить решение» и отправляет ответ', function () {
+    [$vacancy, $interview, $employerUser] = reportReady();
+    $interview->latestDecision->update(['outcome' => 'manual_review', 'requires_manual_review' => true]);
+    $interview->update(['outcome' => 'manual_review', 'requires_review' => true]);
+
+    $this->actingAs($employerUser)
+        ->postJson(route('employer.ai.candidate.override', [$vacancy, $interview]), [
+            'outcome' => 'rejected',
+            'note' => 'Решение принято в разговоре с ИИ-помощником.',
+            'message' => 'К сожалению, вы нам не подходите.',
+        ])
+        ->assertOk()
+        ->assertJsonPath('released', true)
+        ->assertJsonPath('outcome', 'rejected');
+
+    expect($interview->fresh()->isAnnounced())->toBeTrue();
+});
